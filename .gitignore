@@ -59,6 +59,7 @@ __pycache__/
 .venv/
 
 # Debug artifacts
+artifacts/
 scripts/*_debug.json
 deploy_log*.txt
 dump_*.txt

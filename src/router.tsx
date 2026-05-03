@@ -3,19 +3,13 @@ import { lazy, Suspense } from "react";
 import Layout from "@/pages/_layout";
 
 const NotFoundPage = lazy(() => import("@/pages/not-found"));
-
-// ダッシュボード
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
-
-// インシデント管理ページ
-const IncidentListPage = lazy(() => import("@/pages/incidents"));
-const IncidentDetailPage = lazy(() => import("@/pages/incident-detail"));
-
-// カンバンボード
-const KanbanPage = lazy(() => import("@/pages/kanban"));
-
-// IT 資産管理
-const AssetsPage = lazy(() => import("@/pages/assets"));
+const ApplicationsPage = lazy(() => import("@/pages/applications"));
+const QueuePage = lazy(() => import("@/pages/queue"));
+const ApplicationDetailPage = lazy(() => import("@/pages/application-detail"));
+const MentionsPage = lazy(() => import("@/pages/mentions"));
+const ResourcesPage = lazy(() => import("@/pages/resources"));
+const MastersPage = lazy(() => import("@/pages/masters"));
 
 // ローディングコンポーネント
 const PageLoader = () => (
@@ -52,10 +46,15 @@ export const router = createBrowserRouter(
       children: [
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: "dashboard", element: withSuspense(DashboardPage) },
-        { path: "incidents", element: withSuspense(IncidentListPage) },
-        { path: "incidents/:id", element: withSuspense(IncidentDetailPage) },
-        { path: "kanban", element: withSuspense(KanbanPage) },
-        { path: "assets", element: withSuspense(AssetsPage) },
+        { path: "applications", element: withSuspense(ApplicationsPage) },
+        {
+          path: "applications/:id",
+          element: withSuspense(ApplicationDetailPage),
+        },
+        { path: "queue", element: withSuspense(QueuePage) },
+        { path: "mentions", element: withSuspense(MentionsPage) },
+        { path: "resources", element: withSuspense(ResourcesPage) },
+        { path: "masters", element: withSuspense(MastersPage) },
       ],
     },
   ],

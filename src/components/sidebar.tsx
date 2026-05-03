@@ -2,10 +2,12 @@ import { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  ShieldAlert,
+  AtSign,
   LayoutDashboard,
   Columns3,
-  Monitor,
+  FileText,
+  Paperclip,
+  Settings2,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,21 +40,23 @@ export function Sidebar() {
 
   const navItems: { category: string; items: NavItem[] }[] = [
     {
-      category: "メイン",
+      category: "業務",
       items: [
         { icon: LayoutDashboard, label: "ダッシュボード", path: "dashboard" },
+        { icon: FileText, label: "申請リスト", path: "applications" },
+        { icon: Columns3, label: "判断キュー", path: "queue" },
       ],
     },
     {
-      category: "インシデント管理",
+      category: "コラボレーション",
       items: [
-        { icon: ShieldAlert, label: "インシデント", path: "incidents" },
-        { icon: Columns3, label: "カンバン", path: "kanban" },
+        { icon: AtSign, label: "メンション", path: "mentions" },
+        { icon: Paperclip, label: "関連資料", path: "resources" },
       ],
     },
     {
-      category: "マスタ管理",
-      items: [{ icon: Monitor, label: "IT 資産", path: "assets" }],
+      category: "管理",
+      items: [{ icon: Settings2, label: "マスタ管理", path: "masters" }],
     },
   ];
 
