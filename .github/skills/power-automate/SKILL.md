@@ -126,6 +126,60 @@ if existing["value"]:
 
 ✅ フォールバック: Power Automate UI で手動有効化
 ✅ 接続参照版を使えば有効化成功率が上がる
+
+✅ Dataverse webhook トリガーのソリューション対応フローは、
+    workflows テーブルで statecode=1/statuscode=2 にした後、
+    Flow Management API の /start も明示的に呼ぶ。
+    statecode は有効、callbackregistrations も存在するのに run history が 0 件のまま
+    Dataverse イベントが流れないケースがあるため。
+    正常化コマンド相当:
+      POST /providers/Microsoft.ProcessSimple/environments/{env-id}/flows/{workflow-id}/start
+```
+
+### Dataverse GrantAccess / RevokeAccess は unbound action + 接続参照で呼ぶ
+
+```
+検証結果（2026-05-02 DecisionFlow）:
+  ❌ PerformBoundAction + GrantAccess / RevokeAccess
+      → GetMetadataForBoundActionInput が BadRequest。
+          「Bound action 'GrantAccess' is not found」となる
+
+  ✅ PerformUnboundAction + Target パラメータ + connectionReferenceLogicalName
+      → GrantAccess / RevokeAccess の Draft 作成・有効化に成功
+
+実装ポイント:
+  ✅ actionName: "GrantAccess" / "RevokeAccess"
+  ✅ item.Target に対象レコードを渡す
+  ✅ item.Target の型は @@odata.type でエスケープする
+      例: "@@odata.type": "Microsoft.Dynamics.CRM.ds_application"
+  ✅ GrantAccess は item.PrincipalAccess.AccessMask に
+      "ReadAccess,AppendToAccess" のように権限を渡す
+  ✅ RevokeAccess は item.Revokee に systemuser を渡す
+  ✅ clientdata.properties.connectionReferences は
+      runtimeSource: "embedded" + connection.connectionReferenceLogicalName を使う
+
+UI 編集性:
+  ✅ Power Automate UI で不安なく編集できるよう、Target / PrincipalAccess / Revokee の JSON は
+      Compose アクション（例: Build_grant_access_payload）に分離する
+  ✅ PerformUnboundAction の parameters.item は
+      @outputs('Build_grant_access_payload') / @outputs('Build_revoke_access_payload') を参照する
+  ✅ UI では Compose の入力 JSON を編集すれば、GrantAccess / RevokeAccess に渡る payload を変更できる
+
+New designer 対応:
+    ❌ connectionName + source: "Embedded" の接続 ID 直指定
+            → "Uses a connection instead of a connection reference" で New designer 不可
+    ✅ connectionreferences レコードをソリューション内に作成し、
+            connectionReferenceLogicalName で参照する
+
+デバッグ:
+    UI のコードビューで actionName しか見えず item が欠落して見える場合は、
+    workflows.clientdata を GET して inputs.parameters.item が Compose 出力を参照しているか確認する。
+    正常形は Build_grant_access_payload: Target + PrincipalAccess、
+    Build_revoke_access_payload: Target + Revokee。
+
+注意:
+  Power Automate WDL では @odata.type をそのまま書くと式として解釈される。
+  必ず @@odata.type としてリテラル @ にエスケープする。
 ```
 
 ### AI Builder アクションは API で Draft 作成・有効化ともに可能
@@ -346,11 +400,12 @@ clientdata = {
             "actions": { ... },
         },
         "connectionReferences": {
-            "connref_logical_name": {
-                "connectionName": "connref_logical_name",
-                "source": "Invoker",  # ← 接続参照モード
-                "id": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
-                "tier": "NotSpecified",
+            "shared_commondataserviceforapps": {
+                "runtimeSource": "embedded",
+                "connection": {
+                    "connectionReferenceLogicalName": connref_logical_name,
+                },
+                "api": {"name": "shared_commondataserviceforapps"},
             },
         },
     },
@@ -393,7 +448,6 @@ with open("flow_debug.json", "w", encoding="utf-8") as f:
     json.dump(workflow_body, f, ensure_ascii=False, indent=2)
 # → Power Automate UI で「マイフロー」→「インポート」で手動登録可能
 ```
-
 
 ## 代表的パターン
 

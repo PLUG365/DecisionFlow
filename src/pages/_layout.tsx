@@ -1,31 +1,35 @@
-﻿import { useEffect, useState } from "react"
-import { Outlet } from "react-router-dom"
-import { Button } from "@/components/ui/button"
-import { ModeToggle } from "@/components/mode-toggle"
-import { Sidebar } from "@/components/sidebar"
-import { SidebarProvider, useSidebarContext } from "@/components/sidebar-layout"
-import { Menu } from "lucide-react"
+﻿import { useEffect, useState } from "react";
+import { Outlet } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { ModeToggle } from "@/components/mode-toggle";
+import { Sidebar } from "@/components/sidebar";
+import {
+  SidebarProvider,
+  useSidebarContext,
+} from "@/components/sidebar-layout";
+import { Menu } from "lucide-react";
 
-type LayoutProps = { showHeader?: boolean }
+type LayoutProps = { showHeader?: boolean };
 
 function LayoutContent({ showHeader = true }: LayoutProps) {
-  const [isMobileView, setIsMobileView] = useState(false)
-  const { isCollapsed, toggleSidebar, toggleMobile, isMobileOpen } = useSidebarContext()
+  const [isMobileView, setIsMobileView] = useState(false);
+  const { isCollapsed, toggleSidebar, toggleMobile, isMobileOpen } =
+    useSidebarContext();
 
   useEffect(() => {
-    const updateIsMobile = () => setIsMobileView(window.innerWidth < 768)
-    updateIsMobile()
-    window.addEventListener("resize", updateIsMobile)
-    return () => window.removeEventListener("resize", updateIsMobile)
-  }, [])
+    const updateIsMobile = () => setIsMobileView(window.innerWidth < 768);
+    updateIsMobile();
+    window.addEventListener("resize", updateIsMobile);
+    return () => window.removeEventListener("resize", updateIsMobile);
+  }, []);
 
   const handleMenuToggle = () => {
     if (isMobileView) {
-      toggleMobile()
+      toggleMobile();
     } else {
-      toggleSidebar()
+      toggleSidebar();
     }
-  }
+  };
 
   return (
     <div className="min-h-dvh flex flex-col bg-background">
@@ -40,18 +44,22 @@ function LayoutContent({ showHeader = true }: LayoutProps) {
                 size="icon"
                 onClick={handleMenuToggle}
                 className="flex h-10 w-10 items-center justify-center"
-                aria-label={isMobileView
-                  ? (isMobileOpen ? "メニューを閉じる" : "メニューを開く")
-                  : (isCollapsed ? "サイドバーを展開" : "サイドバーを折りたたむ")}
+                aria-label={
+                  isMobileView
+                    ? isMobileOpen
+                      ? "メニューを閉じる"
+                      : "メニューを開く"
+                    : isCollapsed
+                      ? "サイドバーを展開"
+                      : "サイドバーを折りたたむ"
+                }
               >
                 <Menu className="h-5 w-5" />
               </Button>
               <div>
-                <h1 className="text-lg font-bold text-primary">
-                  インシデント管理
-                </h1>
+                <h1 className="text-lg font-bold text-primary">DecisionFlow</h1>
                 <p className="text-xs text-muted-foreground hidden sm:block">
-                  Incident Management
+                  Decision Support
                 </p>
               </div>
             </div>
@@ -69,7 +77,9 @@ function LayoutContent({ showHeader = true }: LayoutProps) {
         <Sidebar />
 
         {/* メインコンテンツエリア */}
-        <div className={`flex-1 flex flex-col transition-all duration-300 relative z-0 ${isCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+        <div
+          className={`flex-1 flex flex-col transition-all duration-300 relative z-0 ${isCollapsed ? "md:ml-16" : "md:ml-64"}`}
+        >
           <main className="flex-1 flex flex-col overflow-visible">
             <div className="flex-1 p-6 max-w-full">
               <Outlet />
@@ -78,7 +88,7 @@ function LayoutContent({ showHeader = true }: LayoutProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function Layout(props: LayoutProps) {
@@ -86,5 +96,5 @@ export default function Layout(props: LayoutProps) {
     <SidebarProvider>
       <LayoutContent {...props} />
     </SidebarProvider>
-  )
+  );
 }

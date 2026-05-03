@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react";
 import {
   Table,
   TableBody,
@@ -6,19 +6,25 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Combobox } from "@/components/ui/combobox"
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -26,42 +32,42 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Check, X, Plus, Trash2 } from "lucide-react"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/dialog";
+import { Check, X, Plus, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export type ComboboxOption = {
-  value: string
-  label: string
-}
+  value: string;
+  label: string;
+};
 
 export type EditableColumn<T> = {
-  key: keyof T
-  label: string
-  editable?: boolean
-  type?: "text" | "textarea" | "number" | "lookup" | "select"
-  width?: string
-  align?: "left" | "center" | "right"
-  options?: ComboboxOption[] // lookupやselectタイプで使用
-  searchPlaceholder?: string // lookupタイプで使用
-  placeholder?: string // selectタイプで使用
-  render?: (value: unknown, isEditing: boolean) => React.ReactNode
-  validate?: (value: unknown) => boolean | string
-}
+  key: keyof T;
+  label: string;
+  editable?: boolean;
+  type?: "text" | "textarea" | "number" | "lookup" | "select";
+  width?: string;
+  align?: "left" | "center" | "right";
+  options?: ComboboxOption[]; // lookupやselectタイプで使用
+  searchPlaceholder?: string; // lookupタイプで使用
+  placeholder?: string; // selectタイプで使用
+  render?: (value: unknown, isEditing: boolean) => React.ReactNode;
+  validate?: (value: unknown) => boolean | string;
+};
 
 export type InlineEditTableProps<T extends { id: string | number }> = {
-  data: T[]
-  columns: EditableColumn<T>[]
-  title?: string
-  description?: string
-  onUpdate?: (id: string | number, key: keyof T, value: unknown) => void
-  onSave?: (id: string | number, updatedItem: Partial<T>) => void
-  onDelete?: (id: string | number) => void
-  onAdd?: (newItem: Omit<T, "id">) => void
-  addButtonLabel?: string
-  emptyMessage?: string
-  className?: string
-}
+  data: T[];
+  columns: EditableColumn<T>[];
+  title?: string;
+  description?: string;
+  onUpdate?: (id: string | number, key: keyof T, value: unknown) => void;
+  onSave?: (id: string | number, updatedItem: Partial<T>) => void;
+  onDelete?: (id: string | number) => void;
+  onAdd?: (newItem: Omit<T, "id">) => void;
+  addButtonLabel?: string;
+  emptyMessage?: string;
+  className?: string;
+};
 
 export function InlineEditTable<T extends { id: string | number }>({
   data: initialData,
@@ -76,116 +82,126 @@ export function InlineEditTable<T extends { id: string | number }>({
   emptyMessage = "データがありません",
   className,
 }: InlineEditTableProps<T>) {
-  const [data, setData] = useState<T[]>(initialData)
-  const [originalData] = useState<T[]>(initialData) // 元のデータを保持
-  const [changedIds, setChangedIds] = useState<Set<string | number>>(new Set()) // 変更された行ID
-  const [isAdding, setIsAdding] = useState(false)
-  const [newItemData, setNewItemData] = useState<Partial<T>>({})
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | number | null>(null)
+  const [data, setData] = useState<T[]>(initialData);
+  const [originalData, setOriginalData] = useState<T[]>(initialData); // 元のデータを保持
+  const [changedIds, setChangedIds] = useState<Set<string | number>>(new Set()); // 変更された行ID
+  const [isAdding, setIsAdding] = useState(false);
+  const [newItemData, setNewItemData] = useState<Partial<T>>({});
+  const [deleteConfirmId, setDeleteConfirmId] = useState<
+    string | number | null
+  >(null);
+
+  useEffect(() => {
+    setData(initialData);
+    setOriginalData(initialData);
+    setChangedIds(new Set());
+  }, [initialData]);
 
   const handleSave = (id: string | number) => {
-    const item = data.find((d) => d.id === id)
+    const item = data.find((d) => d.id === id);
     if (item && onSave) {
-      onSave(id, item)
+      onSave(id, item);
     }
     // 保存後、変更フラグをクリア
     setChangedIds((prev) => {
-      const newSet = new Set(prev)
-      newSet.delete(id)
-      return newSet
-    })
-  }
+      const newSet = new Set(prev);
+      newSet.delete(id);
+      return newSet;
+    });
+  };
 
   const handleDeleteClick = (id: string | number) => {
-    setDeleteConfirmId(id)
-  }
+    setDeleteConfirmId(id);
+  };
 
   const handleDeleteConfirm = () => {
     if (deleteConfirmId !== null) {
       if (onDelete) {
-        onDelete(deleteConfirmId)
+        onDelete(deleteConfirmId);
       }
-      setData((prev) => prev.filter((item) => item.id !== deleteConfirmId))
-      setDeleteConfirmId(null)
+      setData((prev) => prev.filter((item) => item.id !== deleteConfirmId));
+      setDeleteConfirmId(null);
     }
-  }
+  };
 
   const handleDeleteCancel = () => {
-    setDeleteConfirmId(null)
-  }
+    setDeleteConfirmId(null);
+  };
 
-  const handleCellChange = (id: string | number, key: keyof T, value: unknown) => {
+  const handleCellChange = (
+    id: string | number,
+    key: keyof T,
+    value: unknown,
+  ) => {
     setData((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, [key]: value } : item
-      )
-    )
-    
+      prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)),
+    );
+
     // 元のデータと比較して変更があればフラグを立てる
-    const originalItem = originalData.find((item) => item.id === id)
-    const currentItem = data.find((item) => item.id === id)
-    
+    const originalItem = originalData.find((item) => item.id === id);
+    const currentItem = data.find((item) => item.id === id);
+
     if (originalItem && currentItem) {
-      const updatedItem = { ...currentItem, [key]: value }
+      const updatedItem = { ...currentItem, [key]: value };
       const hasChanges = Object.keys(updatedItem).some(
-        (k) => updatedItem[k as keyof T] !== originalItem[k as keyof T]
-      )
-      
+        (k) => updatedItem[k as keyof T] !== originalItem[k as keyof T],
+      );
+
       setChangedIds((prev) => {
-        const newSet = new Set(prev)
+        const newSet = new Set(prev);
         if (hasChanges) {
-          newSet.add(id)
+          newSet.add(id);
         } else {
-          newSet.delete(id)
+          newSet.delete(id);
         }
-        return newSet
-      })
+        return newSet;
+      });
     }
-    
+
     if (onUpdate) {
-      onUpdate(id, key, value)
+      onUpdate(id, key, value);
     }
-  }
+  };
 
   const handleAddNew = () => {
-    setIsAdding(true)
-    setNewItemData({})
-  }
+    setIsAdding(true);
+    setNewItemData({});
+  };
 
   const handleCancelAdd = () => {
-    setIsAdding(false)
-    setNewItemData({})
-  }
+    setIsAdding(false);
+    setNewItemData({});
+  };
 
   const handleSaveNew = () => {
     if (onAdd) {
-      onAdd(newItemData as Omit<T, "id">)
+      onAdd(newItemData as Omit<T, "id">);
     }
-    
-    const newId = Math.max(...data.map((d) => Number(d.id)), 0) + 1
-    setData((prev) => [...prev, { ...newItemData, id: newId } as T])
-    
-    setIsAdding(false)
-    setNewItemData({})
-  }
+
+    const newId = Math.max(...data.map((d) => Number(d.id)), 0) + 1;
+    setData((prev) => [...prev, { ...newItemData, id: newId } as T]);
+
+    setIsAdding(false);
+    setNewItemData({});
+  };
 
   const handleNewItemChange = (key: keyof T, value: unknown) => {
-    setNewItemData((prev) => ({ ...prev, [key]: value }))
-  }
+    setNewItemData((prev) => ({ ...prev, [key]: value }));
+  };
 
   const renderEditableCell = (
     column: EditableColumn<T>,
     value: unknown,
-    onChange: (value: unknown) => void
+    onChange: (value: unknown) => void,
   ) => {
     if (!column.editable) {
       if (column.render) {
-        return column.render(value, false)
+        return column.render(value, false);
       }
-      return <span>{String(value ?? "")}</span>
+      return <span>{String(value ?? "")}</span>;
     }
 
-    const inputClassName = "h-8 px-2 py-1 text-sm"
+    const inputClassName = "h-8 px-2 py-1 text-sm";
 
     switch (column.type) {
       case "lookup":
@@ -199,10 +215,13 @@ export function InlineEditTable<T extends { id: string | number }>({
             emptyMessage="見つかりません"
             className="h-8"
           />
-        )
+        );
       case "select":
         return (
-          <Select value={String(value ?? "")} onValueChange={(newValue) => onChange(newValue)}>
+          <Select
+            value={String(value ?? "")}
+            onValueChange={(newValue) => onChange(newValue)}
+          >
             <SelectTrigger className={inputClassName}>
               <SelectValue placeholder={column.placeholder ?? "選択..."} />
             </SelectTrigger>
@@ -214,7 +233,7 @@ export function InlineEditTable<T extends { id: string | number }>({
               ))}
             </SelectContent>
           </Select>
-        )
+        );
       case "textarea":
         return (
           <Textarea
@@ -222,7 +241,7 @@ export function InlineEditTable<T extends { id: string | number }>({
             onChange={(e) => onChange(e.target.value)}
             className="min-h-[60px] text-sm"
           />
-        )
+        );
       case "number":
         return (
           <Input
@@ -231,7 +250,7 @@ export function InlineEditTable<T extends { id: string | number }>({
             onChange={(e) => onChange(Number(e.target.value))}
             className={inputClassName}
           />
-        )
+        );
       case "text":
       default:
         return (
@@ -241,9 +260,9 @@ export function InlineEditTable<T extends { id: string | number }>({
             onChange={(e) => onChange(e.target.value)}
             className={inputClassName}
           />
-        )
+        );
     }
-  }
+  };
 
   return (
     <Card className={cn("w-full", className)}>
@@ -254,7 +273,6 @@ export function InlineEditTable<T extends { id: string | number }>({
               {title && <CardTitle>{title}</CardTitle>}
               {description && <CardDescription>{description}</CardDescription>}
             </div>
-
           </div>
         </CardHeader>
       )}
@@ -280,7 +298,7 @@ export function InlineEditTable<T extends { id: string | number }>({
                     style={{ width: column.width }}
                     className={cn(
                       column.align === "center" && "text-center",
-                      column.align === "right" && "text-right"
+                      column.align === "right" && "text-right",
                     )}
                   >
                     {column.label}
@@ -298,14 +316,14 @@ export function InlineEditTable<T extends { id: string | number }>({
                       key={String(column.key)}
                       className={cn(
                         column.align === "center" && "text-center",
-                        column.align === "right" && "text-right"
+                        column.align === "right" && "text-right",
                       )}
                     >
                       {column.editable ? (
                         renderEditableCell(
                           column,
                           newItemData[column.key],
-                          (value) => handleNewItemChange(column.key, value)
+                          (value) => handleNewItemChange(column.key, value),
                         )
                       ) : (
                         <span className="text-muted-foreground">-</span>
@@ -347,7 +365,7 @@ export function InlineEditTable<T extends { id: string | number }>({
                 </TableRow>
               ) : (
                 data.map((item) => {
-                  const hasChanges = changedIds.has(item.id)
+                  const hasChanges = changedIds.has(item.id);
                   return (
                     <TableRow key={item.id}>
                       {columns.map((column) => (
@@ -355,13 +373,14 @@ export function InlineEditTable<T extends { id: string | number }>({
                           key={String(column.key)}
                           className={cn(
                             column.align === "center" && "text-center",
-                            column.align === "right" && "text-right"
+                            column.align === "right" && "text-right",
                           )}
                         >
                           {renderEditableCell(
                             column,
                             item[column.key],
-                            (value) => handleCellChange(item.id, column.key, value)
+                            (value) =>
+                              handleCellChange(item.id, column.key, value),
                           )}
                         </TableCell>
                       ))}
@@ -392,7 +411,7 @@ export function InlineEditTable<T extends { id: string | number }>({
                         </div>
                       </TableCell>
                     </TableRow>
-                  )
+                  );
                 })
               )}
             </TableBody>
@@ -401,7 +420,10 @@ export function InlineEditTable<T extends { id: string | number }>({
       </CardContent>
 
       {/* 削除確認ダイアログ */}
-      <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && handleDeleteCancel()}>
+      <Dialog
+        open={deleteConfirmId !== null}
+        onOpenChange={(open) => !open && handleDeleteCancel()}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>削除の確認</DialogTitle>
@@ -420,5 +442,5 @@ export function InlineEditTable<T extends { id: string | number }>({
         </DialogContent>
       </Dialog>
     </Card>
-  )
+  );
 }

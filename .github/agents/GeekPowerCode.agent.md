@@ -17,15 +17,15 @@ argument-hint: "Power Platform の開発作業を指示してください（例:
 
 ### 常に読むスキル（全フェーズ共通）
 
-| スキル     | 読み込みパス                           |
-| ---------- | -------------------------------------- |
-| `standard` | `.github/skills/standard/SKILL.md`     |
+| スキル     | 読み込みパス                       |
+| ---------- | ---------------------------------- |
+| `standard` | `.github/skills/standard/SKILL.md` |
 
 ### Phase 0 で最初に読むスキル（アーキテクチャ判断）
 
-| スキル           | 読み込みパス                                |
-| ---------------- | ------------------------------------------- |
-| `architecture`   | `.github/skills/architecture/SKILL.md`      |
+| スキル         | 読み込みパス                           |
+| -------------- | -------------------------------------- |
+| `architecture` | `.github/skills/architecture/SKILL.md` |
 
 > **Phase 0 でユーザー要件を受け取ったら、まず `architecture` スキルを読み込み、
 > Copilot Studio / Power Automate / Code Apps / AI Builder のどれを使うかを判断する。**
@@ -33,15 +33,15 @@ argument-hint: "Power Platform の開発作業を指示してください（例:
 
 ### フェーズ別スキル（該当フェーズ開始時に読む）
 
-| フェーズ                       | スキル                   | 読み込みパス                                     |
-| ------------------------------ | ------------------------ | ------------------------------------------------ |
-| Phase 1: Dataverse テーブル構築 | `dataverse`              | `.github/skills/dataverse/SKILL.md`              |
-| Phase 1.5: Generative Page     | `generative-page`        | `.github/skills/generative-page/SKILL.md`        |
-| Phase 2: Code Apps（設計＋開発）| `code-apps`              | `.github/skills/code-apps/SKILL.md`              |
-| Phase 2.5: Power Automate      | `power-automate`         | `.github/skills/power-automate/SKILL.md`         |
-| Phase 3: Copilot Studio        | `copilot-studio`         | `.github/skills/copilot-studio/SKILL.md`         |
-| Phase 4: AI Builder Prompt     | `ai-builder`             | `.github/skills/ai-builder/SKILL.md`             |
-| モデル駆動型アプリ             | `model-driven-app`       | `.github/skills/model-driven-app/SKILL.md`       |
+| フェーズ                         | スキル             | 読み込みパス                               |
+| -------------------------------- | ------------------ | ------------------------------------------ |
+| Phase 1: Dataverse テーブル構築  | `dataverse`        | `.github/skills/dataverse/SKILL.md`        |
+| Phase 1.5: Generative Page       | `generative-page`  | `.github/skills/generative-page/SKILL.md`  |
+| Phase 2: Code Apps（設計＋開発） | `code-apps`        | `.github/skills/code-apps/SKILL.md`        |
+| Phase 2.5: Power Automate        | `power-automate`   | `.github/skills/power-automate/SKILL.md`   |
+| Phase 3: Copilot Studio          | `copilot-studio`   | `.github/skills/copilot-studio/SKILL.md`   |
+| Phase 4: AI Builder Prompt       | `ai-builder`       | `.github/skills/ai-builder/SKILL.md`       |
+| モデル駆動型アプリ               | `model-driven-app` | `.github/skills/model-driven-app/SKILL.md` |
 
 > **重要**: Code Apps は `code-apps` スキル内の **design-system（設計）→ ユーザー承認 → 開発・デプロイ** の順で進める。
 > Power Automate・Copilot Studio も**設計提示 → ユーザー承認 → 実装**の順で進める。
@@ -52,6 +52,45 @@ argument-hint: "Power Platform の開発作業を指示してください（例:
 | ----------------------- | --------------------------------------------- |
 | Power Platform 開発標準 | `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md` |
 | Dataverse 統合ガイド    | `docs/DATAVERSE_GUIDE.md`                     |
+
+### リポジトリドキュメント運用（作業前確認・作業後更新）
+
+**実装・設計・調査の作業前には、該当スキルに加えて、このリポジトリの現在状態を表すドキュメントを確認すること。**
+チャット履歴や記憶だけに依存せず、必ず現在のファイル内容を `read_file` で確認してから判断する。
+
+作業前に確認するドキュメント:
+
+| 作業種別                                   | 必ず確認するドキュメント                                                                 | 目的                                                                  |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 全作業共通                                 | `docs/DESIGN_DRAFT.md`, `docs/BACKLOG.md`                                                | 現在のフェーズ、確定事項、未実装事項、保留タスクを把握する            |
+| Code Apps / UI / フロントエンド            | `docs/CODE_APPS_UI_DESIGN.md`, `docs/DESIGN_DRAFT.md`                                    | 画面構成、Hooks、サービス層、実装済み操作、未実装操作を確認する       |
+| Dataverse / テーブル / ロール / データ移行 | `docs/DESIGN_DRAFT.md`, `docs/DATAVERSE_GUIDE.md`, 必要に応じて `docs/MIGRATIONS.md`     | データモデル、Lookup、Choice、移行履歴、破壊的変更の有無を確認する    |
+| Power Automate                             | `docs/DESIGN_DRAFT.md`, `docs/BACKLOG.md`, `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md` | Phase 2.5 の計画、接続、フロー設計、未実装チェック項目を確認する      |
+| Copilot Studio / AI Builder                | `docs/DESIGN_DRAFT.md`, `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md`                    | エージェント/プロンプト方針、手動操作が必要な箇所、既存設計を確認する |
+| GitHub 公開・セットアップ・運用手順        | `README.md`, `docs/DESIGN_DRAFT.md`, `docs/BACKLOG.md`                                   | 公開時の注意、セットアップ手順、残タスクを確認する                    |
+
+**作業後は、変更内容に対応するドキュメントを必ず更新する。**
+実装だけで終わらせず、「何を完了したか」「何が未完了か」「次に何をするか」が後から追える状態にする。
+
+作業後に更新するドキュメント:
+
+| 変更内容                                                                                                | 更新先                                                                               | 更新内容                                                                     |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| アーキテクチャ、フェーズ、データモデル、セキュリティ、Power Automate / Copilot Studio / AI Builder 計画 | `docs/DESIGN_DRAFT.md`                                                               | 設計、フェーズ表、実装状況、チェックボックス、確定/未確定事項を更新する      |
+| Code Apps の画面、コンポーネント、Hooks、サービス層、UI 操作                                            | `docs/CODE_APPS_UI_DESIGN.md`                                                        | 画面構成、操作一覧、Hooks、サービス、実装済み/未実装チェックを更新する       |
+| 後回しタスク、手動作業、実機確認、未解決リスク                                                          | `docs/BACKLOG.md`                                                                    | Open/Done をチェックボックスで更新し、次アクションと検証方法を残す           |
+| Dataverse の破壊的変更、メタデータ削除、Choice 整理、データ補正                                         | `docs/MIGRATIONS.md`                                                                 | 背景、対象、手順、適用結果、ロールバック困難な点を記録する                   |
+| セットアップ手順、公開手順、主要コマンド、ディレクトリ構成が変わった場合                                | `README.md`                                                                          | 利用者が最初に読む情報を最新化する                                           |
+| 再利用可能な教訓・横断ルールが増えた場合                                                                | `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md` または該当 `.github/skills/*/SKILL.md` | プロジェクト固有の状態ではなく、今後も使う標準・アンチパターンとして整理する |
+
+ドキュメント更新ルール:
+
+- 完了/未完了が混在する内容は Markdown チェックボックス（`[x]` / `[ ]`）で残す。
+- 実装を後回しにした作業は必ず `docs/BACKLOG.md` の Open に追加する。
+- 完了した作業は `docs/BACKLOG.md` の Done に検証方法付きで移す。
+- `.env`、Tenant ID、Environment ID、接続 ID、Bot ID、個人メールアドレスなどの環境固有値・秘密情報は docs に書かない。
+- ドキュメントと実装が矛盾している場合は、最新のユーザー指示と現在のコードを優先し、矛盾を解消する更新を同じ作業内で行う。
+- 既存 docs を広範囲に書き換えず、今回の変更に関係する最小範囲を更新する。
 
 ## 絶対遵守ルール（過去の失敗から学んだ教訓）
 

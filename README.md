@@ -1,132 +1,82 @@
-# Power Platform コードファースト開発標準
+# DecisionFlow
 
-Power Apps Code Apps・Dataverse・Power Automate・Copilot Studio を **VS Code + GitHub Copilot** で開発するための、実践的な開発標準リポジトリです。
+DecisionFlow は、申請者が判断者へ意思決定を依頼し、会話・関連資料・判断結果・AI 判断を Dataverse 上で一元管理する Power Apps Code Apps アプリです。
 
-[![VS Code で開く](https://img.shields.io/badge/VS%20Code%E3%81%A7%E9%96%8B%E3%81%8F-007ACC?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://vscode.dev/github/geekfujiwara/CodeAppsDevelopmentStandard)
-[![GitHub Copilot](https://img.shields.io/badge/GitHub%20Copilot-対応-blueviolet?style=for-the-badge&logo=github)](https://github.com/features/copilot)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)
+現在の主な構成:
 
----
+- Code Apps: ダッシュボード、申請リスト、判断キュー、申請詳細、メンション、関連資料、マスタ管理
+- Dataverse: `ds_application`, `ds_message`, `ds_mention`, `ds_participant`, `ds_decision`, `ds_applicationresource`, `ds_category`, `ds_decisionoption`
+- Power Automate: 通知、停滞リマインド、関係者共有/共有解除、AI 判断生成
+- AI Builder: `DecisionRecommendation` による申請概要・会話概要・推奨判断・コメント生成
 
-## このリポジトリで提供するもの
+## 現在の状態
 
-- Power Platform 向けコードファースト開発標準（`docs/`）
-- GitHub Copilot 用のカスタムエージェント / スキル（`.github/`）
-- Code Apps のスターター UI コンポーネント（`src/components/`）
-- Power Automate / Copilot Studio 連携の実装パターン
-- `.env.example` を含むプロジェクト初期化テンプレート
+- ソリューション: `DecisionSupport`
+- パブリッシャープレフィックス: `ds`
+- AI 判断フロー: `Application_GenerateAiDecision`
+- AI Builder プロンプト: `DecisionRecommendation`
+- Copilot Studio エージェント: Phase 3 予定。2026-05-03 時点では未構築
 
-> [!TIP]
-> サンプル実装はあくまでリファレンスです。業務要件に合わせて `src/pages/` やスキル内スクリプトを置き換えて利用してください。
+実装状況と未完了事項は [docs/DESIGN_DRAFT.md](docs/DESIGN_DRAFT.md)、[docs/CODE_APPS_UI_DESIGN.md](docs/CODE_APPS_UI_DESIGN.md)、[docs/BACKLOG.md](docs/BACKLOG.md) を正とします。
 
----
+## セットアップ概要
 
-## 目次
+`.env` には環境固有値を置き、Git には含めません。値は Power Apps ポータルのセッション詳細から取得します。
 
-- [クイックスタート](#クイックスタート)
-- [カスタムエージェント前提の利用方法](#カスタムエージェント前提の利用方法)
-- [リポジトリ構成](#リポジトリ構成)
-- [主要ドキュメント](#主要ドキュメント)
-- [GitHub Copilot 活用](#github-copilot-活用)
-- [ライセンス](#ライセンス)
+必須値:
 
----
-
-## クイックスタート
-
-```bash
-git clone https://github.com/geekfujiwara/CodeAppsDevelopmentStandard . && npm install
+```env
+DATAVERSE_URL=https://{your-org}.crm.dynamics.com/
+TENANT_ID=00000000-0000-0000-0000-000000000000
+ENVIRONMENT_ID=00000000-0000-0000-0000-000000000000
+SOLUTION_NAME=DecisionSupport
+PUBLISHER_PREFIX=ds
+PAC_AUTH_PROFILE=DecisionSupportProfile
 ```
 
-> [!NOTE]
-> `.` へ clone するため、空ディレクトリで実行してください。既存ファイルがある場所で実行すると上書きリスクがあります。
+主要コマンド:
 
-セットアップ後は、GitHub Copilot のカスタムエージェントに「実現したいこと」をそのまま伝えて開発を進めます。
-
----
-
-## カスタムエージェント前提の利用方法
-
-- この開発標準の実装・運用ルールは、GitHub Copilot カスタムエージェントのスキル（`.github/skills/`）に定義されています。
-- 利用者は手順書を読み込んで操作するのではなく、カスタムエージェントに要件を伝えて進める前提です。
-- チャット入力例 （バッククオート不要）: @GeekPowerCode 在庫管理アプリを Dataverse + Code Apps で作りたい
-
----
-
-## リポジトリ構成
-
-```text
-.
-├── .github/
-│   ├── agents/                      # Copilot カスタムエージェント定義
-│   └── skills/                      # 製品単位で統合された 9 スキル
-│       ├── architecture/            # アーキテクチャ設計
-│       ├── standard/                # 共通基盤（認証・アイコン・メールテンプレート）
-│       ├── dataverse/               # テーブル設計・構築・セキュリティロール
-│       ├── code-apps/               # Code Apps 開発（UI 設計・CSP・メール送信含む）
-│       ├── generative-page/         # Generative Pages 開発
-│       ├── model-driven-app/        # モデル駆動型アプリ構築
-│       ├── copilot-studio/          # エージェント構築・トリガー・ニュース配信
-│       ├── power-automate/          # クラウドフロー作成・デプロイ
-│       └── ai-builder/              # AI プロンプト作成
-├── docs/                            # 開発標準ドキュメント
-├── src/
-│   ├── components/                  # 再利用 UI コンポーネント
-│   ├── pages/                       # サンプルページ実装
-│   ├── providers/                   # Context / Provider 群
-│   ├── hooks/                       # カスタムフック
-│   ├── lib/                         # 共通ユーティリティ
-│   └── types/                       # 型定義
-├── plugins/                         # Power Apps Vite プラグイン
-├── styles/                          # Tailwind スタイル
-├── .env.example                     # 環境変数テンプレート
-├── SAMPLES.md                       # サンプル実装の置き換えガイド
-└── README.md
+```powershell
+npm install
+py scripts/setup_dataverse.py
+py scripts/setup_security_roles.py
+py scripts/deploy_access_flows.py
+py scripts/deploy_notification_flows.py
+py scripts/deploy_ai_decision.py
+npm run build
+npx power-apps push
 ```
 
----
+Power Apps Code Apps の初期化やデータソース追加が必要な場合は、[docs/CODE_APPS_UI_DESIGN.md](docs/CODE_APPS_UI_DESIGN.md) のデプロイ計画を参照してください。既存の `Application_GenerateAiDecision` フロー ID が変わらない再デプロイでは、`npx power-apps add-flow` の再実行は不要です。
+
+## 検証
+
+よく使う検証コマンド:
+
+```powershell
+npm test -- src/lib/decisionflow-utils.test.ts src/lib/ai-decision.test.ts
+py -m unittest tests.test_ai_decision tests.test_notification_flows tests.test_access_flows tests.test_security_roles
+npm run build
+```
+
+直近の検証では、上記 Python unittest は成功済みです。Power Apps 実機での Submitted 保存時 AI 判断生成、通知配信、関係者共有/共有解除は [docs/BACKLOG.md](docs/BACKLOG.md) の Open 項目として追跡しています。
 
 ## 主要ドキュメント
 
-- [docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md](./docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md)
-- [docs/DATAVERSE_GUIDE.md](./docs/DATAVERSE_GUIDE.md)
-- [docs/CONNECTOR_REFERENCE.md](./docs/CONNECTOR_REFERENCE.md)
-- [docs/ADVANCED_PATTERNS.md](./docs/ADVANCED_PATTERNS.md)
-- [SAMPLES.md](./SAMPLES.md)
+- [docs/DESIGN_DRAFT.md](docs/DESIGN_DRAFT.md): 全体設計、データモデル、Power Automate、AI/Copilot 方針
+- [docs/CODE_APPS_UI_DESIGN.md](docs/CODE_APPS_UI_DESIGN.md): Code Apps 画面、Hooks、サービス層、UI 実装状況
+- [docs/BACKLOG.md](docs/BACKLOG.md): 未完了タスク、実機確認、完了履歴
+- [docs/MIGRATIONS.md](docs/MIGRATIONS.md): Dataverse メタデータ変更と適用履歴
+- [docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md](docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md): Power Platform コードファースト開発標準
+- [docs/DATAVERSE_GUIDE.md](docs/DATAVERSE_GUIDE.md): Dataverse 実装ガイド
 
----
+## 注意事項
 
-## GitHub Copilot 活用
-
-- VS Code で開くと `.github/agents/` と `.github/skills/` が認識されます
-- `@GeekPowerCode` に実現したい内容を伝えるだけで、必要なスキルが選択されて開発タスクを進められます
-- このリポジトリの開発標準はスキルとして定義済みのため、マニュアル手順ベースではなくエージェント駆動で利用します
-
-### スキル一覧（9 スキル）
-
-| スキル | 説明 |
-|--------|------|
-| [architecture](.github/skills/architecture/SKILL.md) | 全体アーキテクチャ設計・コンポーネント選定 |
-| [standard](.github/skills/standard/SKILL.md) | 共通基盤（認証・.env・アイコン生成・HTML メールテンプレート） |
-| [dataverse](.github/skills/dataverse/SKILL.md) | テーブル設計・構築・セキュリティロール |
-| [code-apps](.github/skills/code-apps/SKILL.md) | Code Apps 開発（UI 設計・CSP・メール送信含む） |
-| [generative-page](.github/skills/generative-page/SKILL.md) | Generative Pages 開発・デバッグ・デプロイ |
-| [model-driven-app](.github/skills/model-driven-app/SKILL.md) | モデル駆動型アプリ構築・公開 |
-| [copilot-studio](.github/skills/copilot-studio/SKILL.md) | エージェント構築・トリガー・ニュース配信 |
-| [power-automate](.github/skills/power-automate/SKILL.md) | クラウドフロー作成・デプロイ |
-| [ai-builder](.github/skills/ai-builder/SKILL.md) | AI プロンプト作成・エージェントツール追加 |
-
-> 詳細は [スキルカタログ](.github/skills/README.md) を参照してください。
-
----
+- `.env`, `.auth_record.json`, `power.config.json`, `.power/`, `src/generated/` は環境固有情報を含むため Git 管理しません。
+- Dataverse 接続は環境内に事前作成が必要です。スクリプトは接続候補を検索し、接続参照を更新します。
+- `DecisionFlow-Deciders` の Dataverse グループチーム紐付けと `ds_Decider` ロール付与は、Power Platform 管理センターで手動実施します。
+- Copilot Studio エージェントはまだ未構築です。構築時は設計提示と承認を経て Phase 3 として進めます。
 
 ## ライセンス
 
-MIT License。詳細は [LICENSE](./LICENSE) を参照してください。
-
----
-
-## フィードバック
-
-- Issues: https://github.com/geekfujiwara/CodeAppsDevelopmentStandard/issues
-- X: https://twitter.com/geekfujiwara
+MIT License。詳細は [LICENSE](LICENSE) を参照してください。
