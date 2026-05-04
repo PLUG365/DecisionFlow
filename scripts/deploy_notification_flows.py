@@ -45,6 +45,8 @@ NOTIFICATION_FLOW_NAMES = [
 TEAMS_GROUP_ID = os.environ.get("TEAMS_NOTIFICATION_GROUP_ID", "").strip()
 TEAMS_CHANNEL_ID = os.environ.get("TEAMS_NOTIFICATION_CHANNEL_ID", "").strip()
 ENABLE_TEAMS = bool(TEAMS_GROUP_ID and TEAMS_CHANNEL_ID)
+COPILOT_TEAMS_APP_ID = os.environ.get("COPILOT_TEAMS_APP_ID", "").strip()
+DECISIONFLOW_APP_BASE_URL = os.environ.get("DECISIONFLOW_APP_BASE_URL", "").strip().rstrip("/")
 
 
 def _connector_id(connector: str) -> str:
@@ -258,6 +260,41 @@ def _html(title: str, lines: list[str]) -> str:
     )
 
 
+def _teams_bot_user_id(app_id: str) -> str:
+    if app_id.startswith("T_"):
+        raise RuntimeError("COPILOT_TEAMS_APP_ID には titleId ではなく botChannelRegistrationAppId を設定してください。")
+    return app_id if app_id.startswith("28:") else f"28:{app_id}"
+
+
+def _assistant_link_lines(title_expression: str, application_id_expression: str | None = None) -> list[str]:
+    if not COPILOT_TEAMS_APP_ID:
+        return []
+
+    message_args = [
+        "'申請「'",
+        title_expression,
+        "'」について、概要・関連資料・過去類似案件・推奨判断と判断コメントドラフトを教えてください。'",
+    ]
+    if DECISIONFLOW_APP_BASE_URL and application_id_expression:
+        message_args.extend([
+            f"' アプリリンク: {DECISIONFLOW_APP_BASE_URL}/applications/'",
+            application_id_expression,
+        ])
+
+    message_expression = f"concat({', '.join(message_args)})"
+    href = (
+        "@{concat('https://teams.microsoft.com/l/chat/0/0?users="
+        f"{_teams_bot_user_id(COPILOT_TEAMS_APP_ID)}"
+        "&message=', encodeUriComponent("
+        f"{message_expression}"
+        "))}"
+    )
+    return [
+        "AIアシスタント: "
+        f"<a href=\"{href}\">申請について相談する</a>",
+    ]
+
+
 def _participant_email_foreach(subject: str, body: str, run_after: dict, prefix: str = PREFIX) -> dict:
     return {
         "Notify_participants": {
@@ -290,6 +327,10 @@ def build_application_submitted_clientdata(connection_refs: dict[str, str], pref
             "申請: @{triggerOutputs()?['body/ds_name']}",
             "希望期限: @{coalesce(triggerOutputs()?['body/ds_duedate'],'未設定')}",
             "本文: @{coalesce(triggerOutputs()?['body/ds_body'],'')}",
+            *_assistant_link_lines(
+                "triggerOutputs()?['body/ds_name']",
+                "triggerOutputs()?['body/ds_applicationid']",
+            ),
         ],
     )
     teams_body = "@{concat('<b>申請が提出されました</b><br>申請: ', triggerOutputs()?['body/ds_name'])}"
@@ -451,6 +492,10 @@ def build_stalled_reminder_clientdata(connection_refs: dict[str, str], prefix: s
             f"提出日時: @{{coalesce(items('{foreach_name}')?['{prefix}_submittedat'],'未設定')}}",
             f"本文: @{{coalesce(items('{foreach_name}')?['{prefix}_body'],'')}}",
             "停滞条件: 希望期限超過、または提出日時から3日以上経過しています。",
+            *_assistant_link_lines(
+                f"items('{foreach_name}')?['{prefix}_name']",
+                f"items('{foreach_name}')?['{prefix}_applicationid']",
+            ),
         ],
     )
     teams_body = f"@{{concat('<b>判断待ちリマインド</b><br>申請: ', items('{foreach_name}')?['{prefix}_name'])}}"
@@ -564,6 +609,16 @@ def _status_is_connected(connection: dict) -> bool:
     return any(status.get("status", "").lower() == "connected" for status in statuses)
 
 
+def _connection_connector_name(connection: dict) -> str:
+    return (connection.get("properties", {}).get("apiId") or "").rstrip("/").split("/")[-1]
+
+
+def _connection_auth_score(connection: dict) -> tuple[int, int, str]:
+    values = connection.get("properties", {}).get("connectionParametersSet", {}).get("values", {})
+    has_oauth_grant = "token:grantType" in values
+    return (1 if _status_is_connected(connection) else 0, 1 if has_oauth_grant else 0, connection.get("properties", {}).get("createdTime") or "")
+
+
 def _connection_env_candidates(connector: str) -> list[str]:
     env_names = {
         DATAVERSE_CONNECTOR: ["DATAVERSE_CONN", "FALLBACK_CONN_DATAVERSE"],
@@ -581,6 +636,10 @@ def find_connections(environment_id: str, connector: str) -> list[str]:
 
     encoded_env = quote(environment_id, safe="")
     urls = [
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/scopes/admin/environments/{encoded_env}/connections"
+        "?api-version=2016-11-01",
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/scopes/admin/environments/{encoded_env}/apis/{connector}/connections"
+        "?api-version=2016-11-01",
         f"{POWERAPPS_API}/providers/Microsoft.PowerApps/apis/{connector}/connections"
         f"?$filter=environment eq '{environment_id}'&api-version=2016-11-01",
         f"{POWERAPPS_API}/providers/Microsoft.PowerApps/environments/{encoded_env}/apis/{connector}/connections"
@@ -589,11 +648,15 @@ def find_connections(environment_id: str, connector: str) -> list[str]:
     candidates: list[dict] = []
     for url in urls:
         try:
-            candidates.extend(_powerapps_get(url).get("value", []))
+            candidates.extend(
+                candidate
+                for candidate in _powerapps_get(url).get("value", [])
+                if _connection_connector_name(candidate) == connector
+            )
         except RuntimeError as exc:
             print(f"  {connector}: 接続検索エンドポイントをスキップ: {exc}")
     connected = [candidate for candidate in candidates if _status_is_connected(candidate)]
-    ordered = connected or candidates
+    ordered = sorted(connected or candidates, key=_connection_auth_score, reverse=True)
     names = [candidate.get("name") or candidate.get("properties", {}).get("connectionName") for candidate in ordered]
     names = [name for name in names if name]
     if not names:

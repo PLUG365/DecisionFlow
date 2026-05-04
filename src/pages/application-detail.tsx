@@ -134,7 +134,11 @@ export default function ApplicationDetailPage() {
     participants,
   ]);
   const availableUserOptions = users
-    .filter((user) => !participantUserIds.has(user.systemuserid))
+    .filter(
+      (user) =>
+        !participantUserIds.has(user.systemuserid) &&
+        Boolean(user.azureactivedirectoryobjectid?.trim()),
+    )
     .map((user) => ({
       value: user.systemuserid,
       label: user.fullname || user.internalemailaddress || "名前なし",
@@ -148,6 +152,7 @@ export default function ApplicationDetailPage() {
       (user) =>
         normalizeGuid(user.systemuserid) !== normalizeGuid(systemUserId) &&
         Boolean(normalizeGuid(user.systemuserid)) &&
+        Boolean(user.azureactivedirectoryobjectid?.trim()) &&
         mentionTargetUserIds.has(normalizeGuid(user.systemuserid) ?? ""),
     )
     .map((user) => ({

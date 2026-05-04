@@ -244,10 +244,12 @@ export default function ApplicationsPage() {
     value: category.ds_categoryid,
     label: category.ds_name,
   }));
-  const userOptions = users.map((user) => ({
-    value: user.systemuserid,
-    label: user.fullname || user.internalemailaddress || "名前なし",
-  }));
+  const userOptions = users
+    .filter((user) => Boolean(user.azureactivedirectoryobjectid?.trim()))
+    .map((user) => ({
+      value: user.systemuserid,
+      label: user.fullname || user.internalemailaddress || "名前なし",
+    }));
 
   const resetForm = () => {
     setEditingApplication(null);

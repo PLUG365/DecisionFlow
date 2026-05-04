@@ -60,28 +60,28 @@ argument-hint: "Power Platform の開発作業を指示してください（例:
 
 作業前に確認するドキュメント:
 
-| 作業種別                                   | 必ず確認するドキュメント                                                                 | 目的                                                                  |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| 全作業共通                                 | `docs/DESIGN_DRAFT.md`, `docs/BACKLOG.md`                                                | 現在のフェーズ、確定事項、未実装事項、保留タスクを把握する            |
-| Code Apps / UI / フロントエンド            | `docs/CODE_APPS_UI_DESIGN.md`, `docs/DESIGN_DRAFT.md`                                    | 画面構成、Hooks、サービス層、実装済み操作、未実装操作を確認する       |
-| Dataverse / テーブル / ロール / データ移行 | `docs/DESIGN_DRAFT.md`, `docs/DATAVERSE_GUIDE.md`, 必要に応じて `docs/MIGRATIONS.md`     | データモデル、Lookup、Choice、移行履歴、破壊的変更の有無を確認する    |
-| Power Automate                             | `docs/DESIGN_DRAFT.md`, `docs/BACKLOG.md`, `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md` | Phase 2.5 の計画、接続、フロー設計、未実装チェック項目を確認する      |
-| Copilot Studio / AI Builder                | `docs/DESIGN_DRAFT.md`, `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md`                    | エージェント/プロンプト方針、手動操作が必要な箇所、既存設計を確認する |
-| GitHub 公開・セットアップ・運用手順        | `README.md`, `docs/DESIGN_DRAFT.md`, `docs/BACKLOG.md`                                   | 公開時の注意、セットアップ手順、残タスクを確認する                    |
+| 作業種別                                   | 必ず確認するドキュメント                                                              | 目的                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 全作業共通                                 | `docs/PLAN.md`, `docs/ARCHITECTURE.md`                                                | 現在のフェーズ、確定事項、未実装事項、保留タスクを把握する            |
+| Code Apps / UI / フロントエンド            | `docs/CODE_APPS_UI_DESIGN.md`, `docs/ARCHITECTURE.md`                                 | 画面構成、Hooks、サービス層、実装済み操作、未実装操作を確認する       |
+| Dataverse / テーブル / ロール / データ移行 | `docs/ARCHITECTURE.md`, `docs/DATAVERSE_GUIDE.md`, 必要に応じて `docs/MIGRATIONS.md`  | データモデル、Lookup、Choice、移行履歴、破壊的変更の有無を確認する    |
+| Power Automate                             | `docs/PLAN.md`, `docs/ARCHITECTURE.md`, `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md` | フロー設計、接続、未実装チェック項目を確認する                        |
+| Copilot Studio / AI Builder                | `docs/ARCHITECTURE.md`, `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md`                 | エージェント/プロンプト方針、手動操作が必要な箇所、既存設計を確認する |
+| GitHub 公開・セットアップ・運用手順        | `README.md`, `docs/PLAN.md`                                                           | 公開時の注意、セットアップ手順、残タスクを確認する                    |
 
 **作業後は、変更内容に対応するドキュメントを必ず更新する。**
 実装だけで終わらせず、「何を完了したか」「何が未完了か」「次に何をするか」が後から追える状態にする。
 
 作業後に更新するドキュメント:
 
-| 変更内容                                                                                                | 更新先                                                                               | 更新内容                                                                     |
-| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| アーキテクチャ、フェーズ、データモデル、セキュリティ、Power Automate / Copilot Studio / AI Builder 計画 | `docs/DESIGN_DRAFT.md`                                                               | 設計、フェーズ表、実装状況、チェックボックス、確定/未確定事項を更新する      |
-| Code Apps の画面、コンポーネント、Hooks、サービス層、UI 操作                                            | `docs/CODE_APPS_UI_DESIGN.md`                                                        | 画面構成、操作一覧、Hooks、サービス、実装済み/未実装チェックを更新する       |
-| 後回しタスク、手動作業、実機確認、未解決リスク                                                          | `docs/BACKLOG.md`                                                                    | Open/Done をチェックボックスで更新し、次アクションと検証方法を残す           |
-| Dataverse の破壊的変更、メタデータ削除、Choice 整理、データ補正                                         | `docs/MIGRATIONS.md`                                                                 | 背景、対象、手順、適用結果、ロールバック困難な点を記録する                   |
-| セットアップ手順、公開手順、主要コマンド、ディレクトリ構成が変わった場合                                | `README.md`                                                                          | 利用者が最初に読む情報を最新化する                                           |
-| 再利用可能な教訓・横断ルールが増えた場合                                                                | `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md` または該当 `.github/skills/*/SKILL.md` | プロジェクト固有の状態ではなく、今後も使う標準・アンチパターンとして整理する |
+| 変更内容                                                                 | 更新先                                                                               | 更新内容                                                                     |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| アーキテクチャ、データモデル、フロー設計、AI/Copilot 仕様                | `docs/ARCHITECTURE.md`                                                               | コンポーネント構成・仕様を更新する                                           |
+| Code Apps の画面、コンポーネント、Hooks、サービス層、UI 操作             | `docs/CODE_APPS_UI_DESIGN.md`                                                        | 画面構成、操作一覧、Hooks、サービス、実装済み/未実装チェックを更新する       |
+| 後回しタスク、手動作業、実機確認、未解決リスク                           | `docs/BACKLOG.md`                                                                    | Open/Done をチェックボックスで更新し、次アクションと検証方法を残す           |
+| Dataverse の破壊的変更、メタデータ削除、Choice 整理、データ補正          | `docs/MIGRATIONS.md`                                                                 | 背景、対象、手順、適用結果、ロールバック困難な点を記録する                   |
+| セットアップ手順、公開手順、主要コマンド、ディレクトリ構成が変わった場合 | `README.md`                                                                          | 利用者が最初に読む情報を最新化する                                           |
+| 再利用可能な教訓・横断ルールが増えた場合                                 | `docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md` または該当 `.github/skills/*/SKILL.md` | プロジェクト固有の状態ではなく、今後も使う標準・アンチパターンとして整理する |
 
 ドキュメント更新ルール:
 

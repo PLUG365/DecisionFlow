@@ -232,7 +232,6 @@ PUBLISHER_PREFIX={prefix}
 
 # === オプション ===
 PAC_AUTH_PROFILE={profile-name}
-ADMIN_EMAIL=admin@example.com
 BOT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
@@ -488,10 +487,10 @@ npx power-apps push --non-interactive
 
 > **重要**: SDK コマンドが以下のファイルを自動生成する。これらを手動で作成・他プロジェクトからコピーしてはならない。
 >
-> | コマンド | 自動生成されるファイル |
-> |---|---|
-> | `npx power-apps init` | `power.config.json`, `plugins/plugin-power-apps.ts`, `vite.config.ts`, `tsconfig*.json`, `eslint.config.js`, `index.html`, `package.json`, `src/main.tsx`, `src/App.tsx`, `components.json` 等 |
-> | `npx power-apps add-data-source` | `src/generated/`（モデル・サービス）, `.power/schemas/appschemas/dataSourcesInfo.ts` |
+> | コマンド                         | 自動生成されるファイル                                                                                                                                                                         |
+> | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | `npx power-apps init`            | `power.config.json`, `plugins/plugin-power-apps.ts`, `vite.config.ts`, `tsconfig*.json`, `eslint.config.js`, `index.html`, `package.json`, `src/main.tsx`, `src/App.tsx`, `components.json` 等 |
+> | `npx power-apps add-data-source` | `src/generated/`（モデル・サービス）, `.power/schemas/appschemas/dataSourcesInfo.ts`                                                                                                           |
 
 > **SDK v1.0.x への移行**: `pac code add-data-source` は SDK v1.0.x で CLI パスが変更されたため動作しない。`npx power-apps add-data-source` を使用すること。日本語ローカライズ済み環境では nameUtils.js のパッチが必要（§1.2 参照）。
 
@@ -1634,12 +1633,12 @@ flowchart TD
 
 ### スキル一覧
 
-| スキル名                  | 場所                                                                                          | 用途                                                           |
-| ------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `standard` | [.github/skills/standard/](../.github/skills/standard/SKILL.md) | Power Platform 包括開発標準（全体参照）                        |
-| `copilot-studio`    | [.github/skills/copilot-studio/](../.github/skills/copilot-studio/SKILL.md)       | Copilot Studio エージェント構築（生成オーケストレーション）    |
-| `power-automate`     | [.github/skills/power-automate/](../.github/skills/power-automate/SKILL.md)         | Power Automate クラウドフロー作成・デプロイ                    |
-| `code-apps`           | [.github/skills/code-apps/](../.github/skills/code-apps/SKILL.md)                     | Code Apps 開発・UI 設計・CSP 構成・メール送信（統合スキル）    |
+| スキル名         | 場所                                                                        | 用途                                                        |
+| ---------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `standard`       | [.github/skills/standard/](../.github/skills/standard/SKILL.md)             | Power Platform 包括開発標準（全体参照）                     |
+| `copilot-studio` | [.github/skills/copilot-studio/](../.github/skills/copilot-studio/SKILL.md) | Copilot Studio エージェント構築（生成オーケストレーション） |
+| `power-automate` | [.github/skills/power-automate/](../.github/skills/power-automate/SKILL.md) | Power Automate クラウドフロー作成・デプロイ                 |
+| `code-apps`      | [.github/skills/code-apps/](../.github/skills/code-apps/SKILL.md)           | Code Apps 開発・UI 設計・CSP 構成・メール送信（統合スキル） |
 
 ### スキルに記録されている主な教訓
 

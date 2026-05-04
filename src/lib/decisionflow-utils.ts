@@ -219,3 +219,13 @@ export function getParticipantDeleteWaitState(
     description: "Power Automate の処理が完了するまでお待ちください。",
   };
 }
+
+export function isIgnorableParticipantRevokeFailure(
+  message: string | null | undefined,
+): boolean {
+  const normalized = message?.toLowerCase() ?? "";
+  return (
+    normalized.includes("has insufficient privileges") &&
+    normalized.includes("principalid:")
+  );
+}
