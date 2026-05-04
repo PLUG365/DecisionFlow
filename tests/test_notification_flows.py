@@ -44,6 +44,23 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             "SendEmailV2",
         )
 
+    def test_application_submitted_email_can_include_copilot_deep_link(self):
+        previous_app_id = flows.COPILOT_TEAMS_APP_ID
+        previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
+        try:
+            flows.COPILOT_TEAMS_APP_ID = "bot-app-id"
+            flows.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
+            clientdata = _clientdata(flows.build_application_submitted_clientdata(CONNECTION_REFS, "ds"))
+            body = clientdata["properties"]["definition"]["actions"]["If_submitted"]["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+
+            self.assertIn("teams.microsoft.com/l/chat/0/0", body)
+            self.assertIn("users=28:bot-app-id", body)
+            self.assertIn("encodeUriComponent", body)
+            self.assertIn("https://apps.powerapps.com/play/decisionflow/applications/", body)
+        finally:
+            flows.COPILOT_TEAMS_APP_ID = previous_app_id
+            flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
+
     def test_decision_created_flow_notifies_applicant_and_participants(self):
         clientdata = _clientdata(flows.build_decision_created_clientdata(CONNECTION_REFS, "ds"))
         definition = clientdata["properties"]["definition"]
@@ -105,6 +122,20 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertNotIn("modifiedon", condition_json)
         self.assertIn("Get_decider", condition["actions"])
         self.assertIn("If_decider_has_email", condition["actions"])
+
+    def test_stalled_reminder_email_can_include_copilot_deep_link(self):
+        previous_app_id = flows.COPILOT_TEAMS_APP_ID
+        try:
+            flows.COPILOT_TEAMS_APP_ID = "28:already-prefixed"
+            clientdata = _clientdata(flows.build_stalled_reminder_clientdata(CONNECTION_REFS, "ds"))
+            condition = clientdata["properties"]["definition"]["actions"]["For_each_submitted_application"]["actions"]["If_stalled_and_has_decider"]
+            body = condition["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+
+            self.assertIn("teams.microsoft.com/l/chat/0/0", body)
+            self.assertIn("users=28:already-prefixed", body)
+            self.assertIn("推奨判断と判断コメントドラフト", body)
+        finally:
+            flows.COPILOT_TEAMS_APP_ID = previous_app_id
 
     def test_teams_action_is_optional_and_uses_supported_parameters(self):
         previous_enabled = flows.ENABLE_TEAMS
@@ -182,6 +213,44 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertIn("Decision_OnCreated", query)
         self.assertIn("Mention_OnCreated", query)
         self.assertIn("Application_StalledReminder", query)
+
+    def test_find_connections_prefers_oauth_connection_from_admin_scope(self):
+        stale_connection = {
+            "name": "stale-dataverse-connection",
+            "properties": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                "statuses": [{"status": "Connected"}],
+                "connectionParametersSet": {"values": {}},
+                "createdTime": "2026-05-04T00:00:00Z",
+            },
+        }
+        oauth_connection = {
+            "name": "oauth-dataverse-connection",
+            "properties": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                "statuses": [{"status": "Connected"}],
+                "connectionParametersSet": {"values": {"token:grantType": {"value": "code"}}},
+                "createdTime": "2026-05-03T00:00:00Z",
+            },
+        }
+        outlook_connection = {
+            "name": "outlook-connection",
+            "properties": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                "statuses": [{"status": "Connected"}],
+                "connectionParametersSet": {"values": {}},
+            },
+        }
+
+        with patch.object(
+            flows,
+            "_powerapps_get",
+            return_value={"value": [stale_connection, oauth_connection, outlook_connection]},
+        ):
+            names = flows.find_connections("env-id", "shared_commondataserviceforapps")
+
+        self.assertEqual(names[0], "oauth-dataverse-connection")
+        self.assertNotIn("outlook-connection", names)
 
 
 if __name__ == "__main__":

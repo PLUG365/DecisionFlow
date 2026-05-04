@@ -5,6 +5,9 @@ package-lock.json
 # Copilot memories (session/user notes)
 memories/
 
+# Personal backlog (local only)
+docs/BACKLOG.md
+
 # Build output
 dist/
 
@@ -35,19 +38,11 @@ Thumbs.db
 
 # Power Platform
 .power/
-.auth_record.json
 *.log
 
 # SDK generated (npx power-apps add-data-source で再生成)
 src/generated/
 power.config.json
-
-# App-specific code (テンプレートには含めない)
-src/pages/incident-*.tsx
-src/pages/incidents.tsx
-src/hooks/use-incidents.ts
-src/services/incident-service.ts
-src/lib/incident-types.ts
 
 # Python
 __pycache__/

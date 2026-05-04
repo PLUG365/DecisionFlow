@@ -309,9 +309,9 @@ Hook グループ:
   - [x] 関係者削除処理中の waiting 表示（権限除外/フロー待ち用スピナー）
   - [x] Power Automate による関係者追加時の `GrantAccess`
   - [x] Power Automate による関係者削除前の `RevokeAccess`
-- 関係者削除は、`Participant_PreDelete_RevokeAccess` フロー成功後に `ds_participant` を削除する。フロー失敗時は関係者レコードを残し、削除失敗として通知する。
+- 関係者削除は、`Participant_PreDelete_RevokeAccess` フロー成功後に `ds_participant` を削除する。フロー失敗時は関係者レコードを残し、削除失敗として通知する。ただしデモ用 `Support User` など、対象ユーザー自体が有効な共有権限を持てず `has insufficient privileges ... PrincipalId` が返る場合は、共有解除済み相当として関係者レコード削除を続行する。
 - 関係者削除中は `OperationWaitOverlay` で画面操作をブロックし、Power Automate の処理待ちであることを表示する。
-- `Participant_PreDelete_RevokeAccess` は `npx power-apps add-flow` で SDK 生成済み。アクセス制御フローを UI 編集しやすい Compose payload + 接続参照版に再作成したため、2026-05-02 に新しいフロー ID で再同期済み。サービス層は [src/services/dataverse-service.ts](../src/services/dataverse-service.ts) で `Run` の `ok` が `true` の場合のみ削除する。
+- `Participant_PreDelete_RevokeAccess` は `npx power-apps add-flow` で SDK 生成済み。アクセス制御フローを UI 編集しやすい Compose payload + 接続参照版に再作成したため、2026-05-02 に新しいフロー ID で再同期済み。サービス層は [src/services/dataverse-service.ts](../src/services/dataverse-service.ts) で `Run` の `ok` が `true`、または共有解除不要と判定できる既知エラーの場合のみ削除する。
 - cleanup migration: [scripts/migrate_cleanup_obsolete_metadata.py](../scripts/migrate_cleanup_obsolete_metadata.py) で旧関連資料列と旧ステージ Choice 値を削除する
 - 検証済み: `npm test -- src/lib/decisionflow-utils.test.ts src/lib/ai-decision.test.ts`, `py -m unittest tests.test_ai_decision tests.test_notification_flows tests.test_access_flows tests.test_security_roles`, `npm run build`, `npx power-apps push`
 - 次の確認対象: Power Apps 実機での SDK postMessage 動作、申請削除、関連資料リンク追加・削除、関係者追加後の共有権限、関係者削除後の共有解除、メンション通知フロー、Dataverse セキュリティロール適用後の操作表示

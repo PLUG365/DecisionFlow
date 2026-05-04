@@ -8,6 +8,7 @@ import {
   getDecisionNextApplicationStage,
   getDeciderQueueApplications,
   getParticipantDeleteWaitState,
+  isIgnorableParticipantRevokeFailure,
   filterRowsForCurrentUser,
   isApplicantSelectableStage,
   validateMentionInput,
@@ -312,5 +313,22 @@ describe("getParticipantDeleteWaitState", () => {
       title: "",
       description: "",
     });
+  });
+});
+
+describe("isIgnorableParticipantRevokeFailure", () => {
+  it("allows deletion to continue when revoke fails because the target support user lacks privileges", () => {
+    expect(
+      isIgnorableParticipantRevokeFailure(
+        "The support user has insufficient privileges. OrgType :13 and PrincipalId: a8ddab2d-026b-f011-b4cc-6045bdeb657d",
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps unrelated revoke failures blocking deletion", () => {
+    expect(isIgnorableParticipantRevokeFailure("Access revoke failed.")).toBe(
+      false,
+    );
+    expect(isIgnorableParticipantRevokeFailure(undefined)).toBe(false);
   });
 });

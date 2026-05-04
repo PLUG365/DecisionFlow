@@ -12,6 +12,7 @@ import { Ds_participantsService } from "@/generated/services/Ds_participantsServ
 import { Participant_PreDelete_RevokeAccessService } from "@/generated/services/Participant_PreDelete_RevokeAccessService";
 import { Application_GenerateAiDecisionService } from "@/services/application-generate-ai-decision-service";
 import { SystemusersService } from "@/generated/services/SystemusersService";
+import { isIgnorableParticipantRevokeFailure } from "@/lib/decisionflow-utils";
 import {
   ApplicationStage,
   ParticipantRole,
@@ -519,7 +520,10 @@ export const DataverseService = {
       }),
       "revokeParticipantAccess",
     );
-    if (revokeResult.ok !== "true") {
+    if (
+      revokeResult.ok !== "true" &&
+      !isIgnorableParticipantRevokeFailure(revokeResult.message)
+    ) {
       throw new Error(revokeResult.message || "revokeParticipantAccess failed");
     }
     await Ds_participantsService.delete(participantId);

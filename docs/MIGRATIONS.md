@@ -131,7 +131,7 @@ py scripts/migrate_cleanup_obsolete_metadata.py --apply
 - `--apply` は Dataverse メタデータを削除する破壊的操作。
 - 旧ステージ値を持つ既存申請は、Choice 削除前に `Submitted` へ移行する。
 - migration 後に Code Apps SDK の生成物が古い場合は、Dataverse データソースを再生成する。
-- 削除が依存関係で失敗した場合は [docs/BACKLOG.md](BACKLOG.md) に記録し、該当ビュー/フォーム/フロー依存を外して再実行する。
+- 削除が依存関係で失敗した場合は、該当ビュー/フォーム/フロー依存を外して再実行する。
 
 ### 適用結果（旧関連資料・旧ステージ cleanup）
 
