@@ -88,6 +88,11 @@ export function useSystemUsers() {
   return { ...query, data: query.data?.users ?? [] };
 }
 
+export function useDeciders() {
+  const query = useDecisionFlowData();
+  return { ...query, data: query.data?.deciders ?? [] };
+}
+
 export function useMessages(applicationId?: string) {
   const query = useDecisionFlowData();
   const messages = query.data?.messages ?? [];
