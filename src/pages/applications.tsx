@@ -16,6 +16,7 @@ import {
   useCategories,
   useCreateApplication,
   useCurrentSystemUser,
+  useDeciders,
   useDeleteApplication,
   useDecisionOptions,
   useDecisions,
@@ -48,6 +49,7 @@ export default function ApplicationsPage() {
   const { data: decisions = [] } = useDecisions();
   const { data: decisionOptions = [] } = useDecisionOptions();
   const { data: users = [] } = useSystemUsers();
+  const { data: deciders = [] } = useDeciders();
   const { systemUserId } = useCurrentSystemUser();
   const createApplication = useCreateApplication();
   const updateApplication = useUpdateApplication();
@@ -244,7 +246,7 @@ export default function ApplicationsPage() {
     value: category.ds_categoryid,
     label: category.ds_name,
   }));
-  const userOptions = users
+  const userOptions = deciders
     .filter((user) => Boolean(user.azureactivedirectoryobjectid?.trim()))
     .map((user) => ({
       value: user.systemuserid,

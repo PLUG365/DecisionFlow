@@ -76,6 +76,7 @@ export const DataverseService = {
       decisions,
       resources,
       users,
+      deciders,
     ] = await Promise.all([
       this.getApplications(),
       this.getCategories(),
@@ -86,6 +87,7 @@ export const DataverseService = {
       this.getDecisions(),
       this.getResources(),
       this.getSystemUsers(),
+      this.getDeciders(),
     ]);
 
     return {
@@ -98,6 +100,7 @@ export const DataverseService = {
       decisions,
       resources,
       users,
+      deciders,
     };
   },
 
@@ -195,6 +198,23 @@ export const DataverseService = {
         orderBy: ["fullname asc"],
       }),
       "getSystemUsers",
+    ) as SystemUser[];
+  },
+
+  async getDeciders(): Promise<SystemUser[]> {
+    return requireData(
+      await SystemusersService.getAll({
+        select: [
+          "systemuserid",
+          "fullname",
+          "internalemailaddress",
+          "azureactivedirectoryobjectid",
+        ],
+        filter:
+          "isdisabled eq false and teammembership_association/any(t: t/name eq 'DecisionFlow-Deciders')",
+        orderBy: ["fullname asc"],
+      }),
+      "getDeciders",
     ) as SystemUser[];
   },
 

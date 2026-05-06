@@ -99,6 +99,12 @@ pac auth list
 
 以降の Python スクリプトは `auth_helper.py` 経由で認証します。初回実行時はブラウザまたはデバイスコード認証が走り、プロジェクト直下に `.auth_record.json` が生成されます。
 
+> **Windows ユーザーへ:** Python スクリプト実行前に以下を設定してください。設定しないと絵文字を含む出力で `UnicodeEncodeError` が発生します。
+>
+> ```powershell
+> $env:PYTHONUTF8="1"
+> ```
+
 ### 4. Dataverse の事前チェックを行う
 
 予定しているソリューション名・テーブル名が既存環境と衝突しないかを確認します。
@@ -168,16 +174,19 @@ py scripts/deploy_ai_decision.py
 
 Code Apps 側は Dataverse テーブルができたあとで環境固有初期化を行います。
 
-1. 対象環境で Code Apps 機能が有効であることを確認する
-2. `power.config.json` が未生成なら `npx power-apps init` を実行する
-3. 初回 push を行う
+#### 9-1. 初期化する
+
+対象環境で Code Apps 機能が有効であることを確認したうえで、`power.config.json` が未生成なら PAC CLI で初期化します。
 
 ```powershell
-npm run build
-pac code push -env {ENVIRONMENT_ID} -s {SOLUTION_NAME}
+pac code init -env {ENVIRONMENT_ID} -s {SOLUTION_NAME}
 ```
 
-続いて Dataverse データソースを追加します。必要なテーブルは以下です。
+> `npx power-apps init` は PAC CLI をセッション親として必要とするため、単独では動作しません。必ず `pac code init` を使用してください。
+
+#### 9-2. Dataverse データソースを追加する
+
+必要なテーブルは以下です。
 
 - `ds_application`
 - `ds_category`
@@ -192,32 +201,34 @@ pac code push -env {ENVIRONMENT_ID} -s {SOLUTION_NAME}
 追加コマンドの例:
 
 ```powershell
-npx power-apps add-data-source --api-id dataverse --resource-name ds_application --org-url {DATAVERSE_URL}
+pac code add-data-source --api-id /providers/xrm/api --resource-name ds_application --org-url {DATAVERSE_URL}
 ```
 
-Code Apps から呼び出す Power Automate フローも、この段階で追加します。
+日本語表示名のサニタイズで失敗した場合は、先に以下を実行してから `add-data-source` を再度実行してください。
+
+```powershell
+node scripts/patch-pac-cli.cjs
+```
+
+#### 9-3. Power Automate フローを追加する
+
+Code Apps から呼び出すフローを追加します。`npx power-apps add-flow` は PAC CLI をセッション親として必要とするため、ラッパースクリプトを使用します。
 
 - `py scripts/deploy_access_flows.py` 実行結果に出た `Participant_PreDelete_RevokeAccess` の `workflowid`
 - `py scripts/deploy_ai_decision.py` 実行結果に出た `Application_GenerateAiDecision` の `workflowid`
 
-追加コマンドの例:
-
 ```powershell
-npx power-apps add-flow --flow-id {Participant_PreDelete_RevokeAccess の workflowid}
-npx power-apps add-flow --flow-id {Application_GenerateAiDecision の workflowid}
+py scripts/run_power_apps_cli.py add-flow --flow-id {Participant_PreDelete_RevokeAccess の workflowid}
+py scripts/run_power_apps_cli.py add-flow --flow-id {Application_GenerateAiDecision の workflowid}
 ```
 
-日本語表示名のサニタイズで失敗した場合は、先に以下を実行してから再度 `add-data-source` を実行してください。
+#### 9-4. ビルドして push する
 
-```powershell
-node patch-nameutils.cjs
-```
-
-データソース追加後、再ビルドして再度 push します。
+`add-flow` が `power.config.json` に追加するフロー接続情報（`workflowDetails`）を保持するため、push には PAC CLI ではなくラッパースクリプトを使用します。`pac code push` はこのフィールドを拒否し、フロー呼び出しが機能しなくなります。
 
 ```powershell
 npm run build
-pac code push -env {ENVIRONMENT_ID} -s {SOLUTION_NAME}
+py scripts/run_power_apps_cli.py push
 ```
 
 ### 10. Copilot Studio エージェントを構築する
@@ -249,7 +260,7 @@ Teams 公開後は、表示されたアプリマニフェストから以下を `
 `COPILOT_TEAMS_APP_ID` を設定したあと、通知フローを再実行すると Outlook メールに AI アシスタント相談リンクが入ります。
 
 ```powershell
-py scripts/deploy_notification_flows.py --start-existing
+py scripts/deploy_notification_flows.py
 ```
 
 ### 12. 動作確認を行う
