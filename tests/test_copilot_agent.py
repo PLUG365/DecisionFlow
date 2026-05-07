@@ -45,6 +45,23 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         finally:
             agent.DECISIONFLOW_APP_BASE_URL = previous
 
+    def test_gpt_instructions_have_no_curly_brace_placeholders(self):
+        """Copilot Studio は `{name}` を式ノードとして解釈し ContentValidationError になる。"""
+        previous = agent.DECISIONFLOW_APP_BASE_URL
+        try:
+            agent.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
+            instructions = agent.build_gpt_instructions()
+
+            import re
+            placeholders = re.findall(r"\{[A-Za-z_][A-Za-z0-9_.]*\}", instructions)
+            self.assertEqual(
+                placeholders,
+                [],
+                f"Curly-brace placeholders {placeholders} would be parsed as Power Fx expressions by Copilot Studio.",
+            )
+        finally:
+            agent.DECISIONFLOW_APP_BASE_URL = previous
+
     def test_gpt_instructions_omits_app_url_section_when_unset(self):
         previous = agent.DECISIONFLOW_APP_BASE_URL
         try:
