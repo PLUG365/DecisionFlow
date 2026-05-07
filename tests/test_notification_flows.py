@@ -44,6 +44,87 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             "SendEmailV2",
         )
 
+    def test_application_submitted_email_includes_deeplink_when_base_url_set(self):
+        previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
+        previous_app_id = flows.COPILOT_TEAMS_APP_ID
+        try:
+            flows.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
+            flows.COPILOT_TEAMS_APP_ID = ""
+            clientdata = _clientdata(flows.build_application_submitted_clientdata(CONNECTION_REFS, "ds"))
+            body = clientdata["properties"]["definition"]["actions"]["If_submitted"]["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+
+            self.assertIn("申請を開く", body)
+            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", body)
+            self.assertIn("triggerOutputs()?['body/ds_applicationid']", body)
+            self.assertNotIn("teams.microsoft.com/l/chat", body)
+        finally:
+            flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
+            flows.COPILOT_TEAMS_APP_ID = previous_app_id
+
+    def test_application_submitted_email_omits_app_link_when_base_url_unset(self):
+        previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
+        previous_app_id = flows.COPILOT_TEAMS_APP_ID
+        try:
+            flows.DECISIONFLOW_APP_BASE_URL = ""
+            flows.COPILOT_TEAMS_APP_ID = ""
+            clientdata = _clientdata(flows.build_application_submitted_clientdata(CONNECTION_REFS, "ds"))
+            body = clientdata["properties"]["definition"]["actions"]["If_submitted"]["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+
+            self.assertNotIn("申請を開く", body)
+        finally:
+            flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
+            flows.COPILOT_TEAMS_APP_ID = previous_app_id
+
+    def test_stalled_reminder_email_includes_deeplink_when_base_url_set(self):
+        previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
+        previous_app_id = flows.COPILOT_TEAMS_APP_ID
+        try:
+            flows.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
+            flows.COPILOT_TEAMS_APP_ID = ""
+            clientdata = _clientdata(flows.build_stalled_reminder_clientdata(CONNECTION_REFS, "ds"))
+            condition = clientdata["properties"]["definition"]["actions"]["For_each_submitted_application"]["actions"]["If_stalled_and_has_decider"]
+            body = condition["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+
+            self.assertIn("申請を開く", body)
+            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", body)
+            self.assertIn("ds_applicationid", body)
+        finally:
+            flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
+            flows.COPILOT_TEAMS_APP_ID = previous_app_id
+
+    def test_decision_and_mention_emails_include_deeplink_when_base_url_set(self):
+        previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
+        try:
+            flows.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
+            decision_clientdata = _clientdata(flows.build_decision_created_clientdata(CONNECTION_REFS, "ds"))
+            mention_clientdata = _clientdata(flows.build_mention_created_clientdata(CONNECTION_REFS, "ds"))
+            decision_body = decision_clientdata["properties"]["definition"]["actions"]["If_applicant_has_email"]["actions"]["If_applicant_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+            mention_body = mention_clientdata["properties"]["definition"]["actions"]["If_unread_mention"]["actions"]["If_target_has_email"]["actions"]["If_target_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+
+            self.assertIn("申請を開く", decision_body)
+            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", decision_body)
+            self.assertIn("triggerOutputs()?['body/_ds_applicationid_value']", decision_body)
+
+            self.assertIn("申請を開く", mention_body)
+            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", mention_body)
+            self.assertIn("outputs('Get_message')?['body/_ds_applicationid_value']", mention_body)
+        finally:
+            flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
+
+    def test_decision_and_mention_emails_omit_app_link_when_base_url_unset(self):
+        previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
+        try:
+            flows.DECISIONFLOW_APP_BASE_URL = ""
+            decision_clientdata = _clientdata(flows.build_decision_created_clientdata(CONNECTION_REFS, "ds"))
+            mention_clientdata = _clientdata(flows.build_mention_created_clientdata(CONNECTION_REFS, "ds"))
+            decision_body = decision_clientdata["properties"]["definition"]["actions"]["If_applicant_has_email"]["actions"]["If_applicant_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+            mention_body = mention_clientdata["properties"]["definition"]["actions"]["If_unread_mention"]["actions"]["If_target_has_email"]["actions"]["If_target_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+
+            self.assertNotIn("申請を開く", decision_body)
+            self.assertNotIn("申請を開く", mention_body)
+        finally:
+            flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
+
     def test_application_submitted_email_can_include_copilot_deep_link(self):
         previous_app_id = flows.COPILOT_TEAMS_APP_ID
         previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
