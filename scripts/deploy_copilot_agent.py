@@ -85,7 +85,7 @@ def build_gpt_instructions() -> str:
         return base
     app_link_section = (
         "\n## 申請詳細リンク\n"
-        f"- 申請を案内する際は、Code Apps の申請詳細URL `{DECISIONFLOW_APP_BASE_URL}?deepLink=%2Fapplications%2F{{applicationId}}` を {{applicationId}} を実際の値に置き換えて提示する。\n"
+        f"- 申請を案内する際は、Code Apps の申請詳細URLとして `{DECISIONFLOW_APP_BASE_URL}?deepLink=%2Fapplications%2F` の末尾に対象申請の applicationId (GUID) を付加した URL を提示する。\n"
         "- 判断確定、申請編集、関係者追加など Code Apps への誘導時は、上記URLをリンクとして添える。\n"
     )
     return base + app_link_section
