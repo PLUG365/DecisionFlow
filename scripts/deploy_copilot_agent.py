@@ -21,6 +21,7 @@ load_dotenv()
 SOLUTION_NAME = os.environ.get("SOLUTION_NAME", "DecisionSupport")
 SOLUTION_DISPLAY_NAME = os.environ.get("SOLUTION_DISPLAY_NAME", "意思決定支援 (Decision Support)")
 PREFIX = os.environ.get("PUBLISHER_PREFIX", "ds")
+DECISIONFLOW_APP_BASE_URL = os.environ.get("DECISIONFLOW_APP_BASE_URL", "").strip().rstrip("/")
 
 BOT_NAME = "DecisionFlow Assistant"
 BOT_SCHEMA_NAME = f"{PREFIX}_DecisionFlowAssistant"
@@ -77,6 +78,18 @@ GPT_INSTRUCTIONS = f"""\
 - 最後に「最終判断は Code Apps の判断タブで確定してください」と案内する。
 """
 
+
+def build_gpt_instructions() -> str:
+    base = GPT_INSTRUCTIONS
+    if not DECISIONFLOW_APP_BASE_URL:
+        return base
+    app_link_section = (
+        "\n## 申請詳細リンク\n"
+        f"- 申請を案内する際は、Code Apps の申請詳細URL `{DECISIONFLOW_APP_BASE_URL}?deepLink=%2Fapplications%2F{{applicationId}}` を {{applicationId}} を実際の値に置き換えて提示する。\n"
+        "- 判断確定、申請編集、関係者追加など Code Apps への誘導時は、上記URLをリンクとして添える。\n"
+    )
+    return base + app_link_section
+
 PREFERRED_PROMPTS = [
     {"title": "判断待ち一覧", "text": "私が判断すべき提出済みの申請を一覧で教えてください"},
     {"title": "申請の概要", "text": "この申請の背景・目的・論点を要約してください"},
@@ -132,7 +145,7 @@ def deep_merge(base: dict, override: dict) -> dict:
 
 
 def build_gpt_yaml(existing_data: str = "") -> str:
-    inst_block = "\n".join(f"  {line}" for line in GPT_INSTRUCTIONS.splitlines())
+    inst_block = "\n".join(f"  {line}" for line in build_gpt_instructions().splitlines())
     starter_lines: list[str] = []
     for prompt in PREFERRED_PROMPTS:
         starter_lines.append(f"  - title: {prompt['title']}")

@@ -34,6 +34,27 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         self.assertIn("判断待ちの申請を一覧で教えて", yaml_text)
         self.assertIn("\n\n", yaml_text)
 
+    def test_gpt_instructions_includes_app_url_section_when_set(self):
+        previous = agent.DECISIONFLOW_APP_BASE_URL
+        try:
+            agent.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
+            yaml_text = agent.build_gpt_yaml("")
+
+            self.assertIn("申請詳細リンク", yaml_text)
+            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", yaml_text)
+        finally:
+            agent.DECISIONFLOW_APP_BASE_URL = previous
+
+    def test_gpt_instructions_omits_app_url_section_when_unset(self):
+        previous = agent.DECISIONFLOW_APP_BASE_URL
+        try:
+            agent.DECISIONFLOW_APP_BASE_URL = ""
+            yaml_text = agent.build_gpt_yaml("")
+
+            self.assertNotIn("申請詳細リンク", yaml_text)
+        finally:
+            agent.DECISIONFLOW_APP_BASE_URL = previous
+
     def test_deep_merge_preserves_existing_config(self):
         merged = agent.deep_merge(
             {"aISettings": {"model": {"modelNameHint": "Sonnet46"}}, "gPTSettings": {"defaultSchemaName": "abc"}},

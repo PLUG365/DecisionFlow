@@ -266,6 +266,19 @@ def _teams_bot_user_id(app_id: str) -> str:
     return app_id if app_id.startswith("28:") else f"28:{app_id}"
 
 
+def _app_link_lines(application_id_expression: str) -> list[str]:
+    if not DECISIONFLOW_APP_BASE_URL:
+        return []
+    href = (
+        "@{concat('"
+        f"{DECISIONFLOW_APP_BASE_URL}?deepLink=%2Fapplications%2F"
+        "', "
+        f"{application_id_expression}"
+        ")}"
+    )
+    return [f"申請を開く: <a href=\"{href}\">申請詳細ページ</a>"]
+
+
 def _assistant_link_lines(title_expression: str, application_id_expression: str | None = None) -> list[str]:
     if not COPILOT_TEAMS_APP_ID:
         return []
@@ -327,6 +340,7 @@ def build_application_submitted_clientdata(connection_refs: dict[str, str], pref
             "申請: @{triggerOutputs()?['body/ds_name']}",
             "希望期限: @{coalesce(triggerOutputs()?['body/ds_duedate'],'未設定')}",
             "本文: @{coalesce(triggerOutputs()?['body/ds_body'],'')}",
+            *_app_link_lines("triggerOutputs()?['body/ds_applicationid']"),
             *_assistant_link_lines(
                 "triggerOutputs()?['body/ds_name']",
                 "triggerOutputs()?['body/ds_applicationid']",
@@ -380,6 +394,7 @@ def build_decision_created_clientdata(connection_refs: dict[str, str], prefix: s
             "申請: @{outputs('Get_application')?['body/ds_name']}",
             "判断: @{outputs('Get_decision_option')?['body/ds_name']}",
             "理由: @{coalesce(triggerOutputs()?['body/ds_rationale'],'')}",
+            *_app_link_lines(f"triggerOutputs()?['body/_{prefix}_applicationid_value']"),
         ],
     )
     teams_body = "@{concat('<b>判断が確定しました</b><br>申請: ', outputs('Get_application')?['body/ds_name'], '<br>判断: ', outputs('Get_decision_option')?['body/ds_name'])}"
@@ -437,6 +452,7 @@ def build_mention_created_clientdata(connection_refs: dict[str, str], prefix: st
         [
             "申請: @{outputs('Get_application')?['body/ds_name']}",
             "メッセージ: @{outputs('Get_message')?['body/ds_body']}",
+            *_app_link_lines(f"outputs('Get_message')?['body/_{prefix}_applicationid_value']"),
         ],
     )
     teams_body = "@{concat('<b>メンション通知</b><br>申請: ', outputs('Get_application')?['body/ds_name'], '<br>メッセージ: ', outputs('Get_message')?['body/ds_body'])}"
@@ -492,6 +508,7 @@ def build_stalled_reminder_clientdata(connection_refs: dict[str, str], prefix: s
             f"提出日時: @{{coalesce(items('{foreach_name}')?['{prefix}_submittedat'],'未設定')}}",
             f"本文: @{{coalesce(items('{foreach_name}')?['{prefix}_body'],'')}}",
             "停滞条件: 希望期限超過、または提出日時から3日以上経過しています。",
+            *_app_link_lines(f"items('{foreach_name}')?['{prefix}_applicationid']"),
             *_assistant_link_lines(
                 f"items('{foreach_name}')?['{prefix}_name']",
                 f"items('{foreach_name}')?['{prefix}_applicationid']",
