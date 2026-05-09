@@ -17,9 +17,7 @@ export const MessageKind = {
 export const ParticipantRole = {
   Applicant: 100000000,
   Decider: 100000001,
-  CoDecider: 100000002,
   Contributor: 100000003,
-  Observer: 100000004,
 } as const;
 
 export type ApplicationStageValue =
@@ -58,10 +56,8 @@ export const stageMeta: Record<ApplicationStageValue, StageMeta> = {
 
 export const participantRoleLabels: Record<ParticipantRoleValue, string> = {
   [ParticipantRole.Applicant]: "申請者",
-  [ParticipantRole.Decider]: "主判断者",
-  [ParticipantRole.CoDecider]: "共同判断者",
-  [ParticipantRole.Contributor]: "情報提供者",
-  [ParticipantRole.Observer]: "オブザーバー",
+  [ParticipantRole.Decider]: "判断者",
+  [ParticipantRole.Contributor]: "関係者",
 };
 
 export type SystemUser = {
@@ -151,7 +147,9 @@ export type ApplicationResource = {
   ds_name: string;
   ds_url?: string;
   ds_description?: string;
+  createdon?: string;
   _ds_applicationid_value?: string;
+  _createdby_value?: string;
 };
 
 export type DecisionFlowData = {

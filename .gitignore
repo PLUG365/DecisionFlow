@@ -67,3 +67,6 @@ icon_preview.svg
 
 # Build info
 tsconfig.tsbuildinfo
+
+# Claude Code
+.claude/

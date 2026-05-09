@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsAdmin } from "@/hooks/use-decisionflow";
 import { useSidebarContext } from "./sidebar-layout";
 
 type NavItem = {
@@ -21,6 +22,7 @@ type NavItem = {
 
 export function Sidebar() {
   const { isCollapsed, isMobileOpen, closeMobile } = useSidebarContext();
+  const { data: isAdmin = false } = useIsAdmin();
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -54,10 +56,16 @@ export function Sidebar() {
         { icon: Paperclip, label: "関連資料", path: "resources" },
       ],
     },
-    {
-      category: "管理",
-      items: [{ icon: Settings2, label: "マスタ管理", path: "masters" }],
-    },
+    ...(isAdmin
+      ? [
+          {
+            category: "管理",
+            items: [
+              { icon: Settings2, label: "マスタ管理", path: "masters" },
+            ],
+          },
+        ]
+      : []),
   ];
 
   return (

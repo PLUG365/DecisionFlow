@@ -15,6 +15,7 @@ import { SystemusersService } from "@/generated/services/SystemusersService";
 import { isIgnorableParticipantRevokeFailure } from "@/lib/decisionflow-utils";
 import {
   ApplicationStage,
+  MessageKind,
   ParticipantRole,
   type Application,
   type ApplicationStageValue,
@@ -238,6 +239,25 @@ export const DataverseService = {
     }
   },
 
+  async isCurrentUserAdmin(): Promise<boolean> {
+    try {
+      const userId = await this.getCurrentSystemUserId();
+      if (!userId) return false;
+      const matched = requireData(
+        await SystemusersService.getAll({
+          select: ["systemuserid"],
+          filter: `systemuserid eq ${userId} and systemuserroles_association/any(r: r/name eq 'ds_Admin')`,
+          top: 1,
+        }),
+        "isCurrentUserAdmin",
+      ) as SystemUser[];
+      return matched.length > 0;
+    } catch (error) {
+      console.warn("[DecisionFlow] admin role check failed", error);
+      return false;
+    }
+  },
+
   async createApplication(application: CreateApplication) {
     const created = requireData(
       await Ds_applicationsService.create(
@@ -290,6 +310,14 @@ export const DataverseService = {
       ),
     );
     return created;
+  },
+
+  async deleteCategory(categoryId: string) {
+    await Ds_categoriesService.delete(categoryId);
+  },
+
+  async deleteDecisionOption(optionId: string) {
+    await Ds_decisionoptionsService.delete(optionId);
   },
 
   async createCategory(category: CreateCategory) {
@@ -427,7 +455,7 @@ export const DataverseService = {
   },
 
   async createMention(mention: CreateMention) {
-    return requireData(
+    const created = requireData(
       await Ds_mentionsService.create(
         stripUndefined({
           ds_name: mention.ds_name,
@@ -444,6 +472,19 @@ export const DataverseService = {
       ),
       "createMention",
     ) as Mention;
+
+    // メンションを target ユーザーに所有権移管（既読化を可能にするため）
+    if (mention._ds_targetuserid_value) {
+      try {
+        await Ds_mentionsService.update(created.ds_mentionid, {
+          ownerid: mention._ds_targetuserid_value,
+          owneridtype: "systemuser",
+        } as Parameters<typeof Ds_mentionsService.update>[1]);
+      } catch (error) {
+        console.warn("[DecisionFlow] mention ownership transfer failed", error);
+      }
+    }
+    return created;
   },
 
   async createResource(resource: CreateResource) {
@@ -525,6 +566,42 @@ export const DataverseService = {
       ),
       "createParticipant",
     ) as Participant;
+  },
+
+  async addParticipantWithMention(input: {
+    application: Pick<Application, "ds_applicationid" | "ds_name">;
+    userId: string;
+    userName: string;
+    addedByUserId: string;
+    addedByUserName: string;
+  }): Promise<Participant> {
+    const participant = await this.createParticipant({
+      ds_name: `${input.application.ds_name} - ${input.userName}`,
+      ds_role: ParticipantRole.Contributor,
+      _ds_applicationid_value: input.application.ds_applicationid,
+      _ds_userid_value: input.userId,
+      _ds_addedbyid_value: input.addedByUserId,
+    });
+
+    if (input.userId === input.addedByUserId) {
+      return participant;
+    }
+
+    const message = await this.createMessage({
+      ds_name: `${input.application.ds_name} - 関係者追加通知`,
+      ds_body: `${input.addedByUserName} さんがあなたを関係者に追加しました。`,
+      ds_kind: MessageKind.System,
+      _ds_applicationid_value: input.application.ds_applicationid,
+    });
+
+    await this.createMention({
+      ds_name: `${input.application.ds_name} - 関係者追加メンション`,
+      ds_isread: false,
+      _ds_messageid_value: message.ds_messageid,
+      _ds_targetuserid_value: input.userId,
+    });
+
+    return participant;
   },
 
   async deleteParticipant({

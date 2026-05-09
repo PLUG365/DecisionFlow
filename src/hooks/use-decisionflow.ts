@@ -32,12 +32,21 @@ const queryKeys = {
   all: ["decisionflow"] as const,
   data: ["decisionflow", "data"] as const,
   currentUser: ["decisionflow", "currentUser"] as const,
+  isAdmin: ["decisionflow", "isAdmin"] as const,
 };
 
 export function useDecisionFlowData() {
   return useQuery({
     queryKey: queryKeys.data,
     queryFn: () => DataverseService.getData(),
+  });
+}
+
+export function useIsAdmin() {
+  return useQuery({
+    queryKey: queryKeys.isAdmin,
+    queryFn: () => DataverseService.isCurrentUserAdmin(),
+    staleTime: Infinity,
   });
 }
 
@@ -143,6 +152,24 @@ export function useDecisions(applicationId?: string) {
         )
       : decisions,
   };
+}
+
+export function useMentionsByMessage(applicationId?: string) {
+  const query = useDecisionFlowData();
+  const allMentions = query.data?.mentions ?? [];
+  const messageIds = new Set(
+    (query.data?.messages ?? [])
+      .filter((m) => m._ds_applicationid_value === applicationId)
+      .map((m) => m.ds_messageid),
+  );
+  const map = new Map<string, typeof allMentions>();
+  for (const mention of allMentions) {
+    const messageId = mention._ds_messageid_value;
+    if (!messageId || !messageIds.has(messageId)) continue;
+    if (!map.has(messageId)) map.set(messageId, []);
+    map.get(messageId)!.push(mention);
+  }
+  return { ...query, data: map };
 }
 
 export function useMentionsForCurrentUser() {
@@ -258,6 +285,24 @@ export function useUpdateCategory() {
   });
 }
 
+export function useDeleteCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (categoryId: string) =>
+      DataverseService.deleteCategory(categoryId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
+export function useDeleteDecisionOption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (optionId: string) =>
+      DataverseService.deleteDecisionOption(optionId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
 export function useCreateDecisionOption() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -290,6 +335,15 @@ export function useCreateParticipant() {
   return useMutation({
     mutationFn: (participant: Omit<Participant, "ds_participantid">) =>
       DataverseService.createParticipant(participant),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
+export function useAddParticipantWithMention() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof DataverseService.addParticipantWithMention>[0]) =>
+      DataverseService.addParticipantWithMention(input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
   });
 }

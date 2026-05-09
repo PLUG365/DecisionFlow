@@ -136,6 +136,11 @@ py scripts/setup_security_roles.py
 
 この時点で `ds_Applicant`, `ds_Decider`, `ds_Admin` を Dataverse に作成します。
 
+ロール権限の概要:
+
+- `ds_Applicant` / `ds_Decider`: マスタ（`ds_category`, `ds_decisionoption`）は Read のみ。`ds_mention` には Assign 権限を含み、関係者追加時にメンションを target ユーザー所有として作成できる
+- `ds_Admin`: 全テーブル Global。マスタ管理 UI もこのロール保持者のみに表示
+
 ### 7. 管理センターで必須の手動設定を行う
 
 このステップはスクリプトでは完結しません。
@@ -285,16 +290,33 @@ Teams 公開後は、表示されたアプリマニフェストから以下を `
 py scripts/deploy_notification_flows.py
 ```
 
-### 12. 動作確認を行う
+### 12. 既存環境への運用変更マイグレーション（必要時のみ）
+
+以前のバージョンからアップグレードする環境では、以下のマイグレーションを 1 回だけ実行します。新規セットアップ環境では不要です。
+
+```powershell
+# 関係者ロールの簡素化: CoDecider/Observer Choice 値を削除し、既存レコードは Contributor(関係者) に変換
+py scripts/migrate_remove_unused_roles.py
+
+# 関係者の閲覧範囲修正: ds_application から子テーブルへ Cascade Share を設定
+py scripts/migrate_cascade_share.py
+```
+
+`migrate_cascade_share.py` 実行後、既存の申請レコードと関係者については Code Apps で関係者を一度削除→再追加するか、Power Automate UI で `Participant_OnCreated_GrantAccess` を手動実行して共有を再付与してください。
+
+### 13. 動作確認を行う
 
 最低限、以下は確認してください。
 
 1. 申請を 1 件作成して提出できる
-2. 判断者ユーザーで判断キューに表示される
-3. 関係者追加後に対象申請を閲覧できる
-4. コメント投稿とメンション通知が動く
-5. AI 判断更新が実行できる
-6. Copilot Studio で申請概要を問い合わせできる
+2. 判断者ユーザーで判断キューに表示される（判断者選択肢は `DecisionFlow-Deciders` チームメンバーのみ表示される）
+3. 関係者追加後に対象申請を閲覧でき、他の関係者が追加した関係者・資料・コメントも見える
+4. 関係者追加時に自動的にメンションがメッセージリストとメンションリストに追加され、追加された本人が既読化できる
+5. コメント投稿とメンション通知が動く（メッセージスレッドにメンション先がバッジ表示される）
+6. 資料タブにアップロード者と日時が表示される
+7. AI 判断更新が実行できる
+8. Copilot Studio で申請概要を問い合わせできる
+9. ds_Admin 以外のユーザーにはサイドバーの「マスタ管理」が表示されない
 
 コード変更を伴う場合の確認コマンド:
 

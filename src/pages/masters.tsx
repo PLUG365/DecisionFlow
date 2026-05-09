@@ -1,3 +1,4 @@
+import { Navigate } from "react-router-dom";
 import {
   InlineEditTable,
   type EditableColumn,
@@ -8,6 +9,9 @@ import {
   useCreateCategory,
   useCreateDecisionOption,
   useDecisionOptions,
+  useDeleteCategory,
+  useDeleteDecisionOption,
+  useIsAdmin,
   useUpdateCategory,
   useUpdateDecisionOption,
 } from "@/hooks/use-decisionflow";
@@ -16,12 +20,18 @@ import { toast } from "sonner";
 type MasterRow = Record<string, unknown> & { id: string };
 
 export default function MastersPage() {
+  const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   const { data: categories = [] } = useCategories();
   const { data: decisionOptions = [] } = useDecisionOptions();
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
+  const deleteCategory = useDeleteCategory();
   const createDecisionOption = useCreateDecisionOption();
   const updateDecisionOption = useUpdateDecisionOption();
+  const deleteDecisionOption = useDeleteDecisionOption();
+
+  if (isAdminLoading) return <div />;
+  if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
   const categoryRows: MasterRow[] = categories.map((item) => ({
     id: item.ds_categoryid,
@@ -118,6 +128,26 @@ export default function MastersPage() {
     );
   };
 
+  const handleDeleteCategory = (id: string | number) => {
+    deleteCategory.mutate(String(id), {
+      onSuccess: () => toast.success("カテゴリを削除しました"),
+      onError: () =>
+        toast.error(
+          "カテゴリの削除に失敗しました。既存の申請で参照されている可能性があります。",
+        ),
+    });
+  };
+
+  const handleDeleteDecisionOption = (id: string | number) => {
+    deleteDecisionOption.mutate(String(id), {
+      onSuccess: () => toast.success("判断選択肢を削除しました"),
+      onError: () =>
+        toast.error(
+          "判断選択肢の削除に失敗しました。既存の判断で参照されている可能性があります。",
+        ),
+    });
+  };
+
   const handleAddDecisionOption = (row: Omit<MasterRow, "id">) => {
     const name = requireName(row.name);
     if (!name) return;
@@ -154,6 +184,7 @@ export default function MastersPage() {
             title="カテゴリ"
             onSave={handleSaveCategory}
             onAdd={handleAddCategory}
+            onDelete={handleDeleteCategory}
             addButtonLabel="カテゴリを追加"
           />
         </TabsContent>
@@ -164,6 +195,7 @@ export default function MastersPage() {
             title="判断選択肢"
             onSave={handleSaveDecisionOption}
             onAdd={handleAddDecisionOption}
+            onDelete={handleDeleteDecisionOption}
             addButtonLabel="判断選択肢を追加"
           />
         </TabsContent>
