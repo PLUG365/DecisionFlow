@@ -139,7 +139,7 @@ erDiagram
     }
     ds_participant {
         guid id PK
-        choice role "Applicant/Decider/CoDecider/Contributor/Observer"
+        choice role "Applicant/Decider/Contributor"
         datetime added_at
     }
     ds_decision {
@@ -196,7 +196,7 @@ erDiagram
 | `ds_mention`             | `ds_name`                  | 件名             | String       | 主列                                                     |
 | `ds_mention`             | `ds_isread`                | 既読             | Boolean      | 初期値 false                                             |
 | `ds_participant`         | `ds_name`                  | 件名             | String       | 主列                                                     |
-| `ds_participant`         | `ds_role`                  | 役割             | Choice       | Applicant / Decider / CoDecider / Contributor / Observer |
+| `ds_participant`         | `ds_role`                  | 役割             | Choice       | Applicant / Decider / Contributor                        |
 | `ds_participant`         | `ds_addedat`               | 追加日時         | DateAndTime  | 任意                                                     |
 | `ds_decision`            | `ds_name`                  | 件名             | String       | 主列                                                     |
 | `ds_decision`            | `ds_rationale`             | 判断理由         | Memo         | 必須運用                                                 |
@@ -237,13 +237,13 @@ erDiagram
 
 **役割** (`ds_participant.role`):
 
-| 値        | 名称        | 説明         |
-| --------- | ----------- | ------------ |
-| 100000000 | Applicant   | 申請者       |
-| 100000001 | Decider     | 主判断者     |
-| 100000002 | CoDecider   | 共同判断者   |
-| 100000003 | Contributor | 情報提供者   |
-| 100000004 | Observer    | オブザーバー |
+| 値        | 名称        | 説明                                                |
+| --------- | ----------- | --------------------------------------------------- |
+| 100000000 | Applicant   | 申請者（申請作成時に自動設定）                      |
+| 100000001 | Decider     | 判断者（申請作成・編集時に自動設定）                |
+| 100000003 | Contributor | 関係者（関係者タブから追加。役割選択UIなしで固定）  |
+
+> 旧設計の `CoDecider` (100000002) と `Observer` (100000004) は廃止。`scripts/migrate_remove_unused_roles.py` で削除済み。既存レコードがあれば Contributor に変換される。
 
 **メッセージ種別** (`ds_message.kind`):
 
@@ -539,14 +539,16 @@ flowchart LR
 - 申請者は **自分の申請のみ閲覧可能**（他者の過去申請は見えない）
 - メンションされた / 関係者に追加された場合のみ、当該申請を閲覧可能
   - Power Automate で対象ユーザーに **`Share` API**（GrantAccess）で当該申請レコードへの Read 権を付与
+  - `ds_application` から子テーブル（`ds_participant`, `ds_message`, `ds_decision`, `ds_applicationresource`）への リレーションは Cascade Share が設定されており、申請の共有時に既存子レコードも自動的に共有される（`scripts/migrate_cascade_share.py` で適用）
   - 関係者削除時は、Code Apps が削除前に Power Automate を呼び出して `Share` を Revoke し、成功後に `ds_participant` を削除
 
 ### 8.5 関係者参加と通知
 
-- 申請者・判断者は申請作成時に自動で `ds_participant` に登録
+- 申請者・判断者は申請作成時に自動で `ds_participant` に登録（それぞれ Applicant / Decider ロール）
 - メンションだけでは `ds_participant` への自動追加や `Share` 付与は行わない
-- 関係者として閲覧権を付与する場合は、申請詳細の関係者追加操作で `ds_participant` を作成し、`Participant_OnCreated_GrantAccess` で対象申請を共有する
-- 関係者の追加権限: 申請者・判断者・共同判断者のみ（UI 表示制御は未実装）
+- 関係者として閲覧権を付与する場合は、申請詳細の関係者追加操作で `ds_participant` を Contributor ロールで作成し、`Participant_OnCreated_GrantAccess` で対象申請を共有する
+- 関係者追加時は `addParticipantWithMention` メソッドが System メッセージと Mention を作成し、追加対象者に通知する。Mention の `ownerid` は target ユーザーに設定され、本人が既読化できるようにしている
+- マスタ管理（`ds_category`, `ds_decisionoption` の編集）は `ds_Admin` ロール保持者のみ。サイドバー表示と `/masters` ルートガードで二重に制御。Dataverse レベルでも非 Admin は Read+AppendTo のみ
 
 ### 8.6 別テナントへのソリューション移送
 

@@ -53,6 +53,17 @@ APPLICANT_OWNED = table_defaults(
     Share="Basic",
 )
 
+# 関係者追加時にメンションを target ユーザー所有として作成するため、Assign 権限が必要。
+MENTION_WRITABLE = table_defaults(
+    Create="Basic",
+    Read="Basic",
+    Write="Basic",
+    Append="Basic",
+    AppendTo="Basic",
+    Share="Basic",
+    Assign="Basic",
+)
+
 APPLICANT_READ_OWNED = table_defaults(Read="Basic", AppendTo="Basic")
 
 DECIDER_CONTEXT_READ = table_defaults(Read="Global", AppendTo="Global")
@@ -77,6 +88,7 @@ ROLE_DEFINITIONS = [
             f"{PREFIX}_category": MASTER_READ_ONLY,
             f"{PREFIX}_decisionoption": MASTER_READ_ONLY,
             f"{PREFIX}_decision": APPLICANT_READ_OWNED,
+            f"{PREFIX}_mention": MENTION_WRITABLE,
         },
     },
     {
@@ -87,7 +99,7 @@ ROLE_DEFINITIONS = [
             f"{PREFIX}_category": MASTER_READ_ONLY,
             f"{PREFIX}_decisionoption": MASTER_READ_ONLY,
             f"{PREFIX}_message": DECIDER_OWNED_WRITE | {"Read": "Global"},
-            f"{PREFIX}_mention": DECIDER_OWNED_WRITE | {"Read": "Global"},
+            f"{PREFIX}_mention": MENTION_WRITABLE | {"Read": "Global"},
             f"{PREFIX}_participant": table_defaults(Create="Basic", Read="Global", Write="Basic", Delete="Basic", Append="Basic", AppendTo="Global", Share="Basic"),
             f"{PREFIX}_decision": DECIDER_OWNED_WRITE,
         },

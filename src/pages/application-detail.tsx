@@ -9,7 +9,7 @@ import {
   UserPlus,
 } from "lucide-react";
 
-import { FormColumns, FormModal, FormSection } from "@/components/form-modal";
+import { FormModal, FormSection } from "@/components/form-modal";
 import { OperationWaitOverlay } from "@/components/operation-wait-overlay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,17 +27,18 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  useAddParticipantWithMention,
   useApplication,
   useCategories,
   useCreateDecision,
   useCreateMention,
   useCreateMessage,
-  useCreateParticipant,
   useCurrentSystemUser,
   useDeleteParticipant,
   useDecisionOptions,
   useDecisions,
   useGenerateAiDecision,
+  useMentionsByMessage,
   useMessages,
   useParticipants,
   useResources,
@@ -46,11 +47,9 @@ import {
 import {
   ApplicationStage,
   MessageKind,
-  ParticipantRole,
   participantRoleLabels,
   stageMeta,
   type Participant,
-  type ParticipantRoleValue,
 } from "@/types/decisionflow";
 import {
   canDecideApplication,
@@ -59,7 +58,6 @@ import {
   normalizeApplicationStage,
   normalizeGuid,
   validateMentionInput,
-  validateParticipantInput,
 } from "@/lib/decisionflow-utils";
 import {
   formatAiDecisionUpdatedAt,
@@ -75,6 +73,7 @@ export default function ApplicationDetailPage() {
   const { data: categories = [] } = useCategories();
   const { data: users = [] } = useSystemUsers();
   const { data: messages = [] } = useMessages(id);
+  const { data: mentionsByMessage } = useMentionsByMessage(id);
   const { data: resources = [] } = useResources(id);
   const { data: participants = [] } = useParticipants(id);
   const { data: decisions = [] } = useDecisions(id);
@@ -83,7 +82,7 @@ export default function ApplicationDetailPage() {
   const createMessage = useCreateMessage();
   const createMention = useCreateMention();
   const createDecision = useCreateDecision();
-  const createParticipant = useCreateParticipant();
+  const addParticipant = useAddParticipantWithMention();
   const deleteParticipant = useDeleteParticipant();
   const generateAiDecision = useGenerateAiDecision();
   const [messageBody, setMessageBody] = useState("");
@@ -92,9 +91,6 @@ export default function ApplicationDetailPage() {
   const [rationale, setRationale] = useState("");
   const [isParticipantFormOpen, setIsParticipantFormOpen] = useState(false);
   const [participantUserId, setParticipantUserId] = useState("");
-  const [participantRole, setParticipantRole] = useState<ParticipantRoleValue>(
-    ParticipantRole.Contributor,
-  );
   const [participantToDelete, setParticipantToDelete] =
     useState<Participant | null>(null);
 
@@ -144,10 +140,6 @@ export default function ApplicationDetailPage() {
       value: user.systemuserid,
       label: user.fullname || user.internalemailaddress || "名前なし",
     }));
-  const participantRoleOptions = Object.values(ParticipantRole).map((role) => ({
-    value: String(role),
-    label: participantRoleLabels[role],
-  }));
   const mentionTargetOptions = users
     .filter(
       (user) =>
@@ -288,27 +280,26 @@ export default function ApplicationDetailPage() {
 
   const resetParticipantForm = () => {
     setParticipantUserId("");
-    setParticipantRole(ParticipantRole.Contributor);
   };
 
   const handleAddParticipant = () => {
-    if (!id) return;
-    const validation = validateParticipantInput({
-      userId: participantUserId,
-      role: participantRole,
-    });
-    if (!validation.valid) {
-      toast.error(Object.values(validation.fieldErrors)[0]);
+    if (!id || !systemUserId) return;
+    if (!participantUserId.trim()) {
+      toast.error("ユーザーを選択してください");
       return;
     }
     const userName = userMap.get(participantUserId) ?? "関係者";
-    createParticipant.mutate(
+    const addedByUserName = userMap.get(systemUserId) ?? "ユーザー";
+    addParticipant.mutate(
       {
-        ds_name: `${application.ds_name} - ${userName}`,
-        ds_role: participantRole,
-        _ds_applicationid_value: id,
-        _ds_userid_value: participantUserId,
-        _ds_addedbyid_value: systemUserId ?? undefined,
+        application: {
+          ds_applicationid: application.ds_applicationid,
+          ds_name: application.ds_name,
+        },
+        userId: participantUserId,
+        userName,
+        addedByUserId: systemUserId,
+        addedByUserName,
       },
       {
         onSuccess: () => {
@@ -425,26 +416,50 @@ export default function ApplicationDetailPage() {
               <CardTitle className="text-base">会話スレッド</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {messages.map((message) => (
-                <div
-                  key={message.ds_messageid}
-                  className="rounded-md border p-3"
-                >
-                  <div className="mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span>
-                      {message._createdby_value
-                        ? (userMap.get(message._createdby_value) ?? "")
-                        : "システム"}
-                    </span>
-                    <span>
-                      {message.createdon
-                        ? new Date(message.createdon).toLocaleString("ja-JP")
-                        : ""}
-                    </span>
+              {messages.map((message) => {
+                const messageMentions =
+                  mentionsByMessage?.get(message.ds_messageid) ?? [];
+                const mentionTargets = messageMentions
+                  .map((m) =>
+                    m._ds_targetuserid_value
+                      ? userMap.get(m._ds_targetuserid_value)
+                      : undefined,
+                  )
+                  .filter((name): name is string => Boolean(name));
+                return (
+                  <div
+                    key={message.ds_messageid}
+                    className="rounded-md border p-3"
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span>
+                        {message._createdby_value
+                          ? (userMap.get(message._createdby_value) ?? "")
+                          : "システム"}
+                      </span>
+                      <span>
+                        {message.createdon
+                          ? new Date(message.createdon).toLocaleString("ja-JP")
+                          : ""}
+                      </span>
+                    </div>
+                    {mentionTargets.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {mentionTargets.map((name, index) => (
+                          <Badge
+                            key={`${message.ds_messageid}-mention-${index}`}
+                            variant="secondary"
+                            className="text-[10px]"
+                          >
+                            @{name}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-sm leading-6">{message.ds_body}</p>
                   </div>
-                  <p className="text-sm leading-6">{message.ds_body}</p>
-                </div>
-              ))}
+                );
+              })}
               <div className="space-y-2 pt-2">
                 <Textarea
                   value={messageBody}
@@ -483,8 +498,16 @@ export default function ApplicationDetailPage() {
           {resources.map((resource) => (
             <Card key={resource.ds_applicationresourceid}>
               <CardContent className="space-y-2 p-4">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium">{resource.ds_name}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {resource._createdby_value
+                      ? (userMap.get(resource._createdby_value) ?? "")
+                      : ""}
+                    {resource.createdon
+                      ? ` ・ ${new Date(resource.createdon).toLocaleString("ja-JP")}`
+                      : ""}
+                  </span>
                 </div>
                 {resource.ds_description && (
                   <p className="text-sm text-muted-foreground">
@@ -737,41 +760,19 @@ export default function ApplicationDetailPage() {
         description="申請に参加するユーザーと役割を登録します。"
         onSave={handleAddParticipant}
         saveLabel="追加"
-        isSaving={createParticipant.isPending}
+        isSaving={addParticipant.isPending}
       >
         <FormSection title="関係者">
-          <FormColumns columns={2}>
-            <div className="space-y-2">
-              <Label>ユーザー *</Label>
-              <Combobox
-                options={availableUserOptions}
-                value={participantUserId}
-                onValueChange={setParticipantUserId}
-                placeholder="ユーザーを選択"
-                searchPlaceholder="ユーザーを検索"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>役割 *</Label>
-              <Select
-                value={String(participantRole)}
-                onValueChange={(value) =>
-                  setParticipantRole(Number(value) as ParticipantRoleValue)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="役割" />
-                </SelectTrigger>
-                <SelectContent>
-                  {participantRoleOptions.map((role) => (
-                    <SelectItem key={role.value} value={role.value}>
-                      {role.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </FormColumns>
+          <div className="space-y-2">
+            <Label>ユーザー *</Label>
+            <Combobox
+              options={availableUserOptions}
+              value={participantUserId}
+              onValueChange={setParticipantUserId}
+              placeholder="ユーザーを選択"
+              searchPlaceholder="ユーザーを検索"
+            />
+          </div>
         </FormSection>
       </FormModal>
 

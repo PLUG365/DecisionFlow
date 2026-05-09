@@ -1,5 +1,65 @@
 # DecisionFlow Migrations
 
+## 2026-05-09: 関係者ロールの簡素化と閲覧範囲の修正
+
+Status: Applied 2026-05-09
+
+### 背景（ロール簡素化 + Cascade Share）
+
+関係者の役割を「申請者 / 判断者 / 関係者」の3種に簡素化した。`CoDecider`(共同判断者) と `Observer`(オブザーバー) は使われていなかったため廃止。関係者タブから追加するときは役割選択 UI を排除し、常に Contributor (関係者) として登録する。
+
+また、関係者として共有された申請の子レコード（他の関係者・資料・コメント等）が見えない不具合を修正するため、`ds_application` から子テーブルへのリレーションシップに `Cascade Share` を設定した。
+
+### 対象（ロール簡素化 + Cascade Share）
+
+- `ds_participant.ds_role` の Choice 値
+  - `100000002` CoDecider 削除
+  - `100000004` Observer 削除
+- リレーションシップの Cascade 設定変更（Share / Unshare → Cascade）
+  - `ds_participant_ds_application`
+  - `ds_message_ds_application`
+  - `ds_decision_ds_application`
+  - `ds_applicationresource_ds_application`
+  - `ds_mention_ds_message`（連鎖用）
+
+### 実行手順（ロール簡素化 + Cascade Share）
+
+```powershell
+py scripts/migrate_remove_unused_roles.py
+py scripts/migrate_cascade_share.py
+```
+
+### 注意（ロール簡素化 + Cascade Share）
+
+- `migrate_remove_unused_roles.py` は CoDecider/Observer の既存レコードを Contributor に変換してから Choice 値を削除する。
+- `migrate_cascade_share.py` 適用後、既存の申請レコードと既に追加済みの関係者については、Code Apps で関係者を一度削除→再追加するか、Power Automate UI で `Participant_OnCreated_GrantAccess` を手動実行して共有を再付与する必要がある（Cascade Share は新規共有時にのみ適用されるため）。
+
+## 2026-05-09: ds_mention に Assign 権限追加
+
+Status: Applied 2026-05-09
+
+### 背景（mention Assign）
+
+関係者追加時に `addParticipantWithMention` が作成するメンションを target ユーザー所有として登録するため、`ds_Applicant` / `ds_Decider` ロールに `ds_mention` テーブルへの `Assign` (Basic) 権限を追加した。これにより、メンションされた本人がメンションを既読化できるようになる。
+
+### 対象（mention Assign）
+
+- ロール `ds_Applicant`: `ds_mention` の Assign=Basic 追加
+- ロール `ds_Decider`: `ds_mention` の Assign=Basic 追加
+
+### 実行手順（mention Assign）
+
+```powershell
+py scripts/setup_security_roles.py
+```
+
+スクリプトはべき等。既存ロールに不足している Privilege のみ追加する。
+
+### 注意（mention Assign）
+
+- 過去に作成済みのメンションは creator 所有のままなので、本人が既読化できない。新規メンションから正常動作する。
+- 古いメンションを正常化する場合は、Dataverse UI または PowerShell で `ownerid` を target ユーザーへ手動移管する。
+
 ## 2026-05-03: 旧 AI 要約メタデータ cleanup
 
 Status: Applied 2026-05-03
