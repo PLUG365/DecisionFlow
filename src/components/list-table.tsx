@@ -212,7 +212,7 @@ export function ListTable<T extends Record<string, unknown>>({
 
         {/* テーブル */}
         <div className="rounded-md border">
-          <Table>
+          <Table className="min-w-[640px]">
             <TableHeader>
               <TableRow>
                 {columns.map((column) => (
