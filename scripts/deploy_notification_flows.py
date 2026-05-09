@@ -279,7 +279,7 @@ def _app_link_lines(application_id_expression: str) -> list[str]:
     return [f"申請を開く: <a href=\"{href}\">申請詳細ページ</a>"]
 
 
-def _assistant_link_lines(title_expression: str, application_id_expression: str | None = None) -> list[str]:
+def _assistant_link_lines(title_expression: str) -> list[str]:
     if not COPILOT_TEAMS_APP_ID:
         return []
 
@@ -288,11 +288,6 @@ def _assistant_link_lines(title_expression: str, application_id_expression: str 
         title_expression,
         "'」について、概要・関連資料・過去類似案件・推奨判断と判断コメントドラフトを教えてください。'",
     ]
-    if DECISIONFLOW_APP_BASE_URL and application_id_expression:
-        message_args.extend([
-            f"' アプリリンク: {DECISIONFLOW_APP_BASE_URL}/applications/'",
-            application_id_expression,
-        ])
 
     message_expression = f"concat({', '.join(message_args)})"
     href = (
@@ -341,10 +336,7 @@ def build_application_submitted_clientdata(connection_refs: dict[str, str], pref
             "希望期限: @{coalesce(triggerOutputs()?['body/ds_duedate'],'未設定')}",
             "本文: @{coalesce(triggerOutputs()?['body/ds_body'],'')}",
             *_app_link_lines("triggerOutputs()?['body/ds_applicationid']"),
-            *_assistant_link_lines(
-                "triggerOutputs()?['body/ds_name']",
-                "triggerOutputs()?['body/ds_applicationid']",
-            ),
+            *_assistant_link_lines("triggerOutputs()?['body/ds_name']"),
         ],
     )
     teams_body = "@{concat('<b>申請が提出されました</b><br>申請: ', triggerOutputs()?['body/ds_name'])}"
@@ -509,10 +501,7 @@ def build_stalled_reminder_clientdata(connection_refs: dict[str, str], prefix: s
             f"本文: @{{coalesce(items('{foreach_name}')?['{prefix}_body'],'')}}",
             "停滞条件: 希望期限超過、または提出日時から3日以上経過しています。",
             *_app_link_lines(f"items('{foreach_name}')?['{prefix}_applicationid']"),
-            *_assistant_link_lines(
-                f"items('{foreach_name}')?['{prefix}_name']",
-                f"items('{foreach_name}')?['{prefix}_applicationid']",
-            ),
+            *_assistant_link_lines(f"items('{foreach_name}')?['{prefix}_name']"),
         ],
     )
     teams_body = f"@{{concat('<b>判断待ちリマインド</b><br>申請: ', items('{foreach_name}')?['{prefix}_name'])}}"
