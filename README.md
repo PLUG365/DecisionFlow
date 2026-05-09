@@ -290,21 +290,7 @@ Teams 公開後は、表示されたアプリマニフェストから以下を `
 py scripts/deploy_notification_flows.py
 ```
 
-### 12. 既存環境への運用変更マイグレーション（必要時のみ）
-
-以前のバージョンからアップグレードする環境では、以下のマイグレーションを 1 回だけ実行します。新規セットアップ環境では不要です。
-
-```powershell
-# 関係者ロールの簡素化: CoDecider/Observer Choice 値を削除し、既存レコードは Contributor(関係者) に変換
-py scripts/migrate_remove_unused_roles.py
-
-# 関係者の閲覧範囲修正: ds_application から子テーブルへ Cascade Share を設定
-py scripts/migrate_cascade_share.py
-```
-
-`migrate_cascade_share.py` 実行後、既存の申請レコードと関係者については Code Apps で関係者を一度削除→再追加するか、Power Automate UI で `Participant_OnCreated_GrantAccess` を手動実行して共有を再付与してください。
-
-### 13. 動作確認を行う
+### 12. 動作確認を行う
 
 最低限、以下は確認してください。
 

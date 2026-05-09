@@ -83,9 +83,7 @@ MESSAGE_KIND_OPTIONS = [
 PARTICIPANT_ROLE_OPTIONS = [
     (100000000, "Applicant"),
     (100000001, "Decider"),
-    (100000002, "CoDecider"),
     (100000003, "Contributor"),
-    (100000004, "Observer"),
 ]
 
 TABLES = [
@@ -179,20 +177,23 @@ TABLES = [
     },
 ]
 
+# cascade_share=True を指定したリレーションは、関係者に申請が共有されたとき
+# 子レコードも自動的に共有される（Cascade Share）。これにより関係者が他の関係者・
+# 資料・コメント・判断・メンションを閲覧できる。
 LOOKUPS = [
     {"schema": f"{PREFIX}_application_{PREFIX}_category", "referencing": f"{PREFIX}_application", "referenced": f"{PREFIX}_category", "lookup_attr": f"{PREFIX}_categoryid", "lookup_display": "カテゴリ"},
     {"schema": f"{PREFIX}_application_systemuser_decider", "referencing": f"{PREFIX}_application", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_deciderid", "lookup_display": "判断者"},
-    {"schema": f"{PREFIX}_message_{PREFIX}_application", "referencing": f"{PREFIX}_message", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請"},
+    {"schema": f"{PREFIX}_message_{PREFIX}_application", "referencing": f"{PREFIX}_message", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "cascade_share": True},
     {"schema": f"{PREFIX}_message_{PREFIX}_message_parent", "referencing": f"{PREFIX}_message", "referenced": f"{PREFIX}_message", "lookup_attr": f"{PREFIX}_parentmessageid", "lookup_display": "親メッセージ"},
-    {"schema": f"{PREFIX}_mention_{PREFIX}_message", "referencing": f"{PREFIX}_mention", "referenced": f"{PREFIX}_message", "lookup_attr": f"{PREFIX}_messageid", "lookup_display": "メッセージ"},
+    {"schema": f"{PREFIX}_mention_{PREFIX}_message", "referencing": f"{PREFIX}_mention", "referenced": f"{PREFIX}_message", "lookup_attr": f"{PREFIX}_messageid", "lookup_display": "メッセージ", "cascade_share": True},
     {"schema": f"{PREFIX}_mention_systemuser_target", "referencing": f"{PREFIX}_mention", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_targetuserid", "lookup_display": "対象ユーザー"},
-    {"schema": f"{PREFIX}_participant_{PREFIX}_application", "referencing": f"{PREFIX}_participant", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請"},
+    {"schema": f"{PREFIX}_participant_{PREFIX}_application", "referencing": f"{PREFIX}_participant", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "cascade_share": True},
     {"schema": f"{PREFIX}_participant_systemuser_user", "referencing": f"{PREFIX}_participant", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_userid", "lookup_display": "ユーザー"},
     {"schema": f"{PREFIX}_participant_systemuser_addedby", "referencing": f"{PREFIX}_participant", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_addedbyid", "lookup_display": "追加者"},
-    {"schema": f"{PREFIX}_decision_{PREFIX}_application", "referencing": f"{PREFIX}_decision", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請"},
+    {"schema": f"{PREFIX}_decision_{PREFIX}_application", "referencing": f"{PREFIX}_decision", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "cascade_share": True},
     {"schema": f"{PREFIX}_decision_systemuser_decider", "referencing": f"{PREFIX}_decision", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_deciderid", "lookup_display": "判断者"},
     {"schema": f"{PREFIX}_decision_{PREFIX}_decisionoption", "referencing": f"{PREFIX}_decision", "referenced": f"{PREFIX}_decisionoption", "lookup_attr": f"{PREFIX}_decisionoptionid", "lookup_display": "判断結果"},
-    {"schema": f"{PREFIX}_applicationresource_{PREFIX}_application", "referencing": f"{PREFIX}_applicationresource", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請"},
+    {"schema": f"{PREFIX}_applicationresource_{PREFIX}_application", "referencing": f"{PREFIX}_applicationresource", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "cascade_share": True},
 ]
 
 
@@ -389,6 +390,16 @@ def create_lookups() -> None:
                     "RequiredLevel": {"Value": "None"},
                 },
             }
+            if l.get("cascade_share"):
+                body["CascadeConfiguration"] = {
+                    "Assign": "NoCascade",
+                    "Delete": "RemoveLink",
+                    "Merge": "NoCascade",
+                    "Reparent": "NoCascade",
+                    "Share": "Cascade",
+                    "Unshare": "Cascade",
+                    "RollupView": "NoCascade",
+                }
             api_post("RelationshipDefinitions", body, solution=SOLUTION_NAME)
             print(f"  Created lookup: {l['lookup_attr']}")
 
