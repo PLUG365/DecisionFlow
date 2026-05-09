@@ -289,7 +289,7 @@ export function InlineEditTable<T extends { id: string | number }>({
 
         {/* テーブル */}
         <div className="rounded-md border">
-          <Table>
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
                 {columns.map((column) => (

@@ -78,10 +78,10 @@ function LayoutContent({ showHeader = true }: LayoutProps) {
 
         {/* メインコンテンツエリア */}
         <div
-          className={`flex-1 flex flex-col transition-all duration-300 relative z-0 ${isCollapsed ? "md:ml-16" : "md:ml-64"}`}
+          className={`flex-1 flex flex-col transition-all duration-300 relative z-0 min-w-0 ${isCollapsed ? "md:ml-16" : "md:ml-64"}`}
         >
-          <main className="flex-1 flex flex-col overflow-visible">
-            <div className="flex-1 p-6 max-w-full">
+          <main className="flex-1 flex flex-col overflow-visible min-w-0">
+            <div className="flex-1 p-6 max-w-full min-w-0">
               <Outlet />
             </div>
           </main>

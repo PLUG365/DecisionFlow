@@ -70,7 +70,8 @@ import { toast } from "sonner";
 export default function ApplicationDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { data: application } = useApplication(id);
+  const { data: application, isLoading: isApplicationLoading } =
+    useApplication(id);
   const { data: categories = [] } = useCategories();
   const { data: users = [] } = useSystemUsers();
   const { data: messages = [] } = useMessages(id);
@@ -169,6 +170,17 @@ export default function ApplicationDetailPage() {
       ),
     [decisionOptions],
   );
+
+  if (isApplicationLoading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!application) {
     return (
