@@ -16,13 +16,13 @@
   - 固定期限（24h）: 有効期限管理の実装・運用コストが増えるため不採用。
   - 無期限有効: 古いカードからの確定リスクが増えるため不採用。
 
-## Decision 3: 確定入力は判断結果のみ必須
+## Decision 3: 確定入力は判断選択肢と判断理由を必須
 
-- Decision: 必須は判断結果のみ。コメントと理由コードは任意入力。
-- Rationale: チャット上の操作負荷を最小化し、SC-001（60秒以内）に寄与する。
+- Decision: Code Apps と同じく、判断選択肢（承認・却下・差し戻しの3択）と判断理由の2項目を必須入力にする。
+- Rationale: Code Apps と Copilot Studio の入力契約を揃えることで、判断履歴 (`ds_decision`) のデータ品質と後続の Power Automate 整合処理を同じ前提で扱える。
 - Alternatives considered:
-  - コメント必須: 入力負荷上昇による完了率低下リスク。
-  - 理由コード必須: 初期導入時の運用負荷が高く、不達時の失敗率上昇が懸念。
+  - 判断選択肢のみ必須: Code Apps 由来の判断履歴と情報量が揃わず、監査・通知内容に差が出るため不採用。
+  - 自由入力の判断結果: 既存判断選択肢マスタと分岐し、ステージ判定（差し戻し）を安定して導出できないため不採用。
 
 ## Decision 4: 結果共有は案件詳細画面 + 既存通知フロー
 
@@ -51,11 +51,20 @@
 
 ### Dataverse 更新単位
 
-- Decision: 確定時に `ds_application` のステージ更新と `ds_decision` レコード作成（または同等履歴）を同一処理フローで実施する。
-- Rationale: 画面整合性（案件状態）と監査整合性（判断履歴）を同時に満たす。
+- Decision: `ds_decision` 作成を判断確定の正本イベントとし、Power Automate の判断後整合フローが `ds_application` のステージ更新・通知・表示整合を自動実行する。
+- Rationale: Code Apps と Copilot Studio がそれぞれ同じ案件状態更新ロジックを持つと分岐・重複・競合が起きやすい。判断履歴作成イベントに集約すると、既存 Code Apps からの判断作成と Copilot Studio カードからの判断作成を同じ後続処理で整合できる。
 - Alternatives considered:
   - 案件状態のみ更新: 監査証跡が不足。
-  - 履歴のみ作成: UI 反映遅延・不整合が発生。
+  - カード処理内で案件状態も直接更新: Code Apps 側と二重実装になり、差し戻し等のステージ判定が分岐するため不採用。
+  - 履歴のみ作成して後続処理なし: UI 反映遅延・不整合が発生。
+
+### Code Apps / Copilot Studio 整合パターン
+
+- Decision: Code Apps は既存の判断作成 UX を維持し、Copilot Studio は Adaptive Card submit から `ds_decision` を作成する。両経路の後続整合は `ds_decision` 作成トリガーの Power Automate フローに集約する。
+- Rationale: ユーザー体験ごとの入口は分けつつ、案件状態・通知・監査の最終整合を Dataverse イベント駆動で揃えられる。
+- Alternatives considered:
+  - Code Apps からも Copilot 用アクションを呼ぶ: 既存画面の責務が増え、Code Apps 側にチャット用処理を持ち込むため不採用。
+  - Copilot 側だけ専用確定処理を持つ: Code Apps 経路との差異が残るため不採用。
 
 ## Testing Strategy Decisions
 
