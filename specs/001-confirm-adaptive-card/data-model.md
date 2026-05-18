@@ -10,7 +10,7 @@
   - 既存の AI 判断補助列群（参照のみ）
 - Validation rules:
   - 確定処理の対象は `ds_stage=Submitted` のみ
-  - `Deleted/Cancelled` 相当は確定不可
+  - 削除済み、参照不可、または `Submitted` 以外の案件は確定不可
 - State transitions:
   - `Submitted -> Decided`（判断後整合フローが、差し戻し以外の判断履歴作成時に反映）
   - `Submitted -> Draft`（判断後整合フローが、差し戻し判断履歴作成時に反映）
@@ -54,6 +54,24 @@
   - 既に同じステージへ整合済みの場合は冪等に成功扱いとする
   - Code Apps 由来と Copilot Studio 由来を分岐させず、同一ルールで処理する
 
+## Entity: 判断カード発行 (`ds_decisioncard`)
+
+- Purpose: Adaptive Card の発行・再発行・消費状態を永続化し、古いカードの再利用を防ぐ
+- Key fields:
+  - `ds_decisioncardid` (PK)
+  - `ds_applicationid@odata.bind` (FK to application)
+  - `ds_cardinstanceid` (string, alternate key candidate)
+  - `ds_actoraadobjectid` / `ds_actorupn`
+  - `ds_status` (`Issued|Consumed|Superseded|Expired`)
+  - `ds_issuedat`
+  - `ds_consumedat`
+  - `ds_supersededat`
+- Validation rules:
+  - 同一案件・同一判断者に新しいカードを発行する場合、既存の `Issued` カードを `Superseded` にする
+  - submit 時は `cardInstanceId` が対象案件・対象判断者の最新 `Issued` レコードと一致する場合のみ受理する
+  - 成功時は対象カードを `Consumed` に更新する
+  - `Superseded` / `Consumed` / `Expired` のカード submit は `already_processed` として扱う
+
 ## Entity: 判断選択肢 (`ds_decisionoption`)
 
 - Purpose: 確定時に選択される判断結果マスタ
@@ -94,6 +112,7 @@
 ## Relationships
 
 - `ds_application (1) -> (N) ds_decision`
+- `ds_application (1) -> (N) ds_decisioncard`
 - `ds_decisionoption (1) -> (N) ds_decision`
 - `ds_application (1) -> (N) ds_participant`
 
@@ -104,6 +123,7 @@
 - Rule 3: 同一案件の重複確定は後続拒否（already processed）
 - Rule 4: 同一 `cardInstanceId` の submit は一度だけ受理
 - Rule 5: Code Apps と Copilot Studio 由来の判断履歴は同じ整合フローで処理
+- Rule 6: 同一案件でカードを再発行した場合、古い `cardInstanceId` は判断前でも無効化する
 
 ## Audit & Traceability
 
