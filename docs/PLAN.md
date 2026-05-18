@@ -72,7 +72,7 @@
 - [x] マスタ追加/更新
 - [x] 申請者本人向けの編集操作表示
 - [x] Choice フィルタ
-- [ ] Power Apps 実機で SDK postMessage、リンク登録、申請削除、関係者追加/削除、セキュリティロールの動作を確認する
+- [x] Power Apps 実機で SDK postMessage、リンク登録、申請削除、関係者追加/削除、セキュリティロールの動作を確認する
 
 ### Phase 2.5: Power Automate
 
@@ -83,8 +83,8 @@
 - [x] `Application_GenerateAiDecision` を設計・実装する
 - [x] `Participant_OnCreated_GrantAccess` を設計・実装する
 - [x] `Participant_PreDelete_RevokeAccess` を設計・実装する
-- [ ] 関係者追加後に、申請者/判断者以外の関係者が対象申請を閲覧できることを実機確認する
-- [ ] 関係者削除後に、対象ユーザーの申請閲覧権限が除外されることを実機確認する
+- [x] 関係者追加後に、申請者/判断者以外の関係者が対象申請を閲覧できることを実機確認する
+- [x] 関係者削除後に、対象ユーザーの申請閲覧権限が除外されることを実機確認する
 
 ### Phase 3: Copilot Studio
 
@@ -133,11 +133,11 @@
 
 ### 5.2 公開チェックリスト
 
-- [ ] `.gitignore` 整備
-- [ ] `.env.example` を作成（キー名のみ）
-- [ ] README にセットアップ手順を記載
-- [ ] スクリプト・コードにテナント ID / ユーザー ID / メールアドレスがハードコードされていないか確認
-- [ ] デモデータの個人情報・社内固有名詞を `example.com` / 架空名に置換
+- [x] `.gitignore` 整備
+- [x] `.env.example` を作成（キー名のみ）
+- [x] README にセットアップ手順を記載
+- [x] スクリプト・コードにテナント ID / ユーザー ID / メールアドレスがハードコードされていないか確認
+- [x] デモデータの個人情報・社内固有名詞を `example.com` / 架空名に置換
 - [ ] `git secrets` または GitHub の Push Protection でシークレット流出を防止
 - [ ] 過去コミットに機密情報が含まれていないか確認
 - [ ] LICENSE を明記（MIT）
