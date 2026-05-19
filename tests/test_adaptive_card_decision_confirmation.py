@@ -199,6 +199,29 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         self.assertEqual(payload["applicationId"], "application-1")
         self.assertEqual(payload["actor"]["upn"], "decider@example.com")
 
+    def test_shared_validation_helpers_reject_missing_or_invalid_submit_values(self):
+        constants = importlib.import_module("scripts.decision_confirmation_constants")
+
+        valid_payload = {
+            "applicationId": "application-1",
+            "decisionOption": "承認",
+            "rationale": "承認します",
+            "cardInstanceId": "card-1",
+            "actor": {"aadObjectId": "aad-1", "upn": "decider@example.com"},
+        }
+
+        for field in ["applicationId", "decisionOption", "rationale", "cardInstanceId"]:
+            payload = dict(valid_payload)
+            payload[field] = " "
+            with self.subTest(field=field):
+                with self.assertRaises(ValueError):
+                    constants.validate_submit_payload(payload)
+
+        with self.assertRaises(ValueError):
+            constants.validate_submit_payload({**valid_payload, "decisionOption": "条件付き承認"})
+        with self.assertRaises(ValueError):
+            constants.validate_submit_payload({**valid_payload, "actor": {"aadObjectId": "", "upn": ""}})
+
     def test_deployment_script_exposes_copilot_topic_validation_spike(self):
         deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
 
@@ -273,6 +296,7 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         create_card = actions["Create_decisioncard"]
         self.assertEqual(create_card["inputs"]["host"]["operationId"], "CreateRecord")
         self.assertEqual(create_card["inputs"]["parameters"]["entityName"], "ds_decisioncards")
+        self.assertEqual(create_card["runAfter"], {"Supersede_prior_issued_decisioncards": ["Succeeded"]})
         self.assertEqual(create_card["inputs"]["parameters"]["item"]["ds_status"], 100000000)
         self.assertIn("ds_name", create_card["inputs"]["parameters"]["item"])
         self.assertIn("ds_cardinstanceid", create_card["inputs"]["parameters"]["item"])
@@ -286,6 +310,29 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         self.assertIn("cardInstanceId", body_json)
         self.assertIn("applicationId", body_json)
         self.assertEqual(set(response["inputs"]["schema"]["properties"]), {"applicationId", "cardInstanceId"})
+
+    def test_issue_flow_supersedes_prior_issued_cards_for_same_application_and_actor(self):
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        clientdata = json.loads(deploy.build_issue_decision_card_clientdata())
+        actions = clientdata["properties"]["definition"]["actions"]
+
+        prior_cards = actions["List_prior_issued_decisioncards"]
+        self.assertEqual(prior_cards["inputs"]["host"]["operationId"], "ListRecords")
+        self.assertEqual(prior_cards["inputs"]["parameters"]["entityName"], "ds_decisioncards")
+        prior_filter = json.dumps(prior_cards["inputs"]["parameters"].get("$filter"), ensure_ascii=False)
+        self.assertIn("_ds_applicationid_value", prior_filter)
+        self.assertIn("ds_status eq 100000000", prior_filter)
+        self.assertIn("ds_actoraadobjectid", prior_filter)
+        self.assertIn("ds_actorupn", prior_filter)
+
+        supersede = actions["Supersede_prior_issued_decisioncards"]
+        self.assertEqual(supersede["type"], "Foreach")
+        self.assertEqual(supersede["foreach"], "@outputs('List_prior_issued_decisioncards')?['body/value']")
+        update_prior = supersede["actions"]["Supersede_prior_issued_decisioncard"]
+        self.assertEqual(update_prior["inputs"]["host"]["operationId"], "UpdateRecord")
+        self.assertEqual(update_prior["inputs"]["parameters"]["item"]["ds_status"], 100000002)
+        self.assertIn("ds_supersededat", update_prior["inputs"]["parameters"]["item"])
 
     def test_confirm_flow_uses_skills_trigger_and_consistent_agent_responses(self):
         deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
@@ -313,6 +360,56 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
             self.assertEqual(response.get("kind"), "Skills")
             self.assertEqual(set(response["inputs"]["schema"]["properties"]), expected_outputs)
             self.assertEqual(set(response["inputs"]["body"]), expected_outputs)
+
+    def test_confirm_flow_defines_forbidden_invalid_and_already_processed_responses(self):
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        clientdata = json.loads(deploy.build_confirm_decision_clientdata())
+        actions_json = json.dumps(clientdata["properties"]["definition"]["actions"], ensure_ascii=False)
+
+        self.assertIn("Return_forbidden_user_not_found", actions_json)
+        self.assertIn("Return_forbidden_not_decider", actions_json)
+        self.assertIn("Return_invalid_decision_option", actions_json)
+        self.assertIn("Return_invalid_application", actions_json)
+        self.assertIn("Return_invalid_empty_rationale", actions_json)
+        self.assertIn("Return_already_processed_card", actions_json)
+        self.assertIn("Return_already_processed", actions_json)
+
+    def test_deployment_prerequisite_validation_requires_environment_and_connection_refs(self):
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        self.assertEqual(
+            deploy.validate_deployment_prerequisites(
+                dataverse_url="https://example.crm.dynamics.com",
+                solution_name="DecisionSupport",
+                prefix="ds",
+                connection_names=["shared-connection"],
+                dataverse_connref="ds_shared_commondataserviceforapps",
+            ),
+            "shared-connection",
+        )
+        with self.assertRaises(RuntimeError):
+            deploy.validate_deployment_prerequisites(
+                dataverse_url="",
+                solution_name="DecisionSupport",
+                prefix="ds",
+                connection_names=["shared-connection"],
+            )
+        with self.assertRaises(RuntimeError):
+            deploy.validate_deployment_prerequisites(
+                dataverse_url="https://example.crm.dynamics.com",
+                solution_name="DecisionSupport",
+                prefix="ds",
+                connection_names=[],
+            )
+        with self.assertRaises(RuntimeError):
+            deploy.validate_deployment_prerequisites(
+                dataverse_url="https://example.crm.dynamics.com",
+                solution_name="DecisionSupport",
+                prefix="ds",
+                connection_names=["shared-connection"],
+                dataverse_connref="",
+            )
 
     def test_confirm_flow_validates_allowed_active_option_and_submitted_application(self):
         deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
@@ -391,13 +488,13 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         self.assertIn("azureactivedirectoryobjectid", user_filter)
         self.assertIn("actorAadObjectId", user_filter)
 
-        issued_card = find_action(actions, "List_issued_decisioncard")
+        issued_card = find_action(actions, "List_current_issued_decisioncard")
         self.assertEqual(issued_card["inputs"]["host"]["operationId"], "ListRecords")
         self.assertEqual(issued_card["inputs"]["parameters"]["entityName"], "ds_decisioncards")
         card_filter = json.dumps(issued_card["inputs"]["parameters"].get("$filter"), ensure_ascii=False)
-        self.assertIn("ds_cardinstanceid", card_filter)
-        self.assertIn("cardInstanceId", card_filter)
         self.assertIn("ds_status eq 100000000", card_filter)
+        self.assertIn("ds_actoraadobjectid", card_filter)
+        self.assertIn("ds_actorupn", card_filter)
 
         create_decision = find_action(actions, "Create_decision")
         create_item = create_decision["inputs"]["parameters"]["item"]
@@ -406,7 +503,28 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
 
         consume_card = find_action(actions, "Consume_decisioncard")
         self.assertNotEqual(consume_card["inputs"]["parameters"]["recordId"], "@triggerBody()?['decisionCardId']")
-        self.assertIn("List_issued_decisioncard", json.dumps(consume_card["inputs"]["parameters"], ensure_ascii=False))
+        self.assertIn("List_current_issued_decisioncard", json.dumps(consume_card["inputs"]["parameters"], ensure_ascii=False))
+
+    def test_confirm_flow_requires_current_issued_card_for_same_actor(self):
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        clientdata = json.loads(deploy.build_confirm_decision_clientdata())
+        actions = clientdata["properties"]["definition"]["actions"]
+
+        issued_card = find_action(actions, "List_current_issued_decisioncard")
+        self.assertEqual(issued_card["runAfter"], {"Validate_rationale_exists": ["Succeeded"]})
+        current_filter = json.dumps(issued_card["inputs"]["parameters"].get("$filter"), ensure_ascii=False)
+        self.assertIn("_ds_applicationid_value", current_filter)
+        self.assertIn("ds_status eq 100000000", current_filter)
+        self.assertIn("ds_actoraadobjectid", current_filter)
+        self.assertIn("ds_actorupn", current_filter)
+
+        validate_card = find_action(actions, "Validate_current_issued_card")
+        validate_json = json.dumps(validate_card, ensure_ascii=False)
+        self.assertIn("length(outputs('List_current_issued_decisioncard')?['body/value'])", validate_json)
+        self.assertIn("first(outputs('List_current_issued_decisioncard')?['body/value'])?['ds_cardinstanceid']", validate_json)
+        self.assertIn("triggerBody()?['cardInstanceId']", validate_json)
+        self.assertIn("Return_already_processed_card", validate_json)
 
     def test_script_declares_deployable_adaptive_card_tool_flows(self):
         deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")

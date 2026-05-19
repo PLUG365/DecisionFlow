@@ -228,6 +228,16 @@ def _return_and_stop(action_name: str, body: dict) -> dict:
     }
 
 
+def _actor_card_filter(status: int) -> str:
+    return (
+        f"@if(empty(triggerBody()?['actorAadObjectId']), "
+        f"concat('_{PREFIX}_applicationid_value eq ', triggerBody()?['applicationId'], "
+        f"' and {PREFIX}_actorupn eq ''', triggerBody()?['actorUpn'], ''' and {PREFIX}_status eq {status}'), "
+        f"concat('_{PREFIX}_applicationid_value eq ', triggerBody()?['applicationId'], "
+        f"' and {PREFIX}_actoraadobjectid eq ''', triggerBody()?['actorAadObjectId'], ''' and {PREFIX}_status eq {status}'))"
+    )
+
+
 def adaptive_card_topic_validation_spike() -> dict:
     return {
         "cardSchemaVersion": "1.5",
@@ -271,6 +281,27 @@ def build_issue_decision_card_clientdata(connection_refs: dict[str, str] | None 
             "runAfter": {},
             "inputs": "@guid()",
         },
+        "List_prior_issued_decisioncards": _list_records_action(
+            f"{PREFIX}_decisioncards",
+            _actor_card_filter(100000000),
+            f"{PREFIX}_decisioncardid,{PREFIX}_cardinstanceid,{PREFIX}_status,{PREFIX}_actoraadobjectid,{PREFIX}_actorupn",
+            {"Compose_cardInstanceId": ["Succeeded"]},
+        ),
+        "Supersede_prior_issued_decisioncards": {
+            "type": "Foreach",
+            "runAfter": {"List_prior_issued_decisioncards": ["Succeeded"]},
+            "foreach": "@outputs('List_prior_issued_decisioncards')?['body/value']",
+            "actions": {
+                "Supersede_prior_issued_decisioncard": _update_record_action(
+                    f"{PREFIX}_decisioncards",
+                    "@items('Supersede_prior_issued_decisioncards')?['ds_decisioncardid']",
+                    {
+                        f"{PREFIX}_status": 100000002,
+                        f"{PREFIX}_supersededat": "@utcNow()",
+                    },
+                )
+            },
+        },
         "Create_decisioncard": _create_record_action(
             f"{PREFIX}_decisioncards",
             {
@@ -282,7 +313,7 @@ def build_issue_decision_card_clientdata(connection_refs: dict[str, str] | None 
                 f"{PREFIX}_issuedat": "@utcNow()",
                 f"{PREFIX}_applicationid@odata.bind": "@concat('/ds_applications(', triggerBody()?['applicationId'], ')')",
             },
-            {"Compose_cardInstanceId": ["Succeeded"]},
+            {"Supersede_prior_issued_decisioncards": ["Succeeded"]},
         ),
         "Return_card_context": _response_action(
             {
@@ -323,7 +354,7 @@ def build_confirm_decision_clientdata(connection_refs: dict[str, str] | None = N
         ),
         "Consume_decisioncard": _update_record_action(
             f"{PREFIX}_decisioncards",
-            "@first(outputs('List_issued_decisioncard')?['body/value'])?['ds_decisioncardid']",
+            "@first(outputs('List_current_issued_decisioncard')?['body/value'])?['ds_decisioncardid']",
             {
                 f"{PREFIX}_status": 100000001,
                 f"{PREFIX}_consumedat": decided_at,
@@ -430,21 +461,31 @@ def build_confirm_decision_clientdata(connection_refs: dict[str, str] | None = N
                 )
             },
         },
-        "List_issued_decisioncard": _list_records_action(
+        "List_current_issued_decisioncard": _list_records_action(
             f"{PREFIX}_decisioncards",
-            f"@concat('_{PREFIX}_applicationid_value eq ', triggerBody()?['applicationId'], ' and {PREFIX}_cardinstanceid eq ''', triggerBody()?['cardInstanceId'], ''' and {PREFIX}_status eq 100000000')",
-            f"{PREFIX}_decisioncardid,{PREFIX}_cardinstanceid,{PREFIX}_status",
+            _actor_card_filter(100000000),
+            f"{PREFIX}_decisioncardid,{PREFIX}_cardinstanceid,{PREFIX}_status,{PREFIX}_actoraadobjectid,{PREFIX}_actorupn",
             {"Validate_rationale_exists": ["Succeeded"]},
         ),
-        "Validate_issued_card_found": {
+        "Validate_current_issued_card": {
             "type": "If",
-            "runAfter": {"List_issued_decisioncard": ["Succeeded"]},
-            "expression": {"greater": ["@length(outputs('List_issued_decisioncard')?['body/value'])", 0]},
+            "runAfter": {"List_current_issued_decisioncard": ["Succeeded"]},
+            "expression": {
+                "and": [
+                    {"greater": ["@length(outputs('List_current_issued_decisioncard')?['body/value'])", 0]},
+                    {
+                        "equals": [
+                            "@first(outputs('List_current_issued_decisioncard')?['body/value'])?['ds_cardinstanceid']",
+                            "@triggerBody()?['cardInstanceId']",
+                        ]
+                    },
+                ]
+            },
             "actions": {},
             "else": {
                 "actions": _return_and_stop(
-                    "Return_invalid_card",
-                    _confirm_response_body("invalid_target", "判断カードが無効、または既に使用済みです。"),
+                    "Return_already_processed_card",
+                    _confirm_response_body("already_processed", "判断カードが無効、または既に使用済みです。"),
                 )
             },
         },
@@ -452,7 +493,7 @@ def build_confirm_decision_clientdata(connection_refs: dict[str, str] | None = N
             f"{PREFIX}_decisions",
             f"@if(empty(outputs('Get_application')?['body/{PREFIX}_submittedat']), concat('_{PREFIX}_applicationid_value eq ', triggerBody()?['applicationId']), concat('_{PREFIX}_applicationid_value eq ', triggerBody()?['applicationId'], ' and {PREFIX}_decidedat ge ', outputs('Get_application')?['body/{PREFIX}_submittedat']))",
             f"{PREFIX}_decisionid,{PREFIX}_decidedat",
-            {"Validate_issued_card_found": ["Succeeded"]},
+            {"Validate_current_issued_card": ["Succeeded"]},
         ),
         "First_write_wins_check": {
             "type": "If",
@@ -532,6 +573,29 @@ def deploy_adaptive_card_tool_flows(deploy_flow_func: DeployFlow) -> dict[str, s
     return deployed
 
 
+def validate_deployment_prerequisites(
+    *,
+    dataverse_url: str,
+    solution_name: str,
+    prefix: str,
+    connection_names: list[str],
+    dataverse_connref: str | None = None,
+) -> str:
+    required_values = {
+        "DATAVERSE_URL": dataverse_url,
+        "SOLUTION_NAME": solution_name,
+        "PUBLISHER_PREFIX": prefix,
+    }
+    missing = [name for name, value in required_values.items() if not str(value or "").strip()]
+    if missing:
+        raise RuntimeError(f"必須環境値が不足しています: {', '.join(missing)}")
+    if not connection_names:
+        raise RuntimeError(f"Dataverse connection が見つかりません: {DATAVERSE_CONNECTOR}")
+    if dataverse_connref is not None and not dataverse_connref.strip():
+        raise RuntimeError(f"Dataverse connection reference が見つかりません: {DATAVERSE_CONNECTOR}")
+    return connection_names[0]
+
+
 def main() -> int:
     from scripts.deploy_notification_flows import (
         DATAVERSE_CONNECTOR as NOTIFICATION_DATAVERSE_CONNECTOR,
@@ -550,7 +614,13 @@ def main() -> int:
 
     print("\n=== Step 1: 接続検索 ===")
     environment_id = _read_environment_id()
-    connection_name = find_connections(environment_id, NOTIFICATION_DATAVERSE_CONNECTOR)[0]
+    connection_names = find_connections(environment_id, NOTIFICATION_DATAVERSE_CONNECTOR)
+    connection_name = validate_deployment_prerequisites(
+        dataverse_url=DATAVERSE_URL,
+        solution_name=SOLUTION_NAME,
+        prefix=PREFIX,
+        connection_names=connection_names,
+    )
     print(f"  {DATAVERSE_CONNECTOR}: {connection_name}")
 
     print("\n=== Step 2: 接続参照作成/更新 ===")
@@ -558,6 +628,13 @@ def main() -> int:
         NOTIFICATION_DATAVERSE_CONNECTOR,
         connection_name,
         "DecisionFlow Dataverse connection",
+    )
+    validate_deployment_prerequisites(
+        dataverse_url=DATAVERSE_URL,
+        solution_name=SOLUTION_NAME,
+        prefix=PREFIX,
+        connection_names=connection_names,
+        dataverse_connref=dataverse_connref,
     )
     connection_refs = {DATAVERSE_CONNECTOR: dataverse_connref}
 
