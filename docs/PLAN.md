@@ -1,8 +1,8 @@
 # DecisionFlow プロジェクト計画
 
-> **ステータス**: IMPLEMENTATION（Adaptive Card 判断確定 US1 実装・環境スクリプト/agent flow 反映済み / 手動 Copilot Studio wiring 未実施）
+> **ステータス**: IMPLEMENTATION（Adaptive Card 判断確定 US1-US3 実装・環境スクリプト/agent flow 反映済み / 手動 Copilot Studio wiring 確認済み）
 > **最終更新**: 2026-05-19
-> **次フェーズ**: US2 不正 submit 防止 / US3 Code Apps 楽観更新・polling / Copilot Studio 専用 Topic 手動確認
+> **次フェーズ**: 追加の本番化 hardening（厳密ロック、運用監視、補正手順）
 
 ---
 
@@ -112,17 +112,16 @@
 - [x] Copilot Studio は Generative Orchestration を維持し、専用 Adaptive Card Topic でカード表示・submit 受信を扱う方針を記録する
 - [x] 対象環境へ `ds_decisioncard` metadata、security role、`Decision_OnCreated` 更新済み通知フローを反映する
 - [x] `deploy_adaptive_card_decision_confirmation.py` で `issue_decision_card` / `confirm_decision` agent flow 2 本を `Skills` トリガー/レスポンスで作成・有効化・Flow API start する
-- [ ] Copilot Studio UI で作成済み Power Automate agent flow 2 本をツールとして追加し、専用 Topic を YAML テンプレートから作成して Teams チャネルで実機確認する
-- [ ] US2: 未割り当てユーザー、古いカード、再利用カード、無効入力を拒否する詳細 validation を実装する
+- [x] Copilot Studio UI で作成済み Power Automate agent flow 2 本をツールとして追加し、専用 Topic を YAML テンプレートから作成して Teams チャネルで実機確認する
+- [x] US2: 未割り当てユーザー、古いカード、再利用カード、無効入力を拒否する詳細 validation を実装する
 - [x] US3: Code Apps の判断作成直後に `ds_application` を即時更新し、画面更新後にステージが変わって見えるようにする
-- [ ] US3: Code Apps の判断作成直後に 500ms / 最大3秒 polling と整合待ち表示を追加する
 
 ### Phase 5 手動操作メモ
 
 - 手順書: [specs/001-confirm-adaptive-card/quickstart.md](../specs/001-confirm-adaptive-card/quickstart.md)
 - Copilot Studio UI で作成済みの `issue_decision_card` / `confirm_decision` Power Automate agent flow をツールとして追加し、専用 Topic は [specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml](../specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml) をコードビューに貼って作成する
 - Adaptive Card JSON は Topic 側で保持し、schema 1.5 + `Action.Submit` を使う
-- Teams 実機確認後、T061 を完了にする
+- Teams 実機確認と T061 完了反映は完了済み
 
 ---
 

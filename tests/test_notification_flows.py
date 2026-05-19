@@ -151,6 +151,7 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertEqual(trigger["inputs"]["parameters"]["subscriptionRequest/entityname"], "ds_decision")
         actions = definition["actions"]
         self.assertEqual(actions["Get_application"]["inputs"]["parameters"]["entityName"], "ds_applications")
+        self.assertIn("ds_stage", actions["Get_application"]["inputs"]["parameters"]["$select"])
         self.assertEqual(actions["Get_decision_option"]["inputs"]["parameters"]["entityName"], "ds_decisionoptions")
         self.assertEqual(actions["Get_applicant"]["runAfter"], {"Get_application": ["Succeeded"]})
         self.assertEqual(actions["Get_decision_option"]["runAfter"], {"Get_applicant": ["Succeeded"]})
@@ -170,7 +171,7 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         actions = clientdata["properties"]["definition"]["actions"]
 
         self.assertIn("Derive_next_application_stage", actions)
-        self.assertIn("Update_application_stage", actions)
+        self.assertIn("If_application_stage_needs_update", actions)
         self.assertIn("Clear_submitted_at_if_returned_to_draft", actions)
 
         derive_stage = actions["Derive_next_application_stage"]
@@ -181,15 +182,21 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertIn("100000000", derive_json)
         self.assertIn("100000004", derive_json)
 
-        update_stage = actions["Update_application_stage"]
+        reconcile_condition = actions["If_application_stage_needs_update"]
+        self.assertEqual(reconcile_condition["runAfter"], {"Derive_next_application_stage": ["Succeeded"]})
+        condition_json = json.dumps(reconcile_condition["expression"], ensure_ascii=False)
+        self.assertIn("Get_application", condition_json)
+        self.assertIn("ds_stage", condition_json)
+        self.assertIn("Derive_next_application_stage", condition_json)
+
+        update_stage = reconcile_condition["actions"]["Update_application_stage"]
         self.assertEqual(update_stage["inputs"]["host"]["operationId"], "UpdateRecord")
         self.assertEqual(update_stage["inputs"]["parameters"]["entityName"], "ds_applications")
         self.assertEqual(update_stage["inputs"]["parameters"]["recordId"], "@triggerOutputs()?['body/_ds_applicationid_value']")
         self.assertEqual(update_stage["inputs"]["parameters"]["item"]["ds_stage"], "@outputs('Derive_next_application_stage')")
-        self.assertEqual(update_stage["runAfter"], {"Derive_next_application_stage": ["Succeeded"]})
 
         clear_submitted_at = actions["Clear_submitted_at_if_returned_to_draft"]
-        self.assertEqual(clear_submitted_at["runAfter"], {"Update_application_stage": ["Succeeded"]})
+        self.assertEqual(clear_submitted_at["runAfter"], {"If_application_stage_needs_update": ["Succeeded"]})
         clear_json = json.dumps(clear_submitted_at, ensure_ascii=False)
         self.assertIn("100000000", clear_json)
         self.assertIn("ds_submittedat", clear_json)

@@ -20,7 +20,7 @@
 
 - [x] T001 Create the Adaptive Card decision confirmation deployment script skeleton in scripts/deploy_adaptive_card_decision_confirmation.py
 - [x] T002 [P] Add shared decision confirmation constants for allowed option labels, card statuses, response statuses, and stage values in scripts/decision_confirmation_constants.py
-- [x] T003 [P] Add TypeScript decision confirmation helpers for option-to-stage derivation and 500ms/3-second reconciliation polling constants in src/lib/decision-confirmation.ts
+- [x] T003 [P] Add TypeScript decision confirmation helpers for option-to-stage derivation in src/lib/decision-confirmation.ts
 - [x] T004 [P] Add Adaptive Card contract fixture covering schema 1.5, Action.Submit, required fields, and response statuses in tests/fixtures/adaptive_card_decision_confirmation.json
 - [x] T005 Document local setup variables, Copilot Studio-owned Adaptive Card JSON setup, and manual action wiring assumptions in specs/001-confirm-adaptive-card/quickstart.md
 
@@ -44,7 +44,7 @@
 - [x] T015 Update Copilot agent deployment to maintain Generative Orchestration instructions, dedicated Topic setup guidance or botcomponents YAML deployment, Copilot Studio card JSON setup guidance, manual Power Automate tool guidance, and existing agent setting checks in scripts/deploy_copilot_agent.py
 - [x] T016 Add MVP first-write-wins tests documenting lookup-then-insert behavior and deferred ETag optimistic concurrency in tests/test_adaptive_card_decision_confirmation.py
 
-**Checkpoint**: Foundation ready. ds_decisioncard exists, Decision_OnCreated is the only ds_application reconciliation path, Code Apps no longer relies on direct application updates, and Copilot Studio action feasibility is proven before detailed flow build-out.
+**Checkpoint**: Foundation ready. ds_decisioncard exists, Decision_OnCreated handles notification/final reconciliation, Code Apps performs immediate ds_application stage feedback, and Copilot Studio action feasibility is proven before detailed flow build-out.
 
 ---
 
@@ -86,20 +86,20 @@
 
 ### Tests for User Story 2
 
-- [ ] T031 [P] [US2] Add contract tests for forbidden and invalid_target responses in tests/test_adaptive_card_decision_confirmation.py
-- [ ] T032 [P] [US2] Add validation tests for missing decisionOption, unsupported option labels, blank rationale, missing cardInstanceId, and missing actor in tests/test_adaptive_card_decision_confirmation.py
-- [ ] T033 [P] [US2] Add single-use and reissue tests for Issued, Consumed, Superseded, and Expired ds_decisioncard statuses in tests/test_adaptive_card_decision_confirmation.py
+- [x] T031 [P] [US2] Add contract tests for forbidden and invalid_target responses in tests/test_adaptive_card_decision_confirmation.py
+- [x] T032 [P] [US2] Add validation tests for missing decisionOption, unsupported option labels, blank rationale, missing cardInstanceId, and missing actor in tests/test_adaptive_card_decision_confirmation.py
+- [x] T033 [P] [US2] Add single-use and reissue tests for Issued, Consumed, Superseded, and Expired ds_decisioncard statuses in tests/test_adaptive_card_decision_confirmation.py
 
 ### Implementation for User Story 2
 
-- [ ] T034 [US2] Add assigned-decider authorization lookup using actor AAD object ID or UPN in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T035 [US2] Add invalid_target handling for missing, deleted, inaccessible, or non-Submitted applications in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T036 [US2] Add non-empty rationale trimming and required decision option validation before any Dataverse write in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T037 [US2] Add card issue logic that supersedes prior Issued ds_decisioncard rows for the same application and actor before creating a new Issued card in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T038 [US2] Add submit validation requiring cardInstanceId to match the latest Issued ds_decisioncard for the application and actor in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T039 [US2] Return already_processed for Consumed, Superseded, Expired, non-latest, or reused cardInstanceId submissions in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T040 [US2] Add deterministic response body construction for succeeded, already_processed, forbidden, and invalid_target in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T041 [US2] Add deployment-time validation that required environment variables and Dataverse connection references exist in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T034 [US2] Add assigned-decider authorization lookup using actor AAD object ID or UPN in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T035 [US2] Add invalid_target handling for missing, deleted, inaccessible, or non-Submitted applications in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T036 [US2] Add non-empty rationale trimming and required decision option validation before any Dataverse write in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T037 [US2] Add card issue logic that supersedes prior Issued ds_decisioncard rows for the same application and actor before creating a new Issued card in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T038 [US2] Add submit validation requiring cardInstanceId to match the latest Issued ds_decisioncard for the application and actor in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T039 [US2] Return already_processed for Consumed, Superseded, Expired, non-latest, or reused cardInstanceId submissions in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T040 [US2] Add deterministic response body construction for succeeded, already_processed, forbidden, and invalid_target in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T041 [US2] Add deployment-time validation that required environment variables and Dataverse connection references exist in scripts/deploy_adaptive_card_decision_confirmation.py
 
 **Checkpoint**: US2 is independently testable by attempting invalid or unauthorized submissions and confirming no application state change or duplicate decision creation occurs.
 
@@ -113,21 +113,21 @@
 
 ### Tests for User Story 3
 
-- [ ] T042 [P] [US3] Add tests proving 承認 and 却下 decisions reconcile ds_application.ds_stage to Decided in tests/test_notification_flows.py
-- [ ] T043 [P] [US3] Add tests proving 差し戻し reconciles ds_application.ds_stage to Draft and clears ds_submittedat in tests/test_notification_flows.py
-- [ ] T044 [P] [US3] Add tests proving Code Apps and Copilot Studio ds_decision records use the same Decision_OnCreated flow path in tests/test_notification_flows.py
-- [ ] T045 [P] [US3] Add Code Apps tests for optimistic stage badge update, 500ms polling up to 3 seconds, and reconciliation-waiting fallback in src/lib/decision-confirmation.test.ts
+- [x] T042 [P] [US3] Add tests proving 承認 and 却下 decisions reconcile ds_application.ds_stage to Decided in tests/test_notification_flows.py
+- [x] T043 [P] [US3] Add tests proving 差し戻し reconciles ds_application.ds_stage to Draft and clears ds_submittedat in tests/test_notification_flows.py
+- [x] T044 [P] [US3] Add tests proving Code Apps and Copilot Studio ds_decision records use the same Decision_OnCreated flow path in tests/test_notification_flows.py
+- [x] T045 [P] [US3] Add Code Apps tests for immediate ds_application stage update and Draft submitted-date clearing in src/services/dataverse-service.test.ts
 
 ### Implementation for User Story 3
 
-- [ ] T046 [US3] Update Decision_OnCreated flow actions to patch ds_application.ds_stage idempotently from ds_decisionoption name in scripts/deploy_notification_flows.py
-- [ ] T047 [US3] Update Decision_OnCreated flow actions to clear ds_application.ds_submittedat only when the next stage is Draft in scripts/deploy_notification_flows.py
-- [ ] T048 [US3] Add idempotent no-op behavior when ds_application is already reconciled to the derived stage in scripts/deploy_notification_flows.py
-- [ ] T049 [US3] Ensure existing email and Teams notifications run after successful stage reconciliation in scripts/deploy_notification_flows.py
-- [ ] T050 [US3] Add Code Apps query cache optimistic stage badge update based on selected decision option immediately after ds_decision creation in src/hooks/use-decisionflow.ts
-- [ ] T051 [US3] Add Code Apps 500ms polling for up to 3 seconds and fallback to query invalidation plus reconciliation-waiting state in src/hooks/use-decisionflow.ts
-- [ ] T052 [US3] Update application detail rendering to read latest ds_decision and show reconciliation-waiting state while Dataverse confirmation is pending in src/pages/application-detail.tsx
-- [ ] T053 [US3] Remove long-term nextApplicationStage propagation and direct ds_application update coexistence from UI decision submission in src/pages/application-detail.tsx
+- [x] T046 [US3] Update Decision_OnCreated flow actions to patch ds_application.ds_stage idempotently from ds_decisionoption name in scripts/deploy_notification_flows.py
+- [x] T047 [US3] Update Decision_OnCreated flow actions to clear ds_application.ds_submittedat only when the next stage is Draft in scripts/deploy_notification_flows.py
+- [x] T048 [US3] Add idempotent no-op behavior when ds_application is already reconciled to the derived stage in scripts/deploy_notification_flows.py
+- [x] T049 [US3] Ensure existing email and Teams notifications run after successful stage reconciliation in scripts/deploy_notification_flows.py
+- [x] T050 [US3] Keep Code Apps immediate stage feedback by updating ds_application after ds_decision creation in src/services/dataverse-service.ts
+- [x] T051 [US3] Keep Code Apps query invalidation after decision creation so lists and detail data refresh through TanStack Query in src/hooks/use-decisionflow.ts
+- [x] T052 [US3] Update application detail submission to derive the selected decision's next stage and pass it to the decision service in src/pages/application-detail.tsx
+- [x] T053 [US3] Document direct Code Apps stage update coexistence with Decision_OnCreated final reconciliation in docs/PLAN.md and specs/001-confirm-adaptive-card/quickstart.md
 
 **Checkpoint**: US3 is independently testable from either decision entry point and confirms Code Apps and Copilot Studio converge through the same reconciliation flow.
 
@@ -137,9 +137,9 @@
 
 **Purpose**: Cross-cutting checks, documentation, and end-to-end verification.
 
-- [x] T054 [P] Update implementation notes and rollback guidance for ds_decisioncard, Generative Orchestration + dedicated Topic action wiring, schema 1.5 Action.Submit, first-write-wins MVP limits, and Code Apps reconciliation polling in specs/001-confirm-adaptive-card/quickstart.md
+- [x] T054 [P] Update implementation notes and rollback guidance for ds_decisioncard, Generative Orchestration + dedicated Topic action wiring, schema 1.5 Action.Submit, first-write-wins MVP limits, and Code Apps immediate stage feedback in specs/001-confirm-adaptive-card/quickstart.md
 - [x] T055 [P] Update architecture documentation to state that ds_decision is canonical and Copilot card processing never directly updates ds_application in docs/ARCHITECTURE.md
-- [x] T056 [P] Update development plan notes to describe migration away from Code Apps direct ds_application updates in docs/PLAN.md
+- [x] T056 [P] Update development plan notes to describe Code Apps immediate ds_application stage feedback and Decision_OnCreated final reconciliation in docs/PLAN.md
 - [x] T057 [P] Record ds_decisioncard table/security-role migration steps and application result in docs/MIGRATIONS.md
 - [x] T058 Run Python unit tests for adaptive card, notification flow, Dataverse setup, and security role definitions with py -m unittest tests.test_adaptive_card_decision_confirmation tests.test_notification_flows tests.test_security_roles
 - [x] T059 Run Code Apps unit tests covering src/lib/decision-confirmation.test.ts with npm test from package.json
@@ -172,7 +172,7 @@
 - Validation helpers before Dataverse writes.
 - ds_decisioncard latest Issued validation before ds_decision creation.
 - ds_decision creation before card consumption.
-- Code Apps optimistic update before polling confirmation and fallback invalidation.
+- Code Apps immediate stage update and query invalidation.
 - Reconciliation stage update before notifications.
 - Story checkpoint before moving to the next priority when delivering sequentially.
 
@@ -201,7 +201,7 @@ Task: "T033 [US2] Add single-use and reissue tests for Issued, Consumed, Superse
 ```text
 Task: "T042 [US3] Add tests proving 承認 and 却下 decisions reconcile ds_application.ds_stage to Decided in tests/test_notification_flows.py"
 Task: "T043 [US3] Add tests proving 差し戻し reconciles ds_application.ds_stage to Draft and clears ds_submittedat in tests/test_notification_flows.py"
-Task: "T045 [US3] Add Code Apps tests for optimistic stage badge update, 500ms polling up to 3 seconds, and reconciliation-waiting fallback in src/lib/decision-confirmation.test.ts"
+Task: "T045 [US3] Add Code Apps tests for immediate ds_application stage update and Draft submitted-date clearing in src/services/dataverse-service.test.ts"
 ```
 
 ---
@@ -219,12 +219,12 @@ Task: "T045 [US3] Add Code Apps tests for optimistic stage badge update, 500ms p
 
 1. Deliver canonical ds_decision creation from chat as the MVP.
 2. Add strict authorization, invalid target handling, input parity, ds_decisioncard single-use, and reissue protections.
-3. Complete reconciliation convergence so Code Apps and Copilot Studio both rely on Decision_OnCreated for stage and notification outcomes.
+3. Complete reconciliation convergence so Copilot Studio relies on Decision_OnCreated for stage and notification outcomes, while Code Apps performs an immediate stage update for user feedback and still uses Decision_OnCreated for notification/final reconciliation.
 4. Finish quickstart validation and documentation updates.
 
 ### Migration Decision
 
-This task plan chooses migration away from Code Apps direct ds_application updates, not long-term coexistence. Code Apps should create ds_decision, optimistically update the local stage badge, poll Dataverse every 500ms for up to 3 seconds to confirm Decision_OnCreated reconciliation, and then fall back to query invalidation plus reconciliation-waiting state if confirmation does not arrive.
+This task plan preserves Code Apps immediate feedback: Code Apps creates `ds_decision` and updates `ds_application.ds_stage` in the same operation so the stage changes without a manual refresh. Copilot Studio card submit never updates `ds_application` directly; `Decision_OnCreated` remains the notification and final reconciliation path for both entry points.
 
 ---
 
@@ -241,5 +241,5 @@ This task plan chooses migration away from Code Apps direct ds_application updat
 - `invalid_target` means missing, deleted/inaccessible, or not Submitted.
 - Adaptive Card input must stay in parity with Code Apps: decision option is required and limited to `承認`, `却下`, `差し戻し`; rationale is required and non-empty after trimming.
 - Old, consumed, superseded, expired, or non-latest cards return `already_processed`.
-- Code Apps and Copilot Studio decision paths converge through the same Decision_OnCreated reconciliation flow.
+- Code Apps and Copilot Studio decision paths both create `ds_decision`; Copilot Studio delegates stage changes to `Decision_OnCreated`, and Code Apps mirrors the derived stage immediately for UX while `Decision_OnCreated` performs notification/final reconciliation.
 - Do not commit generated task changes from this workflow.

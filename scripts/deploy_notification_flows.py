@@ -419,7 +419,7 @@ def build_decision_created_clientdata(connection_refs: dict[str, str], prefix: s
         "Get_application": _get_record_action(
             f"{prefix}_applications",
             f"@triggerOutputs()?['body/_{prefix}_applicationid_value']",
-            f"{prefix}_name,{prefix}_body,_createdby_value",
+            f"{prefix}_name,{prefix}_body,{prefix}_stage,_createdby_value",
         ),
         "Get_applicant": _get_record_action(
             "systemusers",
@@ -437,15 +437,29 @@ def build_decision_created_clientdata(connection_refs: dict[str, str], prefix: s
             f"@if(equals(outputs('Get_decision_option')?['body/{prefix}_name'],'差し戻し'),100000000,100000004)",
             {"Get_decision_option": ["Succeeded"]},
         ),
-        "Update_application_stage": _update_record_action(
-            f"{prefix}_applications",
-            f"@triggerOutputs()?['body/_{prefix}_applicationid_value']",
-            {f"{prefix}_stage": "@outputs('Derive_next_application_stage')"},
-            {"Derive_next_application_stage": ["Succeeded"]},
-        ),
+        "If_application_stage_needs_update": {
+            "type": "If",
+            "runAfter": {"Derive_next_application_stage": ["Succeeded"]},
+            "expression": {
+                "not": {
+                    "equals": [
+                        f"@outputs('Get_application')?['body/{prefix}_stage']",
+                        "@outputs('Derive_next_application_stage')",
+                    ]
+                }
+            },
+            "actions": {
+                "Update_application_stage": _update_record_action(
+                    f"{prefix}_applications",
+                    f"@triggerOutputs()?['body/_{prefix}_applicationid_value']",
+                    {f"{prefix}_stage": "@outputs('Derive_next_application_stage')"},
+                )
+            },
+            "else": {"actions": {}},
+        },
         "Clear_submitted_at_if_returned_to_draft": {
             "type": "If",
-            "runAfter": {"Update_application_stage": ["Succeeded"]},
+            "runAfter": {"If_application_stage_needs_update": ["Succeeded"]},
             "expression": {"equals": ["@outputs('Derive_next_application_stage')", 100000000]},
             "actions": {
                 "Clear_submitted_at": _update_record_action(

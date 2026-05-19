@@ -98,8 +98,8 @@
 
 ### Code Apps UI の即時性
 
-- Decision: Code Apps は `ds_decision` 作成成功時に選択肢名から導出した次ステージを TanStack Query のキャッシュへ楽観更新し、その後 500ms 間隔・最大 3 秒の短時間ポーリングで `Decision_OnCreated` による Dataverse 側の `ds_application` 更新を確認する。ポーリングで一致しない場合は通常の query invalidation に戻し、整合待ち状態を表示する。
-- Rationale: 従来の同期更新と同等の操作感を保ちつつ、最終的な正本は Power Automate 整合フローに置ける。単純な query invalidation だけでは、フロー実行前の古い `ds_stage` を再取得する可能性がある。
+- Decision: Code Apps は `ds_decision` 作成成功時に選択肢名から導出した次ステージを `ds_application.ds_stage` へ同じ操作内で更新する。Copilot Studio card submit は `ds_application` を直接更新せず、`Decision_OnCreated` に委譲する。
+- Rationale: 判断者が Code Apps で操作した直後にステージ変化が見えないと再読み込みが必要に見えるため、Code Apps では従来の同期更新と同等の操作感を優先する。通知と最終整合は Power Automate 整合フローに置く。
 - Alternatives considered:
   - query invalidation のみ: 非同期フロー前の古いステージを取得し、UI が一瞬戻る可能性があるため不採用。
   - 楽観更新のみ: Power Automate 失敗時に画面と Dataverse の差異に気づきにくいため不採用。
