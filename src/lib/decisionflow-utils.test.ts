@@ -11,6 +11,7 @@ import {
   isIgnorableParticipantRevokeFailure,
   filterRowsForCurrentUser,
   isApplicantSelectableStage,
+  validateApplicationInput,
   validateMentionInput,
   validateParticipantInput,
   validateResourceInput,
@@ -256,6 +257,34 @@ describe("applicant stage rules", () => {
     expect(isApplicantSelectableStage(100000000)).toBe(true);
     expect(isApplicantSelectableStage(100000001)).toBe(true);
     expect(isApplicantSelectableStage(100000004)).toBe(false);
+  });
+});
+
+describe("validateApplicationInput", () => {
+  it("requires a decider when submitting an application", () => {
+    const result = validateApplicationInput({
+      name: "判断依頼",
+      body: "本文",
+      stage: 100000001,
+      deciderId: "",
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.fieldErrors.deciderId).toBe(
+      "提出時は判断者を選択してください",
+    );
+  });
+
+  it("allows draft applications without a decider", () => {
+    const result = validateApplicationInput({
+      name: "判断依頼",
+      body: "本文",
+      stage: 100000000,
+      deciderId: "",
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.fieldErrors).toEqual({});
   });
 });
 

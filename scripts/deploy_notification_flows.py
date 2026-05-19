@@ -182,6 +182,26 @@ def _list_records_action(entity_set_name: str, filter_query: str, select: str, r
     }
 
 
+def _update_record_action(entity_set_name: str, record_id: str, item: dict, run_after: dict | None = None) -> dict:
+    return {
+        "type": "OpenApiConnection",
+        "runAfter": run_after or {},
+        "inputs": {
+            "host": {
+                "apiId": _connector_id(DATAVERSE_CONNECTOR),
+                "connectionName": DATAVERSE_CONNECTOR,
+                "operationId": "UpdateRecord",
+            },
+            "parameters": {
+                "entityName": entity_set_name,
+                "recordId": record_id,
+                "item": item,
+            },
+            "authentication": "@parameters('$authentication')",
+        },
+    }
+
+
 def _compose_action(inputs: str | dict, run_after: dict | None = None) -> dict:
     return {"type": "Compose", "runAfter": run_after or {}, "inputs": inputs}
 
@@ -279,7 +299,7 @@ def _app_link_lines(application_id_expression: str) -> list[str]:
     return [f"申請を開く: <a href=\"{href}\">申請詳細ページ</a>"]
 
 
-def _assistant_link_lines(title_expression: str) -> list[str]:
+def _assistant_link_lines(title_expression: str, application_id_expression: str | None = None) -> list[str]:
     if not COPILOT_TEAMS_APP_ID:
         return []
 
@@ -288,6 +308,11 @@ def _assistant_link_lines(title_expression: str) -> list[str]:
         title_expression,
         "'」について、概要・関連資料・過去類似案件・推奨判断と判断コメントドラフトを教えてください。'",
     ]
+    if DECISIONFLOW_APP_BASE_URL and application_id_expression:
+        message_args.extend([
+            "' Code Apps URL: '",
+            f"concat('{DECISIONFLOW_APP_BASE_URL}/applications/', {application_id_expression})",
+        ])
 
     message_expression = f"concat({', '.join(message_args)})"
     href = (
@@ -336,7 +361,7 @@ def build_application_submitted_clientdata(connection_refs: dict[str, str], pref
             "希望期限: @{coalesce(triggerOutputs()?['body/ds_duedate'],'未設定')}",
             "本文: @{coalesce(triggerOutputs()?['body/ds_body'],'')}",
             *_app_link_lines("triggerOutputs()?['body/ds_applicationid']"),
-            *_assistant_link_lines("triggerOutputs()?['body/ds_name']"),
+            *_assistant_link_lines("triggerOutputs()?['body/ds_name']", "triggerOutputs()?['body/ds_applicationid']"),
         ],
     )
     teams_body = "@{concat('<b>申請が提出されました</b><br>申請: ', triggerOutputs()?['body/ds_name'])}"
@@ -408,11 +433,34 @@ def build_decision_created_clientdata(connection_refs: dict[str, str], prefix: s
             f"{prefix}_name",
             {"Get_applicant": ["Succeeded"]},
         ),
+        "Derive_next_application_stage": _compose_action(
+            f"@if(equals(outputs('Get_decision_option')?['body/{prefix}_name'],'差し戻し'),100000000,100000004)",
+            {"Get_decision_option": ["Succeeded"]},
+        ),
+        "Update_application_stage": _update_record_action(
+            f"{prefix}_applications",
+            f"@triggerOutputs()?['body/_{prefix}_applicationid_value']",
+            {f"{prefix}_stage": "@outputs('Derive_next_application_stage')"},
+            {"Derive_next_application_stage": ["Succeeded"]},
+        ),
+        "Clear_submitted_at_if_returned_to_draft": {
+            "type": "If",
+            "runAfter": {"Update_application_stage": ["Succeeded"]},
+            "expression": {"equals": ["@outputs('Derive_next_application_stage')", 100000000]},
+            "actions": {
+                "Clear_submitted_at": _update_record_action(
+                    f"{prefix}_applications",
+                    f"@triggerOutputs()?['body/_{prefix}_applicationid_value']",
+                    {f"{prefix}_submittedat": None},
+                ),
+            },
+            "else": {"actions": {}},
+        },
         "List_participants": _list_records_action(
             f"{prefix}_participants",
             f"_{prefix}_applicationid_value eq @{{triggerOutputs()?['body/_{prefix}_applicationid_value']}}",
             f"{prefix}_participantid,_{prefix}_userid_value",
-            {"Get_decision_option": ["Succeeded"]},
+            {"Clear_submitted_at_if_returned_to_draft": ["Succeeded"]},
         ),
         **_send_email_if_present(
             "If_applicant_has_email",
@@ -501,7 +549,7 @@ def build_stalled_reminder_clientdata(connection_refs: dict[str, str], prefix: s
             f"本文: @{{coalesce(items('{foreach_name}')?['{prefix}_body'],'')}}",
             "停滞条件: 希望期限超過、または提出日時から3日以上経過しています。",
             *_app_link_lines(f"items('{foreach_name}')?['{prefix}_applicationid']"),
-            *_assistant_link_lines(f"items('{foreach_name}')?['{prefix}_name']"),
+            *_assistant_link_lines(f"items('{foreach_name}')?['{prefix}_name']", f"items('{foreach_name}')?['{prefix}_applicationid']"),
         ],
     )
     teams_body = f"@{{concat('<b>判断待ちリマインド</b><br>申請: ', items('{foreach_name}')?['{prefix}_name'])}}"

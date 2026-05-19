@@ -10,6 +10,8 @@ docs/BACKLOG.md
 
 # Build output
 dist/
+build/
+coverage/
 
 # Editor
 .vscode/*
@@ -27,9 +29,11 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+*.tmp
 
 # Environment
 .env
+.env*
 .env.local
 .env.*.local
 
@@ -46,6 +50,7 @@ power.config.json
 
 # Python
 __pycache__/
+venv/
 
 # Generated images (preview/test)
 *_preview.png

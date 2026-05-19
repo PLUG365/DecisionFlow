@@ -1,0 +1,198 @@
+kind: AdaptiveDialog
+modelDescription: 「判断を確定」「この申請を承認」「この申請を差し戻し」「この申請を却下」
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent: {}
+  actions:
+    - kind: ConditionGroup
+      id: validateApplicationContext
+      conditions:
+        - id: missingApplicationContext
+          condition: =IsBlank(Topic.applicationId)
+          actions:
+            - kind: SendActivity
+              id: sendMissingApplicationContext
+              activity: 判断対象の申請を特定できませんでした。申請の詳細画面または申請リンクから、もう一度判断確定を実行してください。
+
+            - kind: EndConversation
+              id: endMissingApplicationContext
+
+    - kind: SetVariable
+      id: setActorUpn
+      variable: Topic.actorUpn
+      value: =System.User.PrincipalName
+
+    - kind: SetVariable
+      id: setActorAadObjectId
+      variable: Topic.actorAadObjectId
+      value: =System.User.Id
+
+    - kind: InvokeFlowAction
+      id: invokeFlowAction_uFg1sa
+      input:
+        binding:
+          actorAadObjectId: =Topic.actorAadObjectId
+          actorUpn: =Topic.actorUpn
+          applicationId: =Topic.applicationId
+
+      output:
+        binding:
+          applicationId: Topic.applicationId
+          cardInstanceId: Topic.cardInstanceId
+
+      flowId: c37ed747-9153-f111-a824-3833c5de99c8
+
+    - kind: AdaptiveCardPrompt
+      id: askDecisionWithAdaptiveCard
+      card: |-
+        ={
+          type: "AdaptiveCard",
+          '$schema': "http://adaptivecards.io/schemas/adaptive-card.json",
+          version: "1.5",
+          body: [
+            {
+              type: "TextBlock",
+              text: "判断を確定",
+              weight: "Bolder",
+              size: "Medium"
+            },
+            {
+              type: "Input.ChoiceSet",
+              id: "decisionOption",
+              label: "判断選択肢",
+              isRequired: true,
+              errorMessage: "判断選択肢を選択してください。",
+              style: "expanded",
+              choices: [
+                {
+                  title: "承認",
+                  value: "承認"
+                },
+                {
+                  title: "却下",
+                  value: "却下"
+                },
+                {
+                  title: "差し戻し",
+                  value: "差し戻し"
+                }
+              ]
+            },
+            {
+              type: "Input.Text",
+              id: "rationale",
+              label: "判断理由",
+              isRequired: true,
+              errorMessage: "判断理由を入力してください。",
+              isMultiline: true,
+              maxLength: 20000
+            }
+          ],
+          actions: [
+            {
+              type: "Action.Submit",
+              title: "確定",
+              id: "confirmDecisionSubmitId",
+              data: {
+                action: "confirm_decision",
+                actionSubmitId: "confirmDecisionSubmitId",
+                applicationId: Topic.applicationId,
+                cardInstanceId: Topic.cardInstanceId
+              }
+            }
+          ]
+        }
+      output:
+        binding:
+          decisionOption: Topic.decisionOption
+          rationale: Topic.rationale
+
+      outputType:
+        properties:
+          actionSubmitId: String
+          decisionOption: String
+          rationale: String
+
+    - kind: ConditionGroup
+      id: validateAdaptiveCardOutput
+      conditions:
+        - id: missingDecisionCardOutput
+          condition: =Or(IsBlank(Topic.decisionOption), IsBlank(Topic.rationale))
+          actions:
+            - kind: SendActivity
+              id: sendMissingDecisionCardOutput
+              activity: 判断選択肢または判断理由を取得できませんでした。カードで判断選択肢と判断理由を入力してから、もう一度確定してください。
+
+            - kind: EndConversation
+              id: endMissingDecisionCardOutput
+
+      elseActions:
+        - kind: InvokeFlowAction
+          id: invokeFlowAction_51uhAD
+          input:
+            binding:
+              actorAadObjectId: =Topic.actorAadObjectId
+              actorUpn: =Topic.actorUpn
+              applicationId: =Topic.applicationId
+              cardInstanceId: =Topic.cardInstanceId
+              decisionOption: =Topic.decisionOption
+              rationale: =Topic.rationale
+
+          output:
+            binding:
+              applicationId: Topic.applicationId
+              decidedAt: Topic.decidedAt
+              decisionRecordId: Topic.decisionRecordId
+              message: Topic.message
+              status: Topic.status
+
+          flowId: f8502159-9153-f111-a824-3833c5de99c8
+
+        - kind: ConditionGroup
+          id: branchByConfirmStatus
+          conditions:
+            - id: succeeded
+              condition: =Topic.status = "succeeded"
+              actions:
+                - kind: SendActivity
+                  id: sendSucceeded
+                  activity: 判断を確定しました。案件ステージと通知は Decision_OnCreated で反映されます。
+
+            - id: alreadyProcessed
+              condition: =Topic.status = "already_processed"
+              actions:
+                - kind: SendActivity
+                  id: sendAlreadyProcessed
+                  activity: この案件は既に判断確定済みです。最新状態を Code Apps で確認してください。
+
+            - id: invalidTarget
+              condition: =Topic.status = "invalid_target"
+              actions:
+                - kind: SendActivity
+                  id: sendInvalidTarget
+                  activity: 対象案件が無効、または提出済みではありません。Code Apps で案件状態を確認してください。
+
+            - id: forbidden
+              condition: =Topic.status = "forbidden"
+              actions:
+                - kind: SendActivity
+                  id: sendForbidden
+                  activity: この案件の判断者として割り当てられていないため、判断を確定できません。
+
+          elseActions:
+            - kind: SendActivity
+              id: sendFallbackMessage
+              activity: =Coalesce(Topic.message, "判断確定処理の結果を確認できませんでした。")
+
+    - kind: EndConversation
+      id: endTopic
+
+inputType:
+  properties:
+    applicationId:
+      displayName: applicationId
+      description: 判断対象の ds_application ID。Dataverse の申請情報または Code Apps 申請詳細リンクから取得した GUID。
+      type: String
+
+outputType: {}

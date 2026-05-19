@@ -31,6 +31,7 @@ import {
   filterRowsForCurrentUser,
   normalizeApplicationStage,
   normalizeGuid,
+  validateApplicationInput,
 } from "@/lib/decisionflow-utils";
 import {
   ApplicationStage,
@@ -297,12 +298,14 @@ export default function ApplicationsPage() {
       return;
     }
 
-    if (!formName.trim()) {
-      toast.error("タイトルは必須です");
-      return;
-    }
-    if (!formBody.trim()) {
-      toast.error("申請本文は必須です");
+    const validation = validateApplicationInput({
+      name: formName,
+      body: formBody,
+      stage: formStage,
+      deciderId: formDeciderId,
+    });
+    if (!validation.valid) {
+      toast.error(Object.values(validation.fieldErrors)[0]);
       return;
     }
 

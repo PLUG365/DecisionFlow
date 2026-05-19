@@ -12,7 +12,7 @@ Adaptive Card の表示定義は Copilot Studio 側で管理し、schema 1.5 と
 {
   "action": "confirm_decision",
   "applicationId": "<guid>",
-  "decisionOptionId": "<guid>",
+  "decisionOption": "承認|却下|差し戻し",
   "rationale": "<string>",
   "cardInstanceId": "<string>",
   "actor": {
@@ -25,7 +25,7 @@ Adaptive Card の表示定義は Copilot Studio 側で管理し、schema 1.5 と
 ### Request Rules
 
 - `applicationId` required
-- `decisionOptionId` required; must resolve to one of `承認`, `却下`, `差し戻し`
+- `decisionOption` required; must resolve to one of `承認`, `却下`, `差し戻し`
 - `rationale` required; must be non-empty after trimming
 - `cardInstanceId` required, single-use; must match the latest `Issued` `ds_decisioncard` for the application and actor
 - `actor` required for authorization check

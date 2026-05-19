@@ -88,7 +88,7 @@
 - Purpose: Adaptive Card submit 入力と処理結果の追跡
 - Key fields:
   - `applicationId`
-  - `decisionOptionId`
+  - `decisionOption`
   - `rationale` (required)
   - `actorAadObjectId` / `actorUpn`
   - `cardInstanceId`（1回表示限り管理）
@@ -130,5 +130,5 @@
 - 監査最小要件:
   - 誰が（actor）
   - いつ（processedAt）
-  - 何を（applicationId + decisionOptionId）
+  - 何を（applicationId + decisionOption）
   - 結果（result）

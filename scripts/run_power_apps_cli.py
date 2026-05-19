@@ -14,6 +14,8 @@ def run(args: list[str]):
     node_bin = "node"
     cli_path = os.path.join(os.path.dirname(__file__), r"..\node_modules\@microsoft\power-apps-cli\dist\Bin.js")
     cmd = [node_bin, cli_path] + args
+    env = os.environ.copy()
+    env["IS_PAC_CLI"] = "true"
 
     proc = subprocess.Popen(
         cmd,
@@ -22,6 +24,7 @@ def run(args: list[str]):
         stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",
+        env=env,
     )
 
     def pump():

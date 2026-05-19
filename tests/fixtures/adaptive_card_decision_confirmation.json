@@ -1,0 +1,46 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "判断を確定",
+      "weight": "Bolder",
+      "size": "Medium"
+    },
+    {
+      "type": "Input.ChoiceSet",
+      "id": "decisionOption",
+      "label": "判断選択肢",
+      "isRequired": true,
+      "errorMessage": "判断選択肢を選択してください。",
+      "style": "expanded",
+      "choices": [
+        { "title": "承認", "value": "承認" },
+        { "title": "却下", "value": "却下" },
+        { "title": "差し戻し", "value": "差し戻し" }
+      ]
+    },
+    {
+      "type": "Input.Text",
+      "id": "rationale",
+      "label": "判断理由",
+      "isRequired": true,
+      "errorMessage": "判断理由を入力してください。",
+      "isMultiline": true,
+      "maxLength": 20000
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Submit",
+      "title": "確定",
+      "data": {
+        "action": "confirm_decision",
+        "applicationId": "{{applicationId}}",
+        "cardInstanceId": "{{cardInstanceId}}"
+      }
+    }
+  ]
+}

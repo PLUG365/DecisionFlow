@@ -86,6 +86,13 @@ PARTICIPANT_ROLE_OPTIONS = [
     (100000003, "Contributor"),
 ]
 
+DECISION_CARD_STATUS_OPTIONS = [
+    (100000000, "Issued"),
+    (100000001, "Consumed"),
+    (100000002, "Superseded"),
+    (100000003, "Expired"),
+]
+
 TABLES = [
     {
         "logical": f"{PREFIX}_category",
@@ -166,6 +173,21 @@ TABLES = [
         ],
     },
     {
+        "logical": f"{PREFIX}_decisioncard",
+        "display": "判断カード発行",
+        "plural": "判断カード発行",
+        "description": "Adaptive Card の発行・消費・再発行状態",
+        "columns": [
+            {"logical": f"{PREFIX}_cardinstanceid", "type": "String", "display": "カードインスタンスID", "maxLength": 200},
+            {"logical": f"{PREFIX}_actoraadobjectid", "type": "String", "display": "実行者AADオブジェクトID", "maxLength": 100},
+            {"logical": f"{PREFIX}_actorupn", "type": "String", "display": "実行者UPN", "maxLength": 320},
+            {"logical": f"{PREFIX}_status", "type": "Picklist", "display": "状態", "options": DECISION_CARD_STATUS_OPTIONS},
+            {"logical": f"{PREFIX}_issuedat", "type": "DateTime", "display": "発行日時", "format": "DateAndTime"},
+            {"logical": f"{PREFIX}_consumedat", "type": "DateTime", "display": "消費日時", "format": "DateAndTime"},
+            {"logical": f"{PREFIX}_supersededat", "type": "DateTime", "display": "失効日時", "format": "DateAndTime"},
+        ],
+    },
+    {
         "logical": f"{PREFIX}_applicationresource",
         "display": "関連資料",
         "plural": "関連資料",
@@ -193,6 +215,7 @@ LOOKUPS = [
     {"schema": f"{PREFIX}_decision_{PREFIX}_application", "referencing": f"{PREFIX}_decision", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "cascade_share": True},
     {"schema": f"{PREFIX}_decision_systemuser_decider", "referencing": f"{PREFIX}_decision", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_deciderid", "lookup_display": "判断者"},
     {"schema": f"{PREFIX}_decision_{PREFIX}_decisionoption", "referencing": f"{PREFIX}_decision", "referenced": f"{PREFIX}_decisionoption", "lookup_attr": f"{PREFIX}_decisionoptionid", "lookup_display": "判断結果"},
+    {"schema": f"{PREFIX}_decisioncard_{PREFIX}_application", "referencing": f"{PREFIX}_decisioncard", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "cascade_share": True},
     {"schema": f"{PREFIX}_applicationresource_{PREFIX}_application", "referencing": f"{PREFIX}_applicationresource", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "cascade_share": True},
 ]
 
