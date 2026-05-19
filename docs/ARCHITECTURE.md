@@ -37,6 +37,7 @@ flowchart TB
         T6[("ds_category<br/>カテゴリ")]
         T7[("ds_decisionoption<br/>判断選択肢")]
         T8[("ds_applicationresource<br/>関連資料")]
+        T9[("ds_decisioncard<br/>Adaptive Card発行")]
     end
 
     subgraph PA["Power Automate"]
@@ -70,6 +71,7 @@ flowchart TB
     T5 -.作成トリガー.-> F3
     T3 -.作成トリガー.-> F4
     T1 -.提出トリガー.-> F5
+    T9 -.カード発行/消費.-> T5
     UI -->|AI判断更新| F5
 
     F1 -.Teamsチャネル設定時.-> E1
@@ -85,6 +87,7 @@ flowchart TB
     P2 -->|AI判断結果| T1
 
     CS -->|ナレッジ参照| DV
+    CS -->|判断確定ツール| DV
     CS -->|ツール呼び出し| P2
 
     UI -->|チャット| CS
@@ -105,6 +108,7 @@ erDiagram
     ds_application ||--o{ ds_message : "スレッド"
     ds_application ||--o{ ds_participant : "関係者"
     ds_application ||--o{ ds_decision : "判断"
+    ds_application ||--o{ ds_decisioncard : "Adaptive Card発行"
     ds_application ||--o{ ds_applicationresource : "関連資料"
     ds_message ||--o{ ds_message : "親メッセージ（返信）"
     ds_message ||--o{ ds_mention : "メンション"
@@ -147,6 +151,16 @@ erDiagram
         memo rationale
         datetime decided_at
     }
+    ds_decisioncard {
+        guid id PK
+        string card_instance_id
+        string actor_aad_object_id
+        string actor_upn
+        choice status "Issued/Consumed/Superseded/Expired"
+        datetime issued_at
+        datetime consumed_at
+        datetime superseded_at
+    }
     ds_applicationresource {
         guid id PK
         string title
@@ -163,6 +177,7 @@ erDiagram
 | `ds_mention`             | メンション       | 従属   | メッセージ(Lookup), 対象ユーザー(Lookup→SystemUser), 既読フラグ(Yes/No)                                                                               |
 | `ds_participant`         | 関係者           | 従属   | 申請(Lookup), ユーザー(Lookup→SystemUser), 役割(Choice), 追加者(Lookup→SystemUser), 追加日時                                                          |
 | `ds_decision`            | 判断             | 従属   | 申請(Lookup), 判断者(Lookup→SystemUser), 判断結果(Lookup→`ds_decisionoption`), 理由(Memo), 確定日時                                                   |
+| `ds_decisioncard`        | 判断カード発行   | 従属   | 申請(Lookup), cardInstanceId, actor AAD, actor UPN, 状態, 発行/消費/失効日時                                                                          |
 | `ds_applicationresource` | 関連資料         | 従属   | 申請(Lookup), タイトル, URL, 説明(Memo)                                                                                                               |
 | `ds_category`            | カテゴリ         | マスタ | 名称, 説明, 推奨フォーマット(Memo)                                                                                                                    |
 | `ds_decisionoption`      | 判断選択肢       | マスタ | 名称, 説明, 並び順                                                                                                                                    |
@@ -170,40 +185,40 @@ erDiagram
 
 ### 2.3 列定義
 
-| テーブル                 | 列論理名                   | 表示名           | 型           | 備考                                                     |
-| ------------------------ | -------------------------- | ---------------- | ------------ | -------------------------------------------------------- |
-| `ds_category`            | `ds_name`                  | カテゴリ名       | String       | 主列                                                     |
-| `ds_category`            | `ds_description`           | 説明             | Memo         | 任意                                                     |
-| `ds_category`            | `ds_template`              | 推奨フォーマット | Memo         | 申請入力支援用                                           |
-| `ds_category`            | `ds_sortorder`             | 並び順           | Integer      | 一覧表示順                                               |
-| `ds_decisionoption`      | `ds_name`                  | 判断名           | String       | 主列                                                     |
-| `ds_decisionoption`      | `ds_description`           | 説明             | Memo         | 任意                                                     |
-| `ds_decisionoption`      | `ds_sortorder`             | 並び順           | Integer      | 一覧表示順                                               |
-| `ds_application`         | `ds_name`                  | タイトル         | String       | 主列                                                     |
-| `ds_application`         | `ds_body`                  | 申請本文         | Memo         | 申請内容                                                 |
-| `ds_application`         | `ds_stage`                 | ステージ         | Choice       | Draft / Submitted / Decided                              |
-| `ds_application`         | `ds_duedate`               | 希望期限         | DateOnly     | 任意                                                     |
-| `ds_application`         | `ds_submittedat`           | 提出日時         | DateAndTime  | 任意                                                     |
-| `ds_application`         | `ds_aiapplicationsummary`  | AI申請概要       | Memo         | AI 判断生成時の申請概要                                  |
-| `ds_application`         | `ds_aiconversationsummary` | AI会話概要       | Memo         | AI 判断生成時の会話概要。会話がない場合もその旨を保存    |
-| `ds_application`         | `ds_aidecisionoptiontext`  | AI推奨判断       | String       | AI が推奨した判断選択肢名                                |
-| `ds_application`         | `ds_aidecisioncomment`     | AI判断コメント   | Memo         | 判断コメントのたたき台                                   |
-| `ds_application`         | `ds_aidecisionbasis`       | AI判断根拠       | Memo         | リスク・類似案件などの補足 JSON またはテキスト           |
-| `ds_application`         | `ds_aidecisionupdatedat`   | AI判断更新日時   | DateAndTime  | 任意                                                     |
-| `ds_message`             | `ds_name`                  | 件名             | String       | 主列（短い要約）                                         |
-| `ds_message`             | `ds_body`                  | 本文             | Memo         | 会話本文                                                 |
-| `ds_message`             | `ds_kind`                  | 種別             | Choice       | Comment / Question / Answer / System                     |
-| `ds_mention`             | `ds_name`                  | 件名             | String       | 主列                                                     |
-| `ds_mention`             | `ds_isread`                | 既読             | Boolean      | 初期値 false                                             |
-| `ds_participant`         | `ds_name`                  | 件名             | String       | 主列                                                     |
-| `ds_participant`         | `ds_role`                  | 役割             | Choice       | Applicant / Decider / Contributor                        |
-| `ds_participant`         | `ds_addedat`               | 追加日時         | DateAndTime  | 任意                                                     |
-| `ds_decision`            | `ds_name`                  | 件名             | String       | 主列                                                     |
-| `ds_decision`            | `ds_rationale`             | 判断理由         | Memo         | 必須運用                                                 |
-| `ds_decision`            | `ds_decidedat`             | 判断日時         | DateAndTime  | 任意                                                     |
-| `ds_applicationresource` | `ds_name`                  | タイトル         | String       | 主列                                                     |
-| `ds_applicationresource` | `ds_url`                   | URL              | String(1000) | Link 用                                                  |
-| `ds_applicationresource` | `ds_description`           | 説明             | Memo         | 任意                                                     |
+| テーブル                 | 列論理名                   | 表示名           | 型           | 備考                                                  |
+| ------------------------ | -------------------------- | ---------------- | ------------ | ----------------------------------------------------- |
+| `ds_category`            | `ds_name`                  | カテゴリ名       | String       | 主列                                                  |
+| `ds_category`            | `ds_description`           | 説明             | Memo         | 任意                                                  |
+| `ds_category`            | `ds_template`              | 推奨フォーマット | Memo         | 申請入力支援用                                        |
+| `ds_category`            | `ds_sortorder`             | 並び順           | Integer      | 一覧表示順                                            |
+| `ds_decisionoption`      | `ds_name`                  | 判断名           | String       | 主列                                                  |
+| `ds_decisionoption`      | `ds_description`           | 説明             | Memo         | 任意                                                  |
+| `ds_decisionoption`      | `ds_sortorder`             | 並び順           | Integer      | 一覧表示順                                            |
+| `ds_application`         | `ds_name`                  | タイトル         | String       | 主列                                                  |
+| `ds_application`         | `ds_body`                  | 申請本文         | Memo         | 申請内容                                              |
+| `ds_application`         | `ds_stage`                 | ステージ         | Choice       | Draft / Submitted / Decided                           |
+| `ds_application`         | `ds_duedate`               | 希望期限         | DateOnly     | 任意                                                  |
+| `ds_application`         | `ds_submittedat`           | 提出日時         | DateAndTime  | 任意                                                  |
+| `ds_application`         | `ds_aiapplicationsummary`  | AI申請概要       | Memo         | AI 判断生成時の申請概要                               |
+| `ds_application`         | `ds_aiconversationsummary` | AI会話概要       | Memo         | AI 判断生成時の会話概要。会話がない場合もその旨を保存 |
+| `ds_application`         | `ds_aidecisionoptiontext`  | AI推奨判断       | String       | AI が推奨した判断選択肢名                             |
+| `ds_application`         | `ds_aidecisioncomment`     | AI判断コメント   | Memo         | 判断コメントのたたき台                                |
+| `ds_application`         | `ds_aidecisionbasis`       | AI判断根拠       | Memo         | リスク・類似案件などの補足 JSON またはテキスト        |
+| `ds_application`         | `ds_aidecisionupdatedat`   | AI判断更新日時   | DateAndTime  | 任意                                                  |
+| `ds_message`             | `ds_name`                  | 件名             | String       | 主列（短い要約）                                      |
+| `ds_message`             | `ds_body`                  | 本文             | Memo         | 会話本文                                              |
+| `ds_message`             | `ds_kind`                  | 種別             | Choice       | Comment / Question / Answer / System                  |
+| `ds_mention`             | `ds_name`                  | 件名             | String       | 主列                                                  |
+| `ds_mention`             | `ds_isread`                | 既読             | Boolean      | 初期値 false                                          |
+| `ds_participant`         | `ds_name`                  | 件名             | String       | 主列                                                  |
+| `ds_participant`         | `ds_role`                  | 役割             | Choice       | Applicant / Decider / Contributor                     |
+| `ds_participant`         | `ds_addedat`               | 追加日時         | DateAndTime  | 任意                                                  |
+| `ds_decision`            | `ds_name`                  | 件名             | String       | 主列                                                  |
+| `ds_decision`            | `ds_rationale`             | 判断理由         | Memo         | 必須運用                                              |
+| `ds_decision`            | `ds_decidedat`             | 判断日時         | DateAndTime  | 任意                                                  |
+| `ds_applicationresource` | `ds_name`                  | タイトル         | String       | 主列                                                  |
+| `ds_applicationresource` | `ds_url`                   | URL              | String(1000) | Link 用                                               |
+| `ds_applicationresource` | `ds_description`           | 説明             | Memo         | 任意                                                  |
 
 > 過去設計で作成した `ds_type` / `ds_attachment` / `ds_status` / `ds_version` / `ds_replacedat` / `ds_replacedfromid` は廃止対象。既存環境では [scripts/migrate_cleanup_obsolete_metadata.py](../scripts/migrate_cleanup_obsolete_metadata.py) で削除済み。旧 AI 要約計画で作成した `ds_aisummary` / `ds_summaryupdatedat` / `ds_message.kind=AISummary` も [scripts/migrate_cleanup_old_ai_summary.py](../scripts/migrate_cleanup_old_ai_summary.py) で削除済み。
 
@@ -223,6 +238,7 @@ erDiagram
 | `ds_decision`            | `ds_application`    | `ds_applicationid`    | 申請         |
 | `ds_decision`            | `systemuser`        | `ds_deciderid`        | 判断者       |
 | `ds_decision`            | `ds_decisionoption` | `ds_decisionoptionid` | 判断結果     |
+| `ds_decisioncard`        | `ds_application`    | `ds_applicationid`    | 申請         |
 | `ds_applicationresource` | `ds_application`    | `ds_applicationid`    | 申請         |
 
 ### 2.5 Choice 値定義
@@ -237,11 +253,11 @@ erDiagram
 
 **役割** (`ds_participant.role`):
 
-| 値        | 名称        | 説明                                                |
-| --------- | ----------- | --------------------------------------------------- |
-| 100000000 | Applicant   | 申請者（申請作成時に自動設定）                      |
-| 100000001 | Decider     | 判断者（申請作成・編集時に自動設定）                |
-| 100000003 | Contributor | 関係者（関係者タブから追加。役割選択UIなしで固定）  |
+| 値        | 名称        | 説明                                               |
+| --------- | ----------- | -------------------------------------------------- |
+| 100000000 | Applicant   | 申請者（申請作成時に自動設定）                     |
+| 100000001 | Decider     | 判断者（申請作成・編集時に自動設定）               |
+| 100000003 | Contributor | 関係者（関係者タブから追加。役割選択UIなしで固定） |
 
 > 旧設計の `CoDecider` (100000002) と `Observer` (100000004) は廃止。`scripts/migrate_remove_unused_roles.py` で削除済み。既存レコードがあれば Contributor に変換される。
 
@@ -253,6 +269,15 @@ erDiagram
 | 100000001 | Question | 質問                         |
 | 100000002 | Answer   | 回答                         |
 | 100000003 | System   | システム投稿（参加者追加等） |
+
+**判断カード状態** (`ds_decisioncard.status`):
+
+| 値        | 名称       | 説明                               |
+| --------- | ---------- | ---------------------------------- |
+| 100000000 | Issued     | 最新の未使用カード                 |
+| 100000001 | Consumed   | submit 成功後に消費済み            |
+| 100000002 | Superseded | 再発行により無効化されたカード     |
+| 100000003 | Expired    | 有効期限切れとして無効化したカード |
 
 ### 2.6 マスタ初期値
 
@@ -291,7 +316,7 @@ erDiagram
 - 申請者が申請作成・編集フォームで選べるステージは `Draft`（下書き）と `Submitted`（提出済み）のみ。
 - フォームではラジオボタンでステージを選択し、初期値は `Draft` とする。
 - `Submitted`（提出済み）になった申請は、通知重複を避けるため通常編集を禁止する。申請者本人が変更できるのは `Draft`（下書き）へ戻す操作だけとする。
-- `Decided`（判断済み）は判断者が詳細画面の判断タブで判断を確定した時に自動設定する。ただし判断選択肢が「差し戻し」の場合は、申請者が修正できるよう `Draft`（下書き）へ戻す。
+- `Decided`（判断済み）は `ds_decision` 作成後に `Decision_OnCreated` が自動設定する。ただし判断選択肢が「差し戻し」の場合は、申請者が修正できるよう `Draft`（下書き）へ戻し、`ds_submittedat` をクリアする。
 - 差し戻し後に再提出された申請は、過去の `ds_decision` を残したまま新しい判断を追加できる。判断入力フォームの表示可否は最新判断の有無ではなく、現在ステージが `Submitted` かつログインユーザーが判断者かで判定する。
 - 判断タブの入力フォームは、設定された判断者本人かつ `Submitted`（提出済み）の申請にのみ表示する。
 - 取り下げ専用ステージは持たず、不要な申請は確認モーダル付きの申請削除で扱う。
@@ -320,7 +345,7 @@ erDiagram
 | `Participant_OnCreated_GrantAccess`  | 関係者追加時に対象申請を共有する               | Dataverse: `ds_participant` 行追加                                        |
 | `Participant_PreDelete_RevokeAccess` | 関係者削除前に対象申請の共有を外す             | Power Apps V2: Code Apps から申請 ID・ユーザー ID・関係者 ID を渡して起動 |
 | `Application_OnSubmitted`            | 申請提出時に判断者・関係者へ通知する           | Dataverse: `ds_application` 行変更                                        |
-| `Decision_OnCreated`                 | 判断確定時に申請者・関係者へ通知する           | Dataverse: `ds_decision` 行追加                                           |
+| `Decision_OnCreated`                 | 判断確定時にステージ整合・通知する             | Dataverse: `ds_decision` 行追加                                           |
 | `Mention_OnCreated`                  | メンション対象ユーザーへ通知する               | Dataverse: `ds_mention` 行追加                                            |
 | `Application_StalledReminder`        | 期限超過または停滞申請を判断者へリマインドする | Recurrence: 毎朝 9:00 JST                                                 |
 | `Application_GenerateAiDecision`     | 申請の AI 判断を生成・更新する                 | Power Apps V2: Code Apps の Submitted 保存時 / 「AI判断更新」ボタン       |
@@ -329,15 +354,15 @@ erDiagram
 
 <!-- markdownlint-disable MD060 -->
 
-| フロー名                             | 主な条件                                                                                                | 主なアクション                                                                                                                                                                                                       | 必要な接続                                     |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `Participant_OnCreated_GrantAccess`  | `_ds_applicationid_value` と `_ds_userid_value` がある                                                  | Dataverse `PerformUnboundAction` で `Target` に対象 `ds_application` を渡し、`GrantAccess` を実行する。権限は `ReadAccess` + `AppendToAccess`                                                                        | Dataverse                                      |
-| `Participant_PreDelete_RevokeAccess` | 申請 ID とユーザー ID がある。`RevokeAccess` 成功後に Code Apps が `ds_participant` を削除する          | Dataverse `PerformUnboundAction` で `Target` に対象 `ds_application` を渡し、`RevokeAccess` を実行する。成功/失敗を Code Apps に返す                                                                                 | Dataverse                                      |
-| `Application_OnSubmitted`            | `ds_stage` が Submitted                                                                                 | 判断者と関係者を取得し、Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                           | Dataverse, Microsoft Teams, Office 365 Outlook |
-| `Decision_OnCreated`                 | 申請 Lookup がある                                                                                      | 申請、判断者、判断選択肢、関係者を取得し、Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                         | Dataverse, Microsoft Teams, Office 365 Outlook |
-| `Mention_OnCreated`                  | 対象ユーザー Lookup がある、`ds_isread` が false                                                        | メッセージと申請を取得し、対象ユーザーへ Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                          | Dataverse, Microsoft Teams, Office 365 Outlook |
-| `Application_StalledReminder`        | `ds_stage` が Submitted、希望期限超過または `ds_submittedat` から 3 日以上経過。`modifiedon` は使わない | 対象申請ごとに判断者を取得し、Outlook メールで通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                   | Dataverse, Office 365 Outlook, Microsoft Teams |
-| `Application_GenerateAiDecision`     | 対象申請が Submitted。提出直後は会話履歴が空でもよい。類似過去案件は初回提出時から検索対象にする。      | 申請、関連資料、会話履歴、過去類似案件、判断選択肢を取得し、AI Builder `DecisionRecommendation` を実行。申請概要・会話概要・推奨判断・コメント・根拠を `ds_application` に保存し、Code Apps 呼び出し時は結果を返す。 | Dataverse, AI Builder                          |
+| フロー名                             | 主な条件                                                                                                | 主なアクション                                                                                                                                                                                                                                     | 必要な接続                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `Participant_OnCreated_GrantAccess`  | `_ds_applicationid_value` と `_ds_userid_value` がある                                                  | Dataverse `PerformUnboundAction` で `Target` に対象 `ds_application` を渡し、`GrantAccess` を実行する。権限は `ReadAccess` + `AppendToAccess`                                                                                                      | Dataverse                                      |
+| `Participant_PreDelete_RevokeAccess` | 申請 ID とユーザー ID がある。`RevokeAccess` 成功後に Code Apps が `ds_participant` を削除する          | Dataverse `PerformUnboundAction` で `Target` に対象 `ds_application` を渡し、`RevokeAccess` を実行する。成功/失敗を Code Apps に返す                                                                                                               | Dataverse                                      |
+| `Application_OnSubmitted`            | `ds_stage` が Submitted                                                                                 | 判断者と関係者を取得し、Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                         | Dataverse, Microsoft Teams, Office 365 Outlook |
+| `Decision_OnCreated`                 | 申請 Lookup がある                                                                                      | 申請、判断者、判断選択肢、関係者を取得する。判断選択肢から次ステージを導出し、`ds_application.ds_stage` を更新する。`差し戻し` の場合だけ `ds_submittedat` をクリアする。その後 Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿 | Dataverse, Microsoft Teams, Office 365 Outlook |
+| `Mention_OnCreated`                  | 対象ユーザー Lookup がある、`ds_isread` が false                                                        | メッセージと申請を取得し、対象ユーザーへ Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                        | Dataverse, Microsoft Teams, Office 365 Outlook |
+| `Application_StalledReminder`        | `ds_stage` が Submitted、希望期限超過または `ds_submittedat` から 3 日以上経過。`modifiedon` は使わない | 対象申請ごとに判断者を取得し、Outlook メールで通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                 | Dataverse, Office 365 Outlook, Microsoft Teams |
+| `Application_GenerateAiDecision`     | 対象申請が Submitted。提出直後は会話履歴が空でもよい。類似過去案件は初回提出時から検索対象にする。      | 申請、関連資料、会話履歴、過去類似案件、判断選択肢を取得し、AI Builder `DecisionRecommendation` を実行。申請概要・会話概要・推奨判断・コメント・根拠を `ds_application` に保存し、Code Apps 呼び出し時は結果を返す。                               | Dataverse, AI Builder                          |
 
 <!-- markdownlint-enable MD060 -->
 
@@ -450,7 +475,9 @@ Phase 2.5 実装前に、対象環境で以下の接続を Power Automate UI か
 ### 6.3 ツール構成
 
 - **ナレッジ**: Dataverse `ds_application` / `ds_message` / `ds_applicationresource` / `ds_decision` / `ds_decisionoption`
-- **ツール**: 初期実装では CRUD ツールなし。判断確定・申請編集は Code Apps に誘導する。
+- **判断確定ツール**: Generative Orchestration は維持し、判断確定カードの表示・submit 受信だけ専用 Adaptive Card Topic で扱う。Power Automate agent flow は `issue_decision_card` と `confirm_decision` を提供する。
+- **カード責務**: Adaptive Card JSON は Copilot Studio 側に保持し、schema 1.5 と `Action.Submit` のみを使う。Power Automate はカード表示 JSON を所有しない。
+- **正本イベント**: Copilot Studio のカード処理は `ds_decision` を作成し、`ds_application` を直接更新しない。案件ステージ・通知は `Decision_OnCreated` に委譲する。
 - **通知連携**: `Application_OnSubmitted` / `Application_StalledReminder` の Outlook メールに、Teams エージェント会話へのディープリンクを追加可能。有効化には `.env` に `COPILOT_TEAMS_APP_ID` を設定する。
 
 ---

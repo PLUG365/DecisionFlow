@@ -82,6 +82,19 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         self.assertFalse(merged["aISettings"]["optInUseLatestModels"])
         self.assertEqual(merged["gPTSettings"]["defaultSchemaName"], "abc")
 
+    def test_decision_confirmation_topic_setup_steps_are_documented(self):
+        steps = agent.decision_confirmation_topic_setup_steps()
+        joined = "\n".join(steps)
+
+        self.assertIn("Generative Orchestration", joined)
+        self.assertIn("dedicated Adaptive Card Topic", joined)
+        self.assertIn("schema 1.5", joined)
+        self.assertIn("Action.Submit", joined)
+        self.assertIn("issue_decision_card", joined)
+        self.assertIn("confirm_decision", joined)
+        self.assertIn("botcomponents YAML", joined)
+        self.assertIn("manual", joined.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

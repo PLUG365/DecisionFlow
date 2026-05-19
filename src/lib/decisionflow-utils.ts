@@ -8,6 +8,13 @@ export type ResourceInput = {
   url?: string | null;
 };
 
+export type ApplicationInput = {
+  name?: string | null;
+  body?: string | null;
+  stage?: number | null;
+  deciderId?: string | null;
+};
+
 export const applicantSelectableStageValues: ApplicationStageValue[] = [
   ApplicationStage.Draft,
   ApplicationStage.Submitted,
@@ -59,6 +66,32 @@ export function validateResourceInput(input: ResourceInput): ValidationResult {
 
   if (!input.url?.trim()) {
     fieldErrors.url = "リンク資料では URL が必須です";
+  }
+
+  return {
+    valid: Object.keys(fieldErrors).length === 0,
+    fieldErrors,
+  };
+}
+
+export function validateApplicationInput(
+  input: ApplicationInput,
+): ValidationResult {
+  const fieldErrors: Record<string, string> = {};
+
+  if (!input.name?.trim()) {
+    fieldErrors.name = "タイトルは必須です";
+  }
+
+  if (!input.body?.trim()) {
+    fieldErrors.body = "申請本文は必須です";
+  }
+
+  if (
+    normalizeApplicationStage(input.stage) === ApplicationStage.Submitted &&
+    !input.deciderId?.trim()
+  ) {
+    fieldErrors.deciderId = "提出時は判断者を選択してください";
   }
 
   return {

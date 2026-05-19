@@ -1,8 +1,8 @@
 # DecisionFlow プロジェクト計画
 
-> **ステータス**: IMPLEMENTATION（Phase 2.5 実装・実機確認済み / Phase 3 Copilot Studio 実機確認済み）
-> **最終更新**: 2026-05-04
-> **次フェーズ**: 必要に応じて Teams 利用者展開 / 複数名判断者運用のグループチーム設定
+> **ステータス**: IMPLEMENTATION（Adaptive Card 判断確定 US1 実装・環境スクリプト/agent flow 反映済み / 手動 Copilot Studio wiring 未実施）
+> **最終更新**: 2026-05-19
+> **次フェーズ**: US2 不正 submit 防止 / US3 Code Apps 楽観更新・polling / Copilot Studio 専用 Topic 手動確認
 
 ---
 
@@ -40,6 +40,8 @@
 
 ## 2. 開発フェーズ
 
+<!-- markdownlint-disable MD060 -->
+
 | Phase | 内容                     | 成果物                                                                 | 状況   |
 | ----- | ------------------------ | ---------------------------------------------------------------------- | ------ |
 | 0     | アーキテクチャ設計       | ARCHITECTURE.md                                                        | ✅完了 |
@@ -49,6 +51,9 @@
 | 2.5   | Power Automate           | 7 フロー（アクセス制御フロー含む）                                     | ✅完了 |
 | 3     | Copilot Studio           | DecisionFlow Assistant                                                 | ✅完了 |
 | 4     | AI Builder               | `DecisionRecommendation`（実装済み）+ 追加プロンプト検討               | ✅完了 |
+| 5     | Adaptive Card 判断確定   | 専用 Topic + agent flow 2 本 + `ds_decisioncard`                       | 実装中 |
+
+<!-- markdownlint-enable MD060 -->
 
 ---
 
@@ -58,6 +63,7 @@
 
 - [x] 申請作成/編集
 - [x] 申請者が選べる下書き/提出ステージのラジオ選択
+- [x] 提出時に判断者未選択の申請保存を禁止
 - [x] 提出済み申請の通常編集を禁止し、下書きに戻す操作だけ許可
 - [x] 判断確定時の判断済み自動更新
 - [x] 申請削除（確認モーダル付き）
@@ -95,6 +101,29 @@
 - [x] Teams チャネルを利用可能にし、`botChannelRegistrationAppId` を `.env` の `COPILOT_TEAMS_APP_ID` に設定する
 - [x] `py scripts/deploy_notification_flows.py` を再実行し、Outlook メール内のエージェント相談リンクを有効化する
 
+### Phase 5: Adaptive Card 判断確定
+
+- [x] `ds_decisioncard` テーブル定義を追加する
+- [x] `ds_decisioncard` のセキュリティロール権限を追加する
+- [x] Code Apps の `createDecision` は画面の即時反映のため `ds_application.ds_stage` を同じ操作内で更新し、通知と最終整合は `Decision_OnCreated` に任せる
+- [x] `Decision_OnCreated` で判断選択肢から `ds_application.ds_stage` を導出し、`差し戻し` の場合だけ `ds_submittedat` をクリアする
+- [x] Adaptive Card submit 用の `confirm_decision` flow definition builder を追加し、`ds_decision` 作成と `ds_decisioncard` 消費を定義する
+- [x] Adaptive Card 発行用の `issue_decision_card` flow definition builder を追加し、`cardInstanceId` を返す定義を追加する
+- [x] Copilot Studio は Generative Orchestration を維持し、専用 Adaptive Card Topic でカード表示・submit 受信を扱う方針を記録する
+- [x] 対象環境へ `ds_decisioncard` metadata、security role、`Decision_OnCreated` 更新済み通知フローを反映する
+- [x] `deploy_adaptive_card_decision_confirmation.py` で `issue_decision_card` / `confirm_decision` agent flow 2 本を `Skills` トリガー/レスポンスで作成・有効化・Flow API start する
+- [ ] Copilot Studio UI で作成済み Power Automate agent flow 2 本をツールとして追加し、専用 Topic を YAML テンプレートから作成して Teams チャネルで実機確認する
+- [ ] US2: 未割り当てユーザー、古いカード、再利用カード、無効入力を拒否する詳細 validation を実装する
+- [x] US3: Code Apps の判断作成直後に `ds_application` を即時更新し、画面更新後にステージが変わって見えるようにする
+- [ ] US3: Code Apps の判断作成直後に 500ms / 最大3秒 polling と整合待ち表示を追加する
+
+### Phase 5 手動操作メモ
+
+- 手順書: [specs/001-confirm-adaptive-card/quickstart.md](../specs/001-confirm-adaptive-card/quickstart.md)
+- Copilot Studio UI で作成済みの `issue_decision_card` / `confirm_decision` Power Automate agent flow をツールとして追加し、専用 Topic は [specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml](../specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml) をコードビューに貼って作成する
+- Adaptive Card JSON は Topic 側で保持し、schema 1.5 + `Action.Submit` を使う
+- Teams 実機確認後、T061 を完了にする
+
 ---
 
 ## 4. 確定済み事項
@@ -105,6 +134,12 @@
 - ✅ ソリューション名・プレフィックス: `DecisionSupport` / `ds`
 - ✅ カテゴリ初期マスタ: 顧客案件 / 部内案件 / 課内案件 / 他部署案件 / 事務処理
 - ✅ 判断選択肢: 承認 / 却下 / 差し戻し
+- ✅ 判断確定の正本イベント: `ds_decision` 作成
+- ✅ 案件ステージ整合: `Decision_OnCreated` が `ds_decisionoption` から導出して更新
+- ✅ Adaptive Card 表示 JSON: Copilot Studio 専用 Topic 側で管理。Power Automate はカード表示 JSON を所有しない
+- ✅ Adaptive Card submit: schema 1.5 + `Action.Submit` を使用し、`Action.Execute` は MVP では使わない
+- ✅ Code Apps: `createDecision` は `ds_decision` 作成後、利用者に結果がすぐ分かるよう `ds_application.ds_stage` も即時更新する。`Decision_OnCreated` は通知と最終整合を担当する
+- ✅ first-write-wins MVP: lookup-then-insert で現在提出サイクル内の既存判断を確認し、差し戻し後の再提出では再判断できる。厳密な同時実行制御は ETag / optimistic concurrency を将来検討
 - ✅ 停滞リマインド閾値: 3 営業日（`ds_submittedat` 基準）
 - ✅ AI 判断生成方針: Submitted 保存時に自動生成し、判断タブの「AI判断更新」から同じフローを手動再実行できる
 - ✅ AI 判断の入力: 初回提出時も類似過去案件を検索対象にし、会話履歴は存在する分だけ使用する

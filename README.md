@@ -232,10 +232,15 @@ py scripts/run_power_apps_cli.py add-flow --flow-id {Application_GenerateAiDecis
 
 #### 9-4. ビルドして push する
 
-`add-flow` が `power.config.json` に追加するフロー接続情報（`workflowDetails`）を保持するため、push には PAC CLI ではなくラッパースクリプトを使用します。`pac code push` はこのフィールドを拒否し、フロー呼び出しが機能しなくなります。
+`add-flow` が `power.config.json` に追加するフロー接続情報（`workflowDetails`）を保持するため、`pac code push` は使いません。PAC CLI はこのフィールドを拒否し、フロー呼び出しが機能しなくなります。
+
+まず SDK CLI の push を使用します。環境によって SDK CLI がテナント解決に失敗する場合だけ、ラッパースクリプトをフォールバックとして試します。
 
 ```powershell
 npm run build
+npx power-apps push --non-interactive
+
+# SDK CLI がテナント解決で失敗する場合のみ
 py scripts/run_power_apps_cli.py push
 ```
 

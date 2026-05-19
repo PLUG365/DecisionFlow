@@ -31,6 +31,7 @@ TABLE_LOGICAL_NAMES = [
     f"{PREFIX}_mention",
     f"{PREFIX}_participant",
     f"{PREFIX}_decision",
+    f"{PREFIX}_decisioncard",
     f"{PREFIX}_applicationresource",
 ]
 
@@ -77,6 +78,15 @@ DECIDER_OWNED_WRITE = table_defaults(
     Share="Basic",
 )
 
+DECISION_CARD_ASSIGNED_ACTOR = table_defaults(
+    Create="Basic",
+    Read="Basic",
+    Write="Basic",
+    Append="Basic",
+    AppendTo="Basic",
+    Share="Basic",
+)
+
 ADMIN_FULL = table_defaults(**{verb: "Global" for verb in TABLE_VERBS})
 
 ROLE_DEFINITIONS = [
@@ -88,6 +98,7 @@ ROLE_DEFINITIONS = [
             f"{PREFIX}_category": MASTER_READ_ONLY,
             f"{PREFIX}_decisionoption": MASTER_READ_ONLY,
             f"{PREFIX}_decision": APPLICANT_READ_OWNED,
+            f"{PREFIX}_decisioncard": APPLICANT_READ_OWNED,
             f"{PREFIX}_mention": MENTION_WRITABLE,
         },
     },
@@ -102,6 +113,7 @@ ROLE_DEFINITIONS = [
             f"{PREFIX}_mention": MENTION_WRITABLE | {"Read": "Global"},
             f"{PREFIX}_participant": table_defaults(Create="Basic", Read="Global", Write="Basic", Delete="Basic", Append="Basic", AppendTo="Global", Share="Basic"),
             f"{PREFIX}_decision": DECIDER_OWNED_WRITE,
+            f"{PREFIX}_decisioncard": DECISION_CARD_ASSIGNED_ACTOR,
         },
     },
     {

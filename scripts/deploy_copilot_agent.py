@@ -437,6 +437,21 @@ def print_manual_followups() -> None:
     print("2. ナレッジに Dataverse の ds_application, ds_message, ds_applicationresource, ds_decision, ds_decisionoption を追加してください。")
     print("3. Teams チャネルを利用可能にし、Bot manifest の botChannelRegistrationAppId を .env の COPILOT_TEAMS_APP_ID に設定してください。")
     print("4. 必要なら DECISIONFLOW_APP_BASE_URL を設定し、python scripts/deploy_notification_flows.py を再実行してください。")
+    print("5. 判断確定用の専用 Adaptive Card Topic と Power Automate ツールを確認してください。")
+    for step in decision_confirmation_topic_setup_steps():
+        print(f"   - {step}")
+
+
+def decision_confirmation_topic_setup_steps() -> list[str]:
+    return [
+        "Keep the agent in Generative Orchestration mode; use a dedicated Adaptive Card Topic only as the card display and submit surface.",
+        "Create or verify a dedicated Adaptive Card Topic for decision confirmation.",
+        "Call the issue_decision_card Power Automate tool flow before rendering the card to create ds_decisioncard and return cardInstanceId.",
+        "Render the Copilot Studio-owned Adaptive Card with schema 1.5 and Action.Submit only.",
+        "Capture decisionOption, rationale, applicationId, cardInstanceId, and actor context from submit.",
+        "Call the confirm_decision Power Automate tool flow after submit; the flow must create ds_decision and never patch ds_application directly.",
+        "If botcomponents YAML deployment is not safe in this environment, use manual Topic and tool setup and record the result in docs/PLAN.md.",
+    ]
 
 
 def main() -> None:

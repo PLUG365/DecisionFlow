@@ -1,5 +1,85 @@
 # DecisionFlow Migrations
 
+> 最終更新: 2026-05-19
+
+## 2026-05-19 Adaptive Card 判断確定 MVP
+
+### 目的
+
+Copilot Studio チャット上の Adaptive Card submit から判断確定できるようにし、Code Apps と Copilot Studio の判断確定結果を同じ `Decision_OnCreated` 整合フローへ集約する。
+
+### Dataverse metadata changes
+
+- `ds_decisioncard` テーブルを追加
+- `ds_decisioncard` は `ds_application` への Lookup `ds_applicationid` を持つ
+- `ds_decisioncard` の主要列:
+  - `ds_cardinstanceid`
+  - `ds_actoraadobjectid`
+  - `ds_actorupn`
+  - `ds_status`
+  - `ds_issuedat`
+  - `ds_consumedat`
+  - `ds_supersededat`
+- `ds_status` choice values:
+  - `100000000`: `Issued`
+  - `100000001`: `Consumed`
+  - `100000002`: `Superseded`
+  - `100000003`: `Expired`
+
+### Security role changes
+
+- `ds_Applicant`: `ds_decisioncard` Basic Read のみ
+- `ds_Decider`: `ds_decisioncard` Basic Create / Read / Write / Append / AppendTo / Share
+- `ds_Admin`: `ds_decisioncard` Global full privileges
+
+### Flow changes
+
+- `Decision_OnCreated` が `ds_decisionoption.ds_name` から次ステージを導出する
+- `差し戻し` は `Draft` (`100000000`) へ戻し、`ds_submittedat` をクリアする
+- `承認` と `却下` は `Decided` (`100000004`) へ更新する
+- 通知は案件ステージ整合後に実行する
+
+### Code Apps changes
+
+- `DataverseService.createDecision()` は `ds_decision` 作成だけを行う
+- `ds_application` の直接更新は削除し、`Decision_OnCreated` に委譲する
+- 500ms / 最大 3 秒の reconciliation polling 定数は追加済み。UI polling 実装は US3 で対応する
+
+### Copilot Studio / Power Automate changes
+
+- Adaptive Card JSON は Copilot Studio 専用 Topic 側で管理する
+- Power Automate 側は、Copilot Studio からツールとして呼ぶ `issue_decision_card` と `confirm_decision` フローを提供する
+- `issue_decision_card` は `ds_decisioncard` を `Issued` として作成し、`cardInstanceId` を返す
+- `confirm_decision` は submit payload を検証し、`ds_decision` 作成後に `ds_decisioncard` を `Consumed` に更新する
+- submit action は `ds_application` を直接更新しない
+
+### Apply steps
+
+1. `.env` に `DATAVERSE_URL`, `TENANT_ID`, `ENVIRONMENT_ID`, `SOLUTION_NAME=DecisionSupport`, `PUBLISHER_PREFIX=ds`, `BOT_ID` を設定する
+2. `python scripts/setup_dataverse.py` を実行し、`ds_decisioncard` を含む Dataverse metadata を適用する
+3. `python scripts/setup_security_roles.py` を実行し、`ds_decisioncard` privileges を適用する
+4. `python scripts/deploy_notification_flows.py` を実行し、`Decision_OnCreated` の案件ステージ整合を適用する
+5. `python scripts/deploy_adaptive_card_decision_confirmation.py` で `issue_decision_card` / `confirm_decision` ツールフロー 2 本を作成・有効化する
+6. Copilot Studio 側に専用 Topic を作成し、作成済み Power Automate ツールフローをツールとして追加する
+7. Copilot Studio UI で schema 1.5 / `Action.Submit` の Adaptive Card を専用 Topic に設定する
+8. Teams チャネルで quickstart の正常系・入力検証・再利用カード拒否シナリオを確認する
+
+### Validation result
+
+- Python unit tests: `tests.test_adaptive_card_decision_confirmation tests.test_copilot_agent tests.test_notification_flows tests.test_security_roles` passed on 2026-05-19
+- Code Apps unit tests: `npm test` passed on 2026-05-19
+- Production build: `npm run build` passed on 2026-05-19
+- Environment deployment: `setup_dataverse.py`, `setup_security_roles.py`, and `deploy_notification_flows.py` completed on 2026-05-19
+- Adaptive Card agent flow deployment: `issue_decision_card` (`c37ed747-9153-f111-a824-3833c5de99c8`) and `confirm_decision` (`f8502159-9153-f111-a824-3833c5de99c8`) created with `Skills` trigger/response, activated, and Flow API started on 2026-05-19. `confirm_decision` accepts `decisionOption` labels (`承認` / `却下` / `差し戻し`) and resolves `ds_decisionoption` by `ds_name`; validation guards use Power Automate Condition actions with designer-friendly expression objects.
+- Manual Copilot Studio Topic/tool wiring and Teams channel validation: pending
+
+### Rollback notes
+
+- まず Copilot Studio の判断確定 Topic / Power Automate ツールフローを無効化する
+- `Decision_OnCreated` を無効化すると、Code Apps 由来の判断でも案件ステージが更新されないため、無効化中の判断確定は手動補正が必要
+- `ds_decisioncard` は監査用の発行・消費履歴を含むため、rollback では原則削除せず無効化で止める
+- 誤確定が発生した場合は `ds_decision` と `ds_application` の補正内容を本ファイルまたは運用記録へ残す
+
 ## 2026-05-09: 関係者ロールの簡素化と閲覧範囲の修正
 
 Status: Applied 2026-05-09 / **既存環境のアップグレード時のみ実行**

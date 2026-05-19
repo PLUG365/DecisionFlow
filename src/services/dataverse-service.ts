@@ -531,13 +531,14 @@ export const DataverseService = {
       ),
       "createDecision",
     ) as Decision;
-    if (decision._ds_applicationid_value) {
-      const nextStage =
-        decision.nextApplicationStage ?? ApplicationStage.Decided;
+    if (decision._ds_applicationid_value && decision.nextApplicationStage) {
       await this.updateApplication({
         id: decision._ds_applicationid_value,
-        ds_stage: nextStage,
-        ds_submittedat: nextStage === ApplicationStage.Draft ? null : undefined,
+        ds_stage: decision.nextApplicationStage,
+        ds_submittedat:
+          decision.nextApplicationStage === ApplicationStage.Draft
+            ? null
+            : undefined,
       });
     }
     return created;

@@ -18,11 +18,11 @@
 
 **Purpose**: Establish file boundaries, deployment entry points, constants, and reusable fixtures before detailed implementation.
 
-- [ ] T001 Create the Adaptive Card decision confirmation deployment script skeleton in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T002 [P] Add shared decision confirmation constants for allowed option labels, card statuses, response statuses, and stage values in scripts/decision_confirmation_constants.py
-- [ ] T003 [P] Add TypeScript decision confirmation helpers for option-to-stage derivation and 500ms/3-second reconciliation polling constants in src/lib/decision-confirmation.ts
-- [ ] T004 [P] Add Adaptive Card contract fixture covering schema 1.5, Action.Submit, required fields, and response statuses in tests/fixtures/adaptive_card_decision_confirmation.json
-- [ ] T005 Document local setup variables, Copilot Studio-owned Adaptive Card JSON setup, and manual action wiring assumptions in specs/001-confirm-adaptive-card/quickstart.md
+- [x] T001 Create the Adaptive Card decision confirmation deployment script skeleton in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T002 [P] Add shared decision confirmation constants for allowed option labels, card statuses, response statuses, and stage values in scripts/decision_confirmation_constants.py
+- [x] T003 [P] Add TypeScript decision confirmation helpers for option-to-stage derivation and 500ms/3-second reconciliation polling constants in src/lib/decision-confirmation.ts
+- [x] T004 [P] Add Adaptive Card contract fixture covering schema 1.5, Action.Submit, required fields, and response statuses in tests/fixtures/adaptive_card_decision_confirmation.json
+- [x] T005 Document local setup variables, Copilot Studio-owned Adaptive Card JSON setup, and manual action wiring assumptions in specs/001-confirm-adaptive-card/quickstart.md
 
 ---
 
@@ -32,17 +32,17 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T006 [P] Add Dataverse schema tests for ds_decisioncard fields, Issued/Consumed/Superseded/Expired statuses, and application relationship in tests/test_adaptive_card_decision_confirmation.py
-- [ ] T007 [P] Add unit tests proving Decision_OnCreated derives ds_application.ds_stage from ds_decisionoption and never branches by source channel in tests/test_notification_flows.py
-- [ ] T008 [P] Add Code Apps regression tests proving createDecision does not directly patch ds_application after migration in src/lib/decision-confirmation.test.ts
-- [ ] T009 Add ds_decisioncard table creation with application relationship and Issued, Consumed, Superseded, and Expired status choices in scripts/setup_dataverse.py
-- [ ] T010 Add ds_decisioncard security role privileges for flow owners and assigned actors in scripts/setup_security_roles.py
-- [ ] T011 Implement shared Python validation helpers for applicationId, decisionOptionId, rationale, cardInstanceId, actor AAD object ID, and actor UPN in scripts/decision_confirmation_constants.py
-- [ ] T012 Update Decision_OnCreated flow generation to derive ds_application.ds_stage from ds_decisionoption and clear ds_submittedat only when the derived stage is Draft in scripts/deploy_notification_flows.py
-- [ ] T013 Migrate Code Apps createDecision to stop directly updating ds_application and remove nextApplicationStage write coupling in src/services/dataverse-service.ts
-- [ ] T014 Add an early Copilot Studio validation spike proving a Generative Orchestration agent can route into a dedicated Adaptive Card Topic that calls a Power Automate action in the intended chat channel in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T015 Update Copilot agent deployment to maintain Generative Orchestration instructions, dedicated Topic setup guidance or botcomponents YAML deployment, Copilot Studio card JSON setup guidance, manual Power Automate tool guidance, and existing agent setting checks in scripts/deploy_copilot_agent.py
-- [ ] T016 Add MVP first-write-wins tests documenting lookup-then-insert behavior and deferred ETag optimistic concurrency in tests/test_adaptive_card_decision_confirmation.py
+- [x] T006 [P] Add Dataverse schema tests for ds_decisioncard fields, Issued/Consumed/Superseded/Expired statuses, and application relationship in tests/test_adaptive_card_decision_confirmation.py
+- [x] T007 [P] Add unit tests proving Decision_OnCreated derives ds_application.ds_stage from ds_decisionoption and never branches by source channel in tests/test_notification_flows.py
+- [x] T008 [P] Add Code Apps regression tests proving createDecision does not directly patch ds_application after migration in src/lib/decision-confirmation.test.ts
+- [x] T009 Add ds_decisioncard table creation with application relationship and Issued, Consumed, Superseded, and Expired status choices in scripts/setup_dataverse.py
+- [x] T010 Add ds_decisioncard security role privileges for flow owners and assigned actors in scripts/setup_security_roles.py
+- [x] T011 Implement shared Python validation helpers for applicationId, decisionOption, rationale, cardInstanceId, actor AAD object ID, and actor UPN in scripts/decision_confirmation_constants.py
+- [x] T012 Update Decision_OnCreated flow generation to derive ds_application.ds_stage from ds_decisionoption and clear ds_submittedat only when the derived stage is Draft in scripts/deploy_notification_flows.py
+- [x] T013 Migrate Code Apps createDecision to stop directly updating ds_application and remove nextApplicationStage write coupling in src/services/dataverse-service.ts
+- [x] T014 Add an early Copilot Studio validation spike proving a Generative Orchestration agent can route into a dedicated Adaptive Card Topic that calls a Power Automate action in the intended chat channel in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T015 Update Copilot agent deployment to maintain Generative Orchestration instructions, dedicated Topic setup guidance or botcomponents YAML deployment, Copilot Studio card JSON setup guidance, manual Power Automate tool guidance, and existing agent setting checks in scripts/deploy_copilot_agent.py
+- [x] T016 Add MVP first-write-wins tests documenting lookup-then-insert behavior and deferred ETag optimistic concurrency in tests/test_adaptive_card_decision_confirmation.py
 
 **Checkpoint**: Foundation ready. ds_decisioncard exists, Decision_OnCreated is the only ds_application reconciliation path, Code Apps no longer relies on direct application updates, and Copilot Studio action feasibility is proven before detailed flow build-out.
 
@@ -56,23 +56,23 @@
 
 ### Tests for User Story 1
 
-- [ ] T017 [P] [US1] Add contract tests for valid confirm_decision submit and succeeded response in tests/test_adaptive_card_decision_confirmation.py
-- [ ] T018 [P] [US1] Add flow definition tests proving submit creates ds_decision and consumes ds_decisioncard without any ds_application update action in tests/test_adaptive_card_decision_confirmation.py
-- [ ] T019 [P] [US1] Add contract tests proving the Copilot Studio-owned Adaptive Card uses schema 1.5, Action.Submit, decision option, and rationale inputs in tests/test_adaptive_card_decision_confirmation.py
+- [x] T017 [P] [US1] Add contract tests for valid confirm_decision submit and succeeded response in tests/test_adaptive_card_decision_confirmation.py
+- [x] T018 [P] [US1] Add flow definition tests proving submit creates ds_decision and consumes ds_decisioncard without any ds_application update action in tests/test_adaptive_card_decision_confirmation.py
+- [x] T019 [P] [US1] Add contract tests proving the Copilot Studio-owned Adaptive Card uses schema 1.5, Action.Submit, decision option, and rationale inputs in tests/test_adaptive_card_decision_confirmation.py
 
 ### Implementation for User Story 1
 
-- [ ] T020 [US1] Build Adaptive Card issue flow definition that returns cardInstanceId and context for the Copilot Studio-owned card JSON in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T021 [US1] Build Adaptive Card submit Power Automate definition for confirm_decision in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T022 [US1] Add submit payload parsing for applicationId, decisionOptionId, rationale, cardInstanceId, actor.aadObjectId, and actor.upn in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T023 [US1] Add decision option lookup constrained to active 承認, 却下, and 差し戻し records in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T024 [US1] Add ds_application lookup requiring an existing accessible Submitted application before decision creation in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T025 [US1] Add MVP first-write-wins check that returns already_processed when a ds_decision already exists for the current Submitted cycle in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T026 [US1] Add ds_decision create action with application, decision option, decider, rationale, and decidedAt bindings in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T027 [US1] Add ds_decisioncard Consumed update after successful ds_decision creation in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T028 [US1] Ensure issue and submit flow definitions contain no ds_application update action in scripts/deploy_adaptive_card_decision_confirmation.py
-- [ ] T029 [US1] Add or document dedicated Copilot Studio Topic deployment for schema 1.5 Action.Submit Adaptive Card in scripts/deploy_copilot_agent.py or specs/001-confirm-adaptive-card/quickstart.md
-- [ ] T030 [US1] Update Copilot Studio instructions, dedicated Topic guidance, card JSON setup guidance, and manual action guidance for the Generative Orchestration Power Automate tool in scripts/deploy_copilot_agent.py
+- [x] T020 [US1] Build Adaptive Card issue flow definition that returns cardInstanceId and context for the Copilot Studio-owned card JSON in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T021 [US1] Build Adaptive Card submit Power Automate definition for confirm_decision in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T022 [US1] Add submit payload parsing for applicationId, decisionOption, rationale, cardInstanceId, actor.aadObjectId, and actor.upn in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T023 [US1] Add decision option lookup constrained to active 承認, 却下, and 差し戻し records in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T024 [US1] Add ds_application lookup requiring an existing accessible Submitted application before decision creation in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T025 [US1] Add MVP first-write-wins check that returns already_processed when a ds_decision already exists for the current Submitted cycle in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T026 [US1] Add ds_decision create action with application, decision option, decider, rationale, and decidedAt bindings in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T027 [US1] Add ds_decisioncard Consumed update after successful ds_decision creation in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T028 [US1] Ensure issue and submit flow definitions contain no ds_application update action in scripts/deploy_adaptive_card_decision_confirmation.py
+- [x] T029 [US1] Add or document dedicated Copilot Studio Topic deployment for schema 1.5 Action.Submit Adaptive Card in scripts/deploy_copilot_agent.py or specs/001-confirm-adaptive-card/quickstart.md
+- [x] T030 [US1] Update Copilot Studio instructions, dedicated Topic guidance, card JSON setup guidance, and manual action guidance for the Generative Orchestration Power Automate tool in scripts/deploy_copilot_agent.py
 
 **Checkpoint**: US1 is independently testable with a valid assigned decider and produces a canonical ds_decision without direct application updates in the card path.
 
@@ -87,7 +87,7 @@
 ### Tests for User Story 2
 
 - [ ] T031 [P] [US2] Add contract tests for forbidden and invalid_target responses in tests/test_adaptive_card_decision_confirmation.py
-- [ ] T032 [P] [US2] Add validation tests for missing decisionOptionId, unsupported option labels, blank rationale, missing cardInstanceId, and missing actor in tests/test_adaptive_card_decision_confirmation.py
+- [ ] T032 [P] [US2] Add validation tests for missing decisionOption, unsupported option labels, blank rationale, missing cardInstanceId, and missing actor in tests/test_adaptive_card_decision_confirmation.py
 - [ ] T033 [P] [US2] Add single-use and reissue tests for Issued, Consumed, Superseded, and Expired ds_decisioncard statuses in tests/test_adaptive_card_decision_confirmation.py
 
 ### Implementation for User Story 2
@@ -137,15 +137,15 @@
 
 **Purpose**: Cross-cutting checks, documentation, and end-to-end verification.
 
-- [ ] T054 [P] Update implementation notes and rollback guidance for ds_decisioncard, Generative Orchestration + dedicated Topic action wiring, schema 1.5 Action.Submit, first-write-wins MVP limits, and Code Apps reconciliation polling in specs/001-confirm-adaptive-card/quickstart.md
-- [ ] T055 [P] Update architecture documentation to state that ds_decision is canonical and Copilot card processing never directly updates ds_application in docs/ARCHITECTURE.md
-- [ ] T056 [P] Update development plan notes to describe migration away from Code Apps direct ds_application updates in docs/PLAN.md
-- [ ] T057 [P] Record ds_decisioncard table/security-role migration steps and application result in docs/MIGRATIONS.md
-- [ ] T058 Run Python unit tests for adaptive card, notification flow, Dataverse setup, and security role definitions with py -m unittest tests.test_adaptive_card_decision_confirmation tests.test_notification_flows tests.test_security_roles
-- [ ] T059 Run Code Apps unit tests covering src/lib/decision-confirmation.test.ts with npm test from package.json
-- [ ] T060 Run Code Apps production build with npm run build from package.json
+- [x] T054 [P] Update implementation notes and rollback guidance for ds_decisioncard, Generative Orchestration + dedicated Topic action wiring, schema 1.5 Action.Submit, first-write-wins MVP limits, and Code Apps reconciliation polling in specs/001-confirm-adaptive-card/quickstart.md
+- [x] T055 [P] Update architecture documentation to state that ds_decision is canonical and Copilot card processing never directly updates ds_application in docs/ARCHITECTURE.md
+- [x] T056 [P] Update development plan notes to describe migration away from Code Apps direct ds_application updates in docs/PLAN.md
+- [x] T057 [P] Record ds_decisioncard table/security-role migration steps and application result in docs/MIGRATIONS.md
+- [x] T058 Run Python unit tests for adaptive card, notification flow, Dataverse setup, and security role definitions with py -m unittest tests.test_adaptive_card_decision_confirmation tests.test_notification_flows tests.test_security_roles
+- [x] T059 Run Code Apps unit tests covering src/lib/decision-confirmation.test.ts with npm test from package.json
+- [x] T060 Run Code Apps production build with npm run build from package.json
 - [ ] T061 Execute quickstart validation scenarios for normal, validation, Code Apps convergence, conflict, authorization, card reissue, and card replay paths in specs/001-confirm-adaptive-card/quickstart.md
-- [ ] T062 Record any manual Copilot Studio deployment, Topic YAML limitation, channel limitation, or environment-specific follow-up in docs/PLAN.md
+- [x] T062 Record any manual Copilot Studio deployment, Topic YAML limitation, channel limitation, or environment-specific follow-up in docs/PLAN.md
 
 ---
 
@@ -192,7 +192,7 @@ Task: "T019 [US1] Add contract tests proving the Copilot Studio-owned Adaptive C
 
 ```text
 Task: "T031 [US2] Add contract tests for forbidden and invalid_target responses in tests/test_adaptive_card_decision_confirmation.py"
-Task: "T032 [US2] Add validation tests for missing decisionOptionId, unsupported option labels, blank rationale, missing cardInstanceId, and missing actor in tests/test_adaptive_card_decision_confirmation.py"
+Task: "T032 [US2] Add validation tests for missing decisionOption, unsupported option labels, blank rationale, missing cardInstanceId, and missing actor in tests/test_adaptive_card_decision_confirmation.py"
 Task: "T033 [US2] Add single-use and reissue tests for Issued, Consumed, Superseded, and Expired ds_decisioncard statuses in tests/test_adaptive_card_decision_confirmation.py"
 ```
 

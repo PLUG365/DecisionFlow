@@ -154,7 +154,7 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertEqual(actions["Get_decision_option"]["inputs"]["parameters"]["entityName"], "ds_decisionoptions")
         self.assertEqual(actions["Get_applicant"]["runAfter"], {"Get_application": ["Succeeded"]})
         self.assertEqual(actions["Get_decision_option"]["runAfter"], {"Get_applicant": ["Succeeded"]})
-        self.assertEqual(actions["List_participants"]["runAfter"], {"Get_decision_option": ["Succeeded"]})
+        self.assertEqual(actions["List_participants"]["runAfter"], {"Clear_submitted_at_if_returned_to_draft": ["Succeeded"]})
         self.assertIn("If_applicant_has_email", actions)
         self.assertEqual(actions["If_applicant_has_email"]["runAfter"], {"List_participants": ["Succeeded"]})
         self.assertIn("Notify_participants", actions)
@@ -164,6 +164,38 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             {"If_applicant_has_email": ["Succeeded"]},
         )
         self.assertEqual(participant_get["inputs"]["parameters"]["recordId"], "@items('Notify_participants')?['_ds_userid_value']")
+
+    def test_decision_created_flow_reconciles_application_stage_before_notifications(self):
+        clientdata = _clientdata(flows.build_decision_created_clientdata(CONNECTION_REFS, "ds"))
+        actions = clientdata["properties"]["definition"]["actions"]
+
+        self.assertIn("Derive_next_application_stage", actions)
+        self.assertIn("Update_application_stage", actions)
+        self.assertIn("Clear_submitted_at_if_returned_to_draft", actions)
+
+        derive_stage = actions["Derive_next_application_stage"]
+        self.assertEqual(derive_stage["type"], "Compose")
+        derive_json = json.dumps(derive_stage["inputs"], ensure_ascii=False)
+        self.assertIn("Get_decision_option", derive_json)
+        self.assertIn("差し戻し", derive_json)
+        self.assertIn("100000000", derive_json)
+        self.assertIn("100000004", derive_json)
+
+        update_stage = actions["Update_application_stage"]
+        self.assertEqual(update_stage["inputs"]["host"]["operationId"], "UpdateRecord")
+        self.assertEqual(update_stage["inputs"]["parameters"]["entityName"], "ds_applications")
+        self.assertEqual(update_stage["inputs"]["parameters"]["recordId"], "@triggerOutputs()?['body/_ds_applicationid_value']")
+        self.assertEqual(update_stage["inputs"]["parameters"]["item"]["ds_stage"], "@outputs('Derive_next_application_stage')")
+        self.assertEqual(update_stage["runAfter"], {"Derive_next_application_stage": ["Succeeded"]})
+
+        clear_submitted_at = actions["Clear_submitted_at_if_returned_to_draft"]
+        self.assertEqual(clear_submitted_at["runAfter"], {"Update_application_stage": ["Succeeded"]})
+        clear_json = json.dumps(clear_submitted_at, ensure_ascii=False)
+        self.assertIn("100000000", clear_json)
+        self.assertIn("ds_submittedat", clear_json)
+
+        self.assertEqual(actions["List_participants"]["runAfter"], {"Clear_submitted_at_if_returned_to_draft": ["Succeeded"]})
+        self.assertEqual(actions["If_applicant_has_email"]["runAfter"], {"List_participants": ["Succeeded"]})
 
     def test_mention_created_flow_notifies_target_user(self):
         clientdata = _clientdata(flows.build_mention_created_clientdata(CONNECTION_REFS, "ds"))

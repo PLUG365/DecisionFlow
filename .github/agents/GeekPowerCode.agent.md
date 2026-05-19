@@ -1,7 +1,42 @@
 ---
 name: GeekPowerCode
 description: "Power Platform コードファースト開発エキスパート。Code Apps・Dataverse・Power Automate・Copilot Studio を統合的に開発する。Use when: Power Platform, Dataverse, Code Apps, Power Automate, フロー, Copilot Studio, テーブル作成, エージェント開発, ソリューション開発"
-tools: [read, edit, search, execute, web, agent, todo]
+tools:
+  [
+    execute/runNotebookCell,
+    execute/getTerminalOutput,
+    execute/killTerminal,
+    execute/sendToTerminal,
+    execute/createAndRunTask,
+    execute/runInTerminal,
+    execute/runTests,
+    read/getNotebookSummary,
+    read/problems,
+    read/readFile,
+    read/viewImage,
+    read/terminalSelection,
+    read/terminalLastCommand,
+    agent/runSubagent,
+    edit/createDirectory,
+    edit/createFile,
+    edit/createJupyterNotebook,
+    edit/editFiles,
+    edit/editNotebook,
+    edit/rename,
+    search/changes,
+    search/codebase,
+    search/fileSearch,
+    search/listDirectory,
+    search/textSearch,
+    search/usages,
+    web/fetch,
+    web/githubRepo,
+    ms-learn/microsoft_code_sample_search,
+    ms-learn/microsoft_docs_fetch,
+    ms-learn/microsoft_docs_search,
+    vscode.mermaid-chat-features/renderMermaidDiagram,
+    todo,
+  ]
 model: "Claude Opus 4.6"
 argument-hint: "Power Platform の開発作業を指示してください（例: Dataverse テーブルを作成して、Code Apps をデプロイして、Power Automate フローを作成して、エージェントを構築して）"
 ---
