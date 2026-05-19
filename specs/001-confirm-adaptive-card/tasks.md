@@ -144,7 +144,7 @@
 - [x] T058 Run Python unit tests for adaptive card, notification flow, Dataverse setup, and security role definitions with py -m unittest tests.test_adaptive_card_decision_confirmation tests.test_notification_flows tests.test_security_roles
 - [x] T059 Run Code Apps unit tests covering src/lib/decision-confirmation.test.ts with npm test from package.json
 - [x] T060 Run Code Apps production build with npm run build from package.json
-- [ ] T061 Execute quickstart validation scenarios for normal, validation, Code Apps convergence, conflict, authorization, card reissue, and card replay paths in specs/001-confirm-adaptive-card/quickstart.md
+- [x] T061 Execute quickstart validation scenarios for normal, validation, Code Apps convergence, conflict, authorization, card reissue, and card replay paths in specs/001-confirm-adaptive-card/quickstart.md
 - [x] T062 Record any manual Copilot Studio deployment, Topic YAML limitation, channel limitation, or environment-specific follow-up in docs/PLAN.md
 
 ---
