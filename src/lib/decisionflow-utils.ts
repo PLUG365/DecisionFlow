@@ -6,6 +6,7 @@ import {
 export type ResourceInput = {
   title?: string | null;
   url?: string | null;
+  description?: string | null;
 };
 
 export type ApplicationInput = {
@@ -66,6 +67,10 @@ export function validateResourceInput(input: ResourceInput): ValidationResult {
 
   if (!input.url?.trim()) {
     fieldErrors.url = "リンク資料では URL が必須です";
+  }
+
+  if (!input.description?.trim()) {
+    fieldErrors.description = "説明が必須です（AI 判断に活用されます）";
   }
 
   return {
