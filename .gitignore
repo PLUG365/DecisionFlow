@@ -59,7 +59,10 @@ venv/
 .venv/
 
 # Debug artifacts
-artifacts/
+artifacts/*
+!artifacts/solutions/
+artifacts/solutions/*
+!artifacts/solutions/README.md
 scripts/*_debug.json
 deploy_log*.txt
 dump_*.txt
