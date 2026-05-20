@@ -14,6 +14,11 @@ import { Application_GenerateAiDecisionService } from "@/services/application-ge
 import { SystemusersService } from "@/generated/services/SystemusersService";
 import { isIgnorableParticipantRevokeFailure } from "@/lib/decisionflow-utils";
 import {
+  DEFAULT_CATEGORIES,
+  DEFAULT_DECISION_OPTIONS,
+  getMissingInitialRows,
+} from "@/lib/initial-data";
+import {
   ApplicationStage,
   MessageKind,
   ParticipantRole,
@@ -67,10 +72,17 @@ function stripUndefined<T extends Record<string, unknown>>(record: T) {
 
 export const DataverseService = {
   async getData() {
+    const [categoriesInitial, decisionOptionsInitial] = await Promise.all([
+      this.getCategories(),
+      this.getDecisionOptions(),
+    ]);
+    const { categories, decisionOptions } = await this.ensureInitialData({
+      categories: categoriesInitial,
+      decisionOptions: decisionOptionsInitial,
+    });
+
     const [
       applications,
-      categories,
-      decisionOptions,
       messages,
       mentions,
       participants,
@@ -80,8 +92,6 @@ export const DataverseService = {
       deciders,
     ] = await Promise.all([
       this.getApplications(),
-      this.getCategories(),
-      this.getDecisionOptions(),
       this.getMessages(),
       this.getMentions(),
       this.getParticipants(),
@@ -103,6 +113,40 @@ export const DataverseService = {
       users,
       deciders,
     };
+  },
+
+  async ensureInitialData(input: {
+    categories: Category[];
+    decisionOptions: DecisionOption[];
+  }) {
+    const categoriesToCreate =
+      input.categories.length === 0 ? DEFAULT_CATEGORIES : [];
+    const decisionOptionsToCreate = getMissingInitialRows(
+      input.decisionOptions,
+      DEFAULT_DECISION_OPTIONS,
+    );
+
+    await Promise.all([
+      ...categoriesToCreate.map((category) => this.createCategory(category)),
+      ...decisionOptionsToCreate.map((option) =>
+        this.createDecisionOption(option),
+      ),
+    ]);
+
+    if (
+      categoriesToCreate.length === 0 &&
+      decisionOptionsToCreate.length === 0
+    ) {
+      return input;
+    }
+
+    const [categories, decisionOptions] = await Promise.all([
+      categoriesToCreate.length > 0 ? this.getCategories() : input.categories,
+      decisionOptionsToCreate.length > 0
+        ? this.getDecisionOptions()
+        : input.decisionOptions,
+    ]);
+    return { categories, decisionOptions };
   },
 
   async getApplications(): Promise<Application[]> {

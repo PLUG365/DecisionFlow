@@ -62,6 +62,13 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         finally:
             agent.DECISIONFLOW_APP_BASE_URL = previous
 
+    def test_gpt_instructions_use_fixed_decision_options(self):
+        instructions = agent.build_gpt_instructions()
+
+        self.assertIn("承認」「却下」「差し戻し", instructions)
+        self.assertNotIn("条件付き承認", instructions)
+        self.assertNotIn("否認", instructions)
+
     def test_gpt_instructions_omits_app_url_section_when_unset(self):
         previous = agent.DECISIONFLOW_APP_BASE_URL
         try:
