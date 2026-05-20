@@ -60,6 +60,7 @@ export default function ResourcesPage() {
     const validation = validateResourceInput({
       title: formTitle,
       url: formUrl,
+      description: formDescription,
     });
     if (!validation.valid) {
       toast.error(Object.values(validation.fieldErrors)[0]);
@@ -211,13 +212,13 @@ export default function ResourcesPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="resource-description">説明</Label>
+              <Label htmlFor="resource-description">説明 *</Label>
               <Textarea
                 id="resource-description"
                 value={formDescription}
                 onChange={(event) => setFormDescription(event.target.value)}
                 rows={4}
-                placeholder="資料の位置づけや確認ポイント"
+                placeholder="資料の位置づけ・確認ポイント・判断に必要な要点（AI 判断に活用されます）"
               />
             </div>
           </FormSection>

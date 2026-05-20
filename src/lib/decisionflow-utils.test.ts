@@ -22,16 +22,31 @@ describe("validateResourceInput", () => {
     const result = validateResourceInput({
       title: "見積条件の根拠",
       url: "",
+      description: "根拠となる見積条件の詳細",
     });
 
     expect(result.valid).toBe(false);
     expect(result.fieldErrors.url).toBe("リンク資料では URL が必須です");
   });
 
+  it("requires description", () => {
+    const result = validateResourceInput({
+      title: "SharePoint 資料",
+      url: "https://example.com/resource",
+      description: "",
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.fieldErrors.description).toBe(
+      "説明が必須です（AI 判断に活用されます）",
+    );
+  });
+
   it("accepts valid link resource input", () => {
     const result = validateResourceInput({
       title: "SharePoint 資料",
       url: "https://example.com/resource",
+      description: "見積条件の根拠資料。承認条件の範囲と例外理由を記載。",
     });
 
     expect(result.valid).toBe(true);
