@@ -295,7 +295,85 @@ Teams 公開後は、表示されたアプリマニフェストから以下を `
 py scripts/deploy_notification_flows.py
 ```
 
-### 12. 動作確認を行う
+### 12. Copilot Studio チャットでの判断確定機能を追加する（任意機能）
+
+判断者が Copilot Studio チャットから Adaptive Card 経由で判断確定できるようにします。**フロー 2 本のデプロイだけスクリプト化されており、Copilot Studio 側（ツール追加・トピック作成・フロー接続）は UI 操作**です。使わない場合はこの Step を丸ごとスキップして Step 13 へ進めて構いません。
+
+仕様の全体像は [specs/001-confirm-adaptive-card/spec.md](specs/001-confirm-adaptive-card/spec.md) を参照してください。
+
+前提（既に完了している項目）:
+
+- Step 5 (`setup_dataverse.py`) 実行済み → `ds_decisioncard` テーブルが作成されている
+- Step 6 (`setup_security_roles.py`) 実行済み → `ds_Decider` / `ds_Admin` に `ds_decisioncard` への権限が付与されている
+- Step 8 で Dataverse 接続が Power Automate に作成済み
+- Step 10 で `DecisionFlow Assistant` が作成・初期設定済み
+
+#### 12-1. 判断確定用 Power Automate フローをデプロイする
+
+```powershell
+py scripts/deploy_adaptive_card_decision_confirmation.py
+```
+
+これで以下 2 本のフローが Power Automate に作成・有効化されます。
+
+| フロー名 | 役割 |
+| --- | --- |
+| `issue_decision_card` | 判断カード発行。`ds_application` が `Submitted` かつ実行者が割り当て判断者であることを確認し、`ds_decisioncard` を `Issued` で作成、`cardInstanceId` を返す |
+| `confirm_decision` | Adaptive Card submit を検証し、`ds_decision` を作成して `ds_decisioncard` を `Consumed` に更新。`status: succeeded / already_processed / forbidden / invalid_target` を返す |
+
+入出力契約は [specs/001-confirm-adaptive-card/contracts/adaptive-card-decision-confirmation.md](specs/001-confirm-adaptive-card/contracts/adaptive-card-decision-confirmation.md) を参照してください。
+
+#### 12-2. Copilot Studio エージェントに 2 つのフローを「ツール」として追加する
+
+`DecisionFlow Assistant` を開き、左メニュー **ツール** → **+ ツールを追加** → **Power Automate フローを追加** から以下 2 本を追加します。
+
+- `issue_decision_card`
+- `confirm_decision`
+
+ここで追加することで、後段のトピックからフローを呼び出せるようになります。
+
+#### 12-3. 「判断確定」トピックを新規作成して YAML を貼り付ける
+
+1. `DecisionFlow Assistant` の左メニュー **トピック** → **+ 新しいトピック** → **空のトピックから作成** を選択
+2. トピック名: `判断確定`
+3. トピック画面右上の `…` メニュー → **コードエディタを開く**
+4. [specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml](specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml) の全文をコピーして、エディタの内容を**全置換**
+5. **保存** ← この時点では `flowId` がプレースホルダ (`00000000-...`) のままなので、2 つの「Power Automate フローを呼び出す」ノードでエラー表示が出ますが、想定通りです
+
+#### 12-4. UI で 2 つのフロー接続を修正する
+
+コードエディタを閉じてビジュアルエディタに戻ります。エラーになっている 2 つの **「Power Automate フローを呼び出す」** ノードを順番にクリックして、右側プロパティパネルから対応するフローを選択し直します。
+
+- 1 つ目のノード（`issue_decision_card` 呼び出し用）→ プロパティパネルで **`issue_decision_card`** を選択
+- 2 つ目のノード（`confirm_decision` 呼び出し用）→ プロパティパネルで **`confirm_decision`** を選択
+
+選択すると Copilot Studio が内部的に `flowId` を実 GUID に置換し、エラーが消えます。入出力のバインドは YAML 上で既に正しい変数名に揃えてあるので、再マッピング不要のはずです（もし入力欄に「未設定」が出たら、Topic 変数を選択し直す）。
+
+最後にエージェント全体を **公開** します。
+
+#### 12-5. 動作確認
+
+Copilot Studio のテストパネル（または公開済み Teams チャネル）で:
+
+1. 「申請○○を判断したい」「判断を確定したい」のような発話 → **判断確定**トピックが起動する
+2. `askApplicationId` で対象案件 ID（GUID）を入力 → `issue_decision_card` フローが走り、Adaptive Card が表示される
+3. **承認 / 却下 / 差し戻し** を選択 + 理由を入力 → **確定** ボタン押下
+4. `succeeded` 系メッセージが表示される
+5. Power Apps メーカーで該当 `ds_application` を確認:
+   - `ds_decision` レコードが 1 件作成されている
+   - `ds_stage` が `Decided`（差し戻しの場合は `Draft`）に更新されている
+   - `ds_decisioncard` が `Consumed` 状態になっている
+6. 既存の `Decision_OnCreated` フロー実行履歴で申請者・関係者宛通知が送信されている
+
+異常系も一通り確認すると安心です:
+
+- 未割り当てユーザーで同じ動線 → `forbidden`
+- 既に確定済み案件で実行 → `already_processed`
+- 同一カードを 2 回 submit → `already_processed`（`ds_decisioncard.ds_status = Consumed` で弾かれる）
+
+検証シナリオ詳細は [specs/001-confirm-adaptive-card/quickstart.md](specs/001-confirm-adaptive-card/quickstart.md) を参照してください。
+
+### 13. 動作確認を行う
 
 最低限、以下は確認してください。
 
@@ -308,6 +386,7 @@ py scripts/deploy_notification_flows.py
 7. AI 判断更新が実行できる
 8. Copilot Studio で申請概要を問い合わせできる
 9. ds_Admin 以外のユーザーにはサイドバーの「マスタ管理」が表示されない
+10. Step 12 を実施した場合: Copilot Studio チャットから判断確定でき、`ds_decision` 作成と `ds_application` ステージ更新が反映される
 
 コード変更を伴う場合の確認コマンド:
 
