@@ -1,7 +1,7 @@
 # DecisionFlow プロジェクト計画
 
 > **ステータス**: IMPLEMENTATION（Adaptive Card 判断確定 US1-US3 実装・環境スクリプト/agent flow 反映済み / 手動 Copilot Studio wiring 確認済み）
-> **最終更新**: 2026-05-19
+> **最終更新**: 2026-05-21
 > **次フェーズ**: 追加の本番化 hardening（厳密ロック、運用監視、補正手順）
 
 ---
@@ -151,19 +151,19 @@
 
 ### 5.1 シークレット管理
 
-| 項目                         | 扱い                | 備考                                                              |
-| ---------------------------- | ------------------- | ----------------------------------------------------------------- |
-| `.env`                       | ❌ コミット禁止     | `.gitignore` に追加。`DATAVERSE_URL`, `TENANT_ID` 等を含む        |
-| `.env.example`               | ✅ コミット         | キー名のみ記載・値は空 or プレースホルダー                        |
-| `.auth_record.json`          | ❌ コミット禁止     | Azure Identity の認証キャッシュ（個人情報相当）                   |
-| `power.config.json`          | ❌ コミット禁止     | テナント固有の `appId`・`environmentId` を含む                    |
-| `src/generated/`             | ❌ コミット禁止     | テーブル GUID・環境固有値を含む可能性。`add-data-source` で再生成 |
-| `.power/`                    | ❌ コミット禁止     | `dataSourcesInfo.ts` 等の SDK 生成物。`add-data-source` で再生成  |
-| ソリューション ZIP           | ❌ コミット禁止     | Managed Solution は Release Assets として配布                     |
-| Copilot Studio Bot ID        | △ 環境変数化        | `.env` の `BOT_ID` で管理                                         |
-| 接続 ID（Power Automate）    | ❌ ハードコード禁止 | スクリプトで毎回検索                                              |
-| アイコン PNG/SVG             | ✅ 公開可           | `assets/` に配置                                                  |
-| スクリプト・設計ドキュメント | ✅ 公開可           | テナント固有値を埋め込まない                                      |
+| 項目                         | 扱い                | 備考                                                                                 |
+| ---------------------------- | ------------------- | ------------------------------------------------------------------------------------ |
+| `.env`                       | ❌ コミット禁止     | `.gitignore` に追加。`DATAVERSE_URL`, `TENANT_ID` 等を含む                           |
+| `.env.example`               | ✅ コミット         | キー名のみ記載・値は空 or プレースホルダー                                           |
+| `.auth_record.json`          | ❌ コミット禁止     | Azure Identity の認証キャッシュ（個人情報相当）                                      |
+| `power.config.json`          | ❌ コミット禁止     | テナント固有の `appId`・`environmentId` を含む                                       |
+| `src/generated/`             | ❌ コミット禁止     | テーブル GUID・環境固有値を含む可能性。`add-data-source` で再生成                    |
+| `.power/`                    | ❌ コミット禁止     | `dataSourcesInfo.ts` 等の SDK 生成物。`add-data-source` で再生成                     |
+| ソリューション ZIP           | ❌ コミット禁止     | Managed Solution は Release Assets として配布。作業用置き場は `artifacts/solutions/` |
+| Copilot Studio Bot ID        | △ 環境変数化        | `.env` の `BOT_ID` で管理                                                            |
+| 接続 ID（Power Automate）    | ❌ ハードコード禁止 | スクリプトで毎回検索                                                                 |
+| アイコン PNG/SVG             | ✅ 公開可           | `assets/` に配置                                                                     |
+| スクリプト・設計ドキュメント | ✅ 公開可           | テナント固有値を埋め込まない                                                         |
 
 ### 5.2 公開チェックリスト
 
