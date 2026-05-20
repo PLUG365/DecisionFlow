@@ -132,7 +132,8 @@
 - ✅ 申請者の閲覧範囲: **自分の申請のみ**（メンション / 関係者追加時のみ拡張）
 - ✅ ソリューション名・プレフィックス: `DecisionSupport` / `ds`
 - ✅ カテゴリ初期マスタ: 顧客案件 / 部内案件 / 課内案件 / 他部署案件 / 事務処理
-- ✅ 判断選択肢: 承認 / 却下 / 差し戻し
+- ✅ 判断選択肢: 承認 / 却下 / 差し戻し（固定システムマスタ。フロー・Copilot Studio・Adaptive Card が名称で参照するため追加・名称変更・削除しない）
+- ✅ ソリューション配布時の注意: 通常のソリューションZipには `ds_category` / `ds_decisionoption` の行データは含まれないため、Code Apps 初回起動時に初期カテゴリと固定判断選択肢を自動補完する
 - ✅ 判断確定の正本イベント: `ds_decision` 作成
 - ✅ 案件ステージ整合: `Decision_OnCreated` が `ds_decisionoption` から導出して更新
 - ✅ Adaptive Card 表示 JSON: Copilot Studio 専用 Topic 側で管理。Power Automate はカード表示 JSON を所有しない

@@ -7,14 +7,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useCategories,
   useCreateCategory,
-  useCreateDecisionOption,
   useDecisionOptions,
   useDeleteCategory,
-  useDeleteDecisionOption,
   useIsAdmin,
   useUpdateCategory,
-  useUpdateDecisionOption,
 } from "@/hooks/use-decisionflow";
+import { isFixedDecisionOptionName } from "@/lib/decision-options";
 import { toast } from "sonner";
 
 type MasterRow = Record<string, unknown> & { id: string };
@@ -26,9 +24,6 @@ export default function MastersPage() {
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   const deleteCategory = useDeleteCategory();
-  const createDecisionOption = useCreateDecisionOption();
-  const updateDecisionOption = useUpdateDecisionOption();
-  const deleteDecisionOption = useDeleteDecisionOption();
 
   if (isAdminLoading) return <div />;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
@@ -59,9 +54,18 @@ export default function MastersPage() {
     { key: "sortOrder", label: "並び順", editable: true, type: "number" },
   ];
   const optionColumns: EditableColumn<MasterRow>[] = [
-    { key: "name", label: "名前", editable: true, type: "text" },
-    { key: "description", label: "説明", editable: true, type: "textarea" },
-    { key: "sortOrder", label: "並び順", editable: true, type: "number" },
+    {
+      key: "name",
+      label: "名前",
+      editable: false,
+      type: "text",
+      render: (value) => {
+        const label = String(value ?? "");
+        return isFixedDecisionOptionName(label) ? label : `${label}（非標準）`;
+      },
+    },
+    { key: "description", label: "説明", editable: false, type: "textarea" },
+    { key: "sortOrder", label: "並び順", editable: false, type: "number" },
   ];
 
   const requireName = (value: unknown) => {
@@ -108,26 +112,6 @@ export default function MastersPage() {
     );
   };
 
-  const handleSaveDecisionOption = (
-    id: string | number,
-    row: Partial<MasterRow>,
-  ) => {
-    const name = requireName(row.name);
-    if (!name) return;
-    updateDecisionOption.mutate(
-      {
-        id: String(id),
-        ds_name: name,
-        ds_description: String(row.description ?? "") || undefined,
-        ds_sortorder: Number(row.sortOrder ?? 0),
-      },
-      {
-        onSuccess: () => toast.success("判断選択肢を保存しました"),
-        onError: () => toast.error("判断選択肢の保存に失敗しました"),
-      },
-    );
-  };
-
   const handleDeleteCategory = (id: string | number) => {
     deleteCategory.mutate(String(id), {
       onSuccess: () => toast.success("カテゴリを削除しました"),
@@ -138,38 +122,12 @@ export default function MastersPage() {
     });
   };
 
-  const handleDeleteDecisionOption = (id: string | number) => {
-    deleteDecisionOption.mutate(String(id), {
-      onSuccess: () => toast.success("判断選択肢を削除しました"),
-      onError: () =>
-        toast.error(
-          "判断選択肢の削除に失敗しました。既存の判断で参照されている可能性があります。",
-        ),
-    });
-  };
-
-  const handleAddDecisionOption = (row: Omit<MasterRow, "id">) => {
-    const name = requireName(row.name);
-    if (!name) return;
-    createDecisionOption.mutate(
-      {
-        ds_name: name,
-        ds_description: String(row.description ?? "") || undefined,
-        ds_sortorder: Number(row.sortOrder ?? 0),
-      },
-      {
-        onSuccess: () => toast.success("判断選択肢を追加しました"),
-        onError: () => toast.error("判断選択肢の追加に失敗しました"),
-      },
-    );
-  };
-
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold tracking-tight">マスタ管理</h2>
         <p className="text-sm text-muted-foreground">
-          カテゴリと判断選択肢を保守します。
+          カテゴリを保守します。判断選択肢はフローとチャットで利用する固定値として参照のみ表示します。
         </p>
       </div>
       <Tabs defaultValue="categories">
@@ -193,10 +151,7 @@ export default function MastersPage() {
             data={decisionRows}
             columns={optionColumns}
             title="判断選択肢"
-            onSave={handleSaveDecisionOption}
-            onAdd={handleAddDecisionOption}
-            onDelete={handleDeleteDecisionOption}
-            addButtonLabel="判断選択肢を追加"
+            description="承認 / 却下 / 差し戻しは固定のシステムマスタです。名称や件数を変更すると、Power Automate フローや Copilot Studio の判断確定処理と整合しなくなります。"
           />
         </TabsContent>
       </Tabs>

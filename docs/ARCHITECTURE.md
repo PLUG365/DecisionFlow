@@ -1,6 +1,6 @@
 # DecisionFlow アーキテクチャ
 
-> **最終更新**: 2026-05-04
+> **最終更新**: 2026-05-21
 
 ---
 
@@ -170,18 +170,22 @@ erDiagram
 
 ### 2.2 テーブル定義（概要）
 
-| スキーマ名               | 表示名           | 種別   | 主要列                                                                                                                                                |
-| ------------------------ | ---------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ds_application`         | 申請             | 主     | タイトル, 本文(Memo), カテゴリ(Lookup), 判断者(Lookup→SystemUser), ステージ(Choice), 希望期限, 提出日, AI申請概要, AI会話概要, AI推奨判断, AIコメント |
-| `ds_message`             | メッセージ       | 従属   | 申請(Lookup), 本文(Memo), 種別(Choice), 親メッセージ(Lookup→self)                                                                                     |
-| `ds_mention`             | メンション       | 従属   | メッセージ(Lookup), 対象ユーザー(Lookup→SystemUser), 既読フラグ(Yes/No)                                                                               |
-| `ds_participant`         | 関係者           | 従属   | 申請(Lookup), ユーザー(Lookup→SystemUser), 役割(Choice), 追加者(Lookup→SystemUser), 追加日時                                                          |
-| `ds_decision`            | 判断             | 従属   | 申請(Lookup), 判断者(Lookup→SystemUser), 判断結果(Lookup→`ds_decisionoption`), 理由(Memo), 確定日時                                                   |
-| `ds_decisioncard`        | 判断カード発行   | 従属   | 申請(Lookup), cardInstanceId, actor AAD, actor UPN, 状態, 発行/消費/失効日時                                                                          |
-| `ds_applicationresource` | 関連資料         | 従属   | 申請(Lookup), タイトル, URL, 説明(Memo)                                                                                                               |
-| `ds_category`            | カテゴリ         | マスタ | 名称, 説明, 推奨フォーマット(Memo)                                                                                                                    |
-| `ds_decisionoption`      | 判断選択肢       | マスタ | 名称, 説明, 並び順                                                                                                                                    |
-| `SystemUser`             | システムユーザー | 標準   | （申請者 = `createdby` で取得、判断者・関係者は Lookup）                                                                                              |
+<!-- markdownlint-disable MD060 -->
+
+| スキーマ名               | 表示名           | 種別               | 主要列                                                                                                                                                    |
+| ------------------------ | ---------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ds_application`         | 申請             | 主                 | タイトル, 本文(Memo), カテゴリ(Lookup), 判断者(Lookup→SystemUser), ステージ(Choice), 希望期限, 提出日, AI申請概要, AI会話概要, AI推奨判断, AIコメント     |
+| `ds_message`             | メッセージ       | 従属               | 申請(Lookup), 本文(Memo), 種別(Choice), 親メッセージ(Lookup→self)                                                                                         |
+| `ds_mention`             | メンション       | 従属               | メッセージ(Lookup), 対象ユーザー(Lookup→SystemUser), 既読フラグ(Yes/No)                                                                                   |
+| `ds_participant`         | 関係者           | 従属               | 申請(Lookup), ユーザー(Lookup→SystemUser), 役割(Choice), 追加者(Lookup→SystemUser), 追加日時                                                              |
+| `ds_decision`            | 判断             | 従属               | 申請(Lookup), 判断者(Lookup→SystemUser), 判断結果(Lookup→`ds_decisionoption`), 理由(Memo), 確定日時                                                       |
+| `ds_decisioncard`        | 判断カード発行   | 従属               | 申請(Lookup), cardInstanceId, actor AAD, actor UPN, 状態, 発行/消費/失効日時                                                                              |
+| `ds_applicationresource` | 関連資料         | 従属               | 申請(Lookup), タイトル, URL, 説明(Memo)                                                                                                                   |
+| `ds_category`            | カテゴリ         | マスタ             | 名称, 説明, 推奨フォーマット(Memo)                                                                                                                        |
+| `ds_decisionoption`      | 判断選択肢       | 固定システムマスタ | 名称, 説明, 並び順。固定値は `承認` / `却下` / `差し戻し`。フロー・Copilot Studio・Adaptive Card が名称で参照するため、運用中に追加・名称変更・削除しない |
+| `SystemUser`             | システムユーザー | 標準               | （申請者 = `createdby` で取得、判断者・関係者は Lookup）                                                                                                  |
+
+<!-- markdownlint-enable MD060 -->
 
 ### 2.3 列定義
 
@@ -284,6 +288,10 @@ erDiagram
 **カテゴリ** (`ds_category`): 顧客案件 / 部内案件 / 課内案件 / 他部署案件 / 事務処理
 
 **判断選択肢** (`ds_decisionoption`): 承認 / 却下 / 差し戻し
+
+`ds_decisionoption` は固定システムマスタとして扱う。Code Apps、Power Automate、Copilot Studio、Adaptive Card 判断確定処理はこの3名称を契約として参照するため、通常運用で追加・名称変更・削除しない。判断コメント内で条件や追加確認事項を表現し、判断選択肢そのものは増やさない。
+
+通常のソリューションエクスポートでは `ds_category` / `ds_decisionoption` のテーブル定義は含まれるが、通常テーブルの行データは含まれない。ソリューションインポート版では、Code Apps 初回起動時に `ds_category` が空の場合は初期カテゴリを作成し、`ds_decisionoption` は固定3件の不足分を自動補完する。
 
 ---
 

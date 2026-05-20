@@ -195,12 +195,13 @@ AI 判断カード:
 使用コンポーネント:
 
 - カテゴリ / 判断選択肢の `Tabs`。
-- 簡易編集用 `InlineEditTable`（追加・編集・削除に対応）。
+- カテゴリは簡易編集用 `InlineEditTable` で追加・編集・削除に対応。
+- 判断選択肢は `InlineEditTable` で参照のみ表示し、追加・編集・削除は行わない。
 
 対象テーブル:
 
 - `ds_category`: 名前、説明、推奨フォーマット、並び順。
-- `ds_decisionoption`: 名前、説明、並び順。
+- `ds_decisionoption`: 名前、説明、並び順。固定値は `承認` / `却下` / `差し戻し`。フロー・チャット・Adaptive Card の契約値のため変更不可。
 
 アクセス制御:
 
@@ -218,6 +219,13 @@ DecisionFlow 専用のサービス層を作成する。
 | `src/types/decisionflow.ts`         | Choice ラベル、色、UI 補助型                                                                               |
 | `src/services/dataverse-service.ts` | 生成済み SDK サービスの薄いラッパー                                                                        |
 | `src/hooks/use-decisionflow.ts`     | application、message、mention、participant、decision、resource、master、systemuser 用 TanStack Query hooks |
+
+初回起動時の初期データ補完:
+
+- `DataverseService.getData()` は画面データ取得前にカテゴリと判断選択肢を確認する。
+- カテゴリが空の場合だけ、初期カテゴリ（顧客案件 / 部内案件 / 課内案件 / 他部署案件 / 事務処理）を作成する。
+- 判断選択肢は固定システムマスタとして、`承認` / `却下` / `差し戻し` の不足分を作成する。
+- 補完後にカテゴリと判断選択肢を再取得し、初回表示から選択肢が利用できる状態にする。
 
 Hook グループ:
 
@@ -313,7 +321,8 @@ Hook グループ:
   - [x] `AI判断更新` ボタンと Submitted 保存時の `Application_GenerateAiDecision` 起動
   - [x] 関連資料リンク追加
   - [x] 関連資料リンクの確認付き削除
-  - [x] カテゴリ/判断選択肢の追加・更新・削除（ds_Admin のみアクセス可能、サイドバー表示制御 + ルートガード）
+  - [x] カテゴリの追加・更新・削除（ds_Admin のみアクセス可能、サイドバー表示制御 + ルートガード）
+  - [x] 判断選択肢は固定システムマスタとして参照のみ表示（承認 / 却下 / 差し戻し）
   - [x] 申請者本人向け編集ボタン
   - [x] Choice フィルタ
   - [x] 関係者削除処理中の waiting 表示（権限除外/フロー待ち用スピナー）
