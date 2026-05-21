@@ -28,6 +28,17 @@ describe("parseAiDecisionBasis", () => {
     expect(result.rawText).toBeNull();
   });
 
+  it("extracts object-shaped risks from AI Builder output", () => {
+    const result = parseAiDecisionBasis(
+      JSON.stringify({
+        risks: [{ item: "予算額が未記載です。" }, "期限が近いです。"],
+        similarCases: [],
+      }),
+    );
+
+    expect(result.risks).toEqual(["予算額が未記載です。", "期限が近いです。"]);
+  });
+
   it("falls back to raw text when basis is not JSON", () => {
     const result = parseAiDecisionBasis("類似案件は見つかりませんでした。");
 

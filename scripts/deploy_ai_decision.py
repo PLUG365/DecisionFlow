@@ -177,6 +177,9 @@ def _openapi_action(operation_id: str, parameters: dict, run_after: dict | None 
 
 
 def build_ai_decision_flow_clientdata(connection_refs: dict[str, str], model_id: str, prefix: str = PREFIX) -> str:
+    def ai_output(path: str) -> str:
+        return f"outputs('Run_AI_Prompt')?['body/responsev2/predictionOutput/structuredOutput/{path}']"
+
     triggers = {
         "manual": {
             "type": "Request",
@@ -218,7 +221,7 @@ def build_ai_decision_flow_clientdata(connection_refs: dict[str, str], model_id:
         "Build_basis_json": {
             "type": "Compose",
             "runAfter": {"Run_AI_Prompt": ["Succeeded"]},
-            "inputs": "@string(json(concat('{\"risks\":', string(coalesce(outputs('Run_AI_Prompt')?['body/responsev2/predictionOutput/structuredOutput/risks'], createArray())), ',\"similarCases\":', string(coalesce(outputs('Run_AI_Prompt')?['body/responsev2/predictionOutput/structuredOutput/similarCases'], createArray())), '}')))",
+            "inputs": f"@string(json(concat('{{\"risks\":', string(coalesce({ai_output('risks')}, {ai_output('recommendation/risks')}, json('[]'))), ',\"similarCases\":', string(coalesce({ai_output('similarCases')}, {ai_output('recommendation/similarCases')}, json('[]'))), '}}')))",
         },
         "Update_application_ai_decision": _openapi_action(
             "UpdateRecord",
@@ -226,10 +229,10 @@ def build_ai_decision_flow_clientdata(connection_refs: dict[str, str], model_id:
                 "entityName": f"{prefix}_applications",
                 "recordId": "@triggerBody()?['text']",
                 "item": {
-                    f"{prefix}_aiapplicationsummary": "@outputs('Run_AI_Prompt')?['body/responsev2/predictionOutput/structuredOutput/applicationSummary']",
-                    f"{prefix}_aiconversationsummary": "@outputs('Run_AI_Prompt')?['body/responsev2/predictionOutput/structuredOutput/conversationSummary']",
-                    f"{prefix}_aidecisionoptiontext": "@outputs('Run_AI_Prompt')?['body/responsev2/predictionOutput/structuredOutput/recommendedOption']",
-                    f"{prefix}_aidecisioncomment": "@outputs('Run_AI_Prompt')?['body/responsev2/predictionOutput/structuredOutput/comment']",
+                    f"{prefix}_aiapplicationsummary": f"@coalesce({ai_output('applicationSummary')}, {ai_output('recommendation/applicationSummary')})",
+                    f"{prefix}_aiconversationsummary": f"@coalesce({ai_output('conversationSummary')}, {ai_output('recommendation/conversationSummary')})",
+                    f"{prefix}_aidecisionoptiontext": f"@coalesce({ai_output('recommendedOption')}, {ai_output('recommendation/recommendedOption')}, {ai_output('recommendedDecision')}, {ai_output('recommendation/recommendedDecision')})",
+                    f"{prefix}_aidecisioncomment": f"@coalesce({ai_output('comment')}, {ai_output('recommendation/comment')}, {ai_output('recommendationReason')}, {ai_output('recommendation/recommendationReason')})",
                     f"{prefix}_aidecisionbasis": "@outputs('Build_basis_json')",
                     f"{prefix}_aidecisionupdatedat": "@utcNow()",
                 },

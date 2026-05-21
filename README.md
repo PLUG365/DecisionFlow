@@ -103,10 +103,11 @@ GitHub Release に公開されたソリューションZipを使って、Decision
 1. Power Automate でインポートされたフローを開き、接続エラーがないことを確認する
 2. 必要なフローがオフになっている場合はオンにする
 3. Code Apps のアプリを一度開き、初期カテゴリと固定判断選択肢が自動作成されることを確認する
-4. Power Platform 管理センターで `DecisionFlow-Deciders` グループチームを作成・関連付けし、`ds_Decider` ロールを割り当てる
-5. 利用者に `ds_Applicant`、管理者に `ds_Admin` を割り当てる
-6. Code Apps のアプリを開き、申請作成・提出・判断キュー表示が動くことを確認する
-7. Copilot Studio を使う場合は、認証、Dataverse ナレッジ、Teams チャネル公開を環境に合わせて確認する
+4. `Participant_PreDelete_RevokeAccess` と `Application_GenerateAiDecision` の Power Automate 詳細画面で **Run only users** に DecisionFlow 利用者グループ、または Applicant/Decider を含むグループを追加する
+5. Power Platform 管理センターで `DecisionFlow-Deciders` グループチームを作成・関連付けし、`ds_Decider` ロールを割り当てる
+6. 利用者に `ds_Applicant`、管理者に `ds_Admin` を割り当てる
+7. Code Apps のアプリを開き、申請作成・提出・判断キュー表示が動くことを確認する
+8. Copilot Studio を使う場合は、認証、Dataverse ナレッジ、Teams チャネル公開を環境に合わせて確認する
 
 > 通常のソリューションエクスポートには、カスタムテーブルの定義は含まれますが、`ds_category` / `ds_decisionoption` のような通常テーブルの行データは含まれません。DecisionFlow は Code Apps 初回起動時に、カテゴリが空の場合は初期カテゴリを作成し、固定判断選択肢 `承認` / `却下` / `差し戻し` は不足分だけ自動補完します。
 
@@ -305,7 +306,18 @@ py scripts/run_power_apps_cli.py add-flow --flow-id {Participant_PreDelete_Revok
 py scripts/run_power_apps_cli.py add-flow --flow-id {Application_GenerateAiDecision の workflowid}
 ```
 
-#### 9-4. ビルドして push する
+#### 9-4. Code Apps から呼び出すフローの Run only users を設定する
+
+Power Apps V2 トリガーのフローを Code Apps から実行するユーザーには、Power Automate の **Run only users** 権限が必要です。これは環境・テナント内のユーザー/グループに紐づく設定のため、このリポジトリを別環境で使う場合は利用者側で手動設定します。ソリューションインポート版でもデプロイ版でも必要です。
+
+対象フロー:
+
+- `Participant_PreDelete_RevokeAccess`
+- `Application_GenerateAiDecision`
+
+Power Automate の各フロー詳細画面で **Run only users** に DecisionFlow 利用者グループ、または Applicant/Decider を含むグループを追加してください。編集権限（Owner）は開発・運用担当者に限定します。
+
+#### 9-5. ビルドして push する
 
 `add-flow` が `power.config.json` に追加するフロー接続情報（`workflowDetails`）を保持するため、`pac code push` は使いません。PAC CLI はこのフィールドを拒否し、フロー呼び出しが機能しなくなります。
 
@@ -319,7 +331,7 @@ npx power-apps push --non-interactive
 py scripts/run_power_apps_cli.py push
 ```
 
-#### 9-5. アプリ URL を `.env` に設定する
+#### 9-6. アプリ URL を `.env` に設定する
 
 `pac code push` 完了時に表示されるアプリ URL を、`.env` の `DECISIONFLOW_APP_BASE_URL` に設定します。末尾スラッシュは付けません。
 
