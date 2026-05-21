@@ -212,7 +212,12 @@ New designer 対応:
      CN_DV_AI = "shared_commondataserviceforapps_1"
   ✅ runtimeSource: "embedded" + connectionReferenceLogicalName でソリューション対応
   ✅ parameters: recordId（AI Model ID）, item/requestv2/... で入力を渡す
-  ✅ AI 出力パス: body/responsev2/predictionOutput/text
+  ✅ AI 出力パス: body/responsev2/predictionOutput/text または
+      body/responsev2/predictionOutput/structuredOutput。JSON オブジェクトは
+      structuredOutput 直下ではなく structuredOutput/recommendation 配下に包まれる場合があるため、
+      coalesce() で両方の形を読む
+  ✅ 空配列フォールバックは json('[]') を使う。createArray() は 0 引数不可のため、
+     coalesce(outputs(...), createArray()) は実行時に失敗する
 
 NG パターン:
   ❌ PerformBoundAction / PerformUnboundAction + msdyn_PredictByReference

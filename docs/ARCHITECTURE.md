@@ -386,6 +386,8 @@ erDiagram
 - `AppendToAccess`: 共有された申請を Lookup 先としてメッセージや関連リンクなどの従属レコードを作成できるようにするため
 
 `Participant_PreDelete_RevokeAccess` は、関係者削除前に Code Apps から明示的に呼び出す。
+Power Apps V2 のインスタントフローのため、関係者削除を実行する Code Apps 利用者には Power Automate の run-only 実行権限を付与する。
+編集権限（Owner）は開発・運用担当者に限定する。
 
 削除前 revoke の処理順:
 
@@ -413,8 +415,11 @@ erDiagram
 
 - Code Apps で申請が Submitted になった保存時点で自動実行する。
 - Code Apps の判断タブにある「AI判断更新」ボタンから手動再実行できる。
+- `Application_GenerateAiDecision` は Power Apps V2 のインスタントフローのため、Code Apps 利用者には Power Automate の run-only 実行権限を付与する。編集権限（Owner）は開発・運用担当者に限定する。
+- Applicant は自分がアクセスできる Submitted 申請の AI 判断生成を実行できる。Decider は判断対象申請の AI 判断を手動更新できる。フローを所有者接続で実行する場合は、Code Apps から渡された申請 ID に対して呼び出しユーザーが申請者・判断者・関係者のいずれかであることをフロー側で検証する。
 - 初回提出時は会話履歴が空でも実行し、過去類似案件は初回提出時から検索対象にする。
 - 過去案件候補はトークン消費を抑えるため、同一カテゴリの判断済み案件を最大 30 件、補助候補として直近判断済み案件を最大 10 件に制限する。
+- AI Builder の出力は `structuredOutput` 直下と `structuredOutput.recommendation` 配下の両方を許容し、推奨判断は `recommendedOption` / `recommendedDecision`、コメントは `comment` / `recommendationReason` の両方を読み取る。
 - 会話ログが一定数たまったら要約する自動要約バッチは実装しない。
 
 ### 4.6 必要な接続（事前作成）

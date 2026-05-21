@@ -99,6 +99,12 @@ class AiDecisionPromptDefinitionTests(unittest.TestCase):
         self.assertIn("同一カテゴリ候補", prompt_inputs["inputs"]["similarCases"])
         self.assertIn("補助候補", prompt_inputs["inputs"]["similarCases"])
 
+        basis_json = definition["actions"]["Build_basis_json"]["inputs"]
+        self.assertIn("json('[]')", basis_json)
+        self.assertNotIn("createArray()", basis_json)
+        self.assertIn("structuredOutput/recommendation/risks", basis_json)
+        self.assertIn("structuredOutput/recommendation/similarCases", basis_json)
+
         update = definition["actions"]["Update_application_ai_decision"]
         item = update["inputs"]["parameters"]["item"]
         self.assertIn("ds_aiapplicationsummary", item)
@@ -107,6 +113,9 @@ class AiDecisionPromptDefinitionTests(unittest.TestCase):
         self.assertIn("ds_aidecisioncomment", item)
         self.assertIn("ds_aidecisionbasis", item)
         self.assertIn("ds_aidecisionupdatedat", item)
+        self.assertIn("structuredOutput/recommendation/applicationSummary", item["ds_aiapplicationsummary"])
+        self.assertIn("structuredOutput/recommendation/recommendedDecision", item["ds_aidecisionoptiontext"])
+        self.assertIn("structuredOutput/recommendation/recommendationReason", item["ds_aidecisioncomment"])
 
 
 if __name__ == "__main__":

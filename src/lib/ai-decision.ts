@@ -12,7 +12,19 @@ export type ParsedAiDecisionBasis = {
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (Boolean(item) && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        if (typeof record.item === "string") return record.item;
+      }
+      return null;
+    })
+    .filter(
+      (item): item is string =>
+        typeof item === "string" && Boolean(item.trim()),
+    );
 }
 
 function toSimilarCases(value: unknown): AiSimilarCase[] {
