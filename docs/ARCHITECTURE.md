@@ -1,6 +1,6 @@
 # DecisionFlow アーキテクチャ
 
-> **最終更新**: 2026-05-21
+> **最終更新**: 2026-05-22
 
 ---
 
@@ -34,7 +34,7 @@ flowchart TB
         T3[("ds_mention<br/>メンション")]
         T4[("ds_participant<br/>関係者")]
         T5[("ds_decision<br/>判断結果")]
-        T6[("ds_category<br/>カテゴリ")]
+        T6[("ds_category<br/>カテゴリ<br/>レギュレーション")]
         T7[("ds_decisionoption<br/>判断選択肢")]
         T8[("ds_applicationresource<br/>関連資料")]
         T9[("ds_decisioncard<br/>Adaptive Card発行")]
@@ -181,7 +181,7 @@ erDiagram
 | `ds_decision`            | 判断             | 従属               | 申請(Lookup), 判断者(Lookup→SystemUser), 判断結果(Lookup→`ds_decisionoption`), 理由(Memo), 確定日時                                                       |
 | `ds_decisioncard`        | 判断カード発行   | 従属               | 申請(Lookup), cardInstanceId, actor AAD, actor UPN, 状態, 発行/消費/失効日時                                                                              |
 | `ds_applicationresource` | 関連資料         | 従属               | 申請(Lookup), タイトル, URL, 説明(Memo)                                                                                                                   |
-| `ds_category`            | カテゴリ         | マスタ             | 名称, 説明, 推奨フォーマット(Memo)                                                                                                                        |
+| `ds_category`            | カテゴリ         | マスタ             | 名称, 説明, 推奨フォーマット(Memo), レギュレーション(Memo)。カテゴリごとに1つのAI判断用確認観点を保持する                                                 |
 | `ds_decisionoption`      | 判断選択肢       | 固定システムマスタ | 名称, 説明, 並び順。固定値は `承認` / `却下` / `差し戻し`。フロー・Copilot Studio・Adaptive Card が名称で参照するため、運用中に追加・名称変更・削除しない |
 | `SystemUser`             | システムユーザー | 標準               | （申請者 = `createdby` で取得、判断者・関係者は Lookup）                                                                                                  |
 
@@ -194,6 +194,7 @@ erDiagram
 | `ds_category`            | `ds_name`                  | カテゴリ名       | String       | 主列                                                  |
 | `ds_category`            | `ds_description`           | 説明             | Memo         | 任意                                                  |
 | `ds_category`            | `ds_template`              | 推奨フォーマット | Memo         | 申請入力支援用                                        |
+| `ds_category`            | `ds_regulationtext`        | レギュレーション | Memo         | 任意。カテゴリ別AI判断で参照する複数行テキスト        |
 | `ds_category`            | `ds_sortorder`             | 並び順           | Integer      | 一覧表示順                                            |
 | `ds_decisionoption`      | `ds_name`                  | 判断名           | String       | 主列                                                  |
 | `ds_decisionoption`      | `ds_description`           | 説明             | Memo         | 任意                                                  |
@@ -287,11 +288,13 @@ erDiagram
 
 **カテゴリ** (`ds_category`): 顧客案件 / 部内案件 / 課内案件 / 他部署案件 / 事務処理
 
+各初期カテゴリには `ds_regulationtext` のデモ用初期値を持たせる。Code Apps 初回起動時の初期補完では、カテゴリが空の場合に初期カテゴリとレギュレーションを作成する。既存環境で標準カテゴリ名が存在し、`ds_regulationtext` が空の場合は、利用者が手入力した値を上書きせず、空の標準カテゴリだけ初期レギュレーションを補完する。
+
 **判断選択肢** (`ds_decisionoption`): 承認 / 却下 / 差し戻し
 
 `ds_decisionoption` は固定システムマスタとして扱う。Code Apps、Power Automate、Copilot Studio、Adaptive Card 判断確定処理はこの3名称を契約として参照するため、通常運用で追加・名称変更・削除しない。判断コメント内で条件や追加確認事項を表現し、判断選択肢そのものは増やさない。
 
-通常のソリューションエクスポートでは `ds_category` / `ds_decisionoption` のテーブル定義は含まれるが、通常テーブルの行データは含まれない。ソリューションインポート版では、Code Apps 初回起動時に `ds_category` が空の場合は初期カテゴリを作成し、`ds_decisionoption` は固定3件の不足分を自動補完する。
+通常のソリューションエクスポートでは `ds_category` / `ds_decisionoption` のテーブル定義は含まれるが、通常テーブルの行データは含まれない。ソリューションインポート版では、Code Apps 初回起動時に `ds_category` が空の場合は初期カテゴリと初期レギュレーションを作成し、`ds_decisionoption` は固定3件の不足分を自動補完する。
 
 ---
 
@@ -366,7 +369,7 @@ erDiagram
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `Participant_OnCreated_GrantAccess`  | `_ds_applicationid_value` と `_ds_userid_value` がある                                                  | Dataverse `PerformUnboundAction` で `Target` に対象 `ds_application` を渡し、`GrantAccess` を実行する。権限は `ReadAccess` + `AppendToAccess`                                                                                                      | Dataverse                                      |
 | `Participant_PreDelete_RevokeAccess` | 申請 ID とユーザー ID がある。`RevokeAccess` 成功後に Code Apps が `ds_participant` を削除する          | Dataverse `PerformUnboundAction` で `Target` に対象 `ds_application` を渡し、`RevokeAccess` を実行する。成功/失敗を Code Apps に返す                                                                                                               | Dataverse                                      |
-| `Application_OnSubmitted`            | `ds_stage` が Submitted                                                                                 | 判断者と関係者を取得し、Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                         | Dataverse, Microsoft Teams, Office 365 Outlook |
+| `Application_OnSubmitted`            | `ds_stage` が Submitted                                                                                 | 判断者と関係者を取得し、Outlook メール通知。関係者通知では判断者を除外し、判断者が `ds_participant` に登録済みでも同一メールを重複送信しない。Teams チャネル設定がある場合はチャネルにも投稿                                                       | Dataverse, Microsoft Teams, Office 365 Outlook |
 | `Decision_OnCreated`                 | 申請 Lookup がある                                                                                      | 申請、判断者、判断選択肢、関係者を取得する。判断選択肢から次ステージを導出し、`ds_application.ds_stage` を更新する。`差し戻し` の場合だけ `ds_submittedat` をクリアする。その後 Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿 | Dataverse, Microsoft Teams, Office 365 Outlook |
 | `Mention_OnCreated`                  | 対象ユーザー Lookup がある、`ds_isread` が false                                                        | メッセージと申請を取得し、対象ユーザーへ Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                        | Dataverse, Microsoft Teams, Office 365 Outlook |
 | `Application_StalledReminder`        | `ds_stage` が Submitted、希望期限超過または `ds_submittedat` から 3 日以上経過。`modifiedon` は使わない | 対象申請ごとに判断者を取得し、Outlook メールで通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                 | Dataverse, Office 365 Outlook, Microsoft Teams |
@@ -374,7 +377,7 @@ erDiagram
 
 <!-- markdownlint-enable MD060 -->
 
-補足: `Application_OnSubmitted` は Dataverse トリガーの `subscriptionRequest/message: 4`（Create or Update）を使う。これにより、新規作成時点で Submitted の申請と、既存申請が Submitted に更新されたケースを 1 本のフローで扱う。
+補足: `Application_OnSubmitted` は Dataverse トリガーの `subscriptionRequest/message: 4`（Create or Update）を使う。これにより、新規作成時点で Submitted の申請と、既存申請が Submitted に更新されたケースを 1 本のフローで扱う。申請作成時に判断者も `ds_participant` の Decider ロールで登録されるため、参加者ループ側では判断者 Lookup と一致するユーザーを除外する。
 
 ### 4.3 アクセス制御フローの詳細
 
@@ -410,6 +413,15 @@ Power Apps V2 のインスタントフローのため、関係者削除を実行
 - 希望期限
 - 申請詳細へのリンク
 - 次に取るべき行動
+
+通知メール内の環境依存リンクは、フロー定義に固定値として埋め込まない。通知フローは以下のソリューション環境変数を実行時に読み取る。
+
+| 環境変数スキーマ名          | 用途                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `ds_DecisionFlowAppBaseUrl` | Outlook メールの「申請を開く」リンクの Code Apps URL ベース                                |
+| `ds_CopilotTeamsAppId`      | Outlook メールの「申請について相談する」Teams チャットリンクの botChannelRegistrationAppId |
+
+ソリューションインポート先では、この 2 つを対象環境の値に設定する。チャット起動プロンプトには Code Apps URL を含めず、申請タイトルだけを渡す。
 
 ### 4.5 AI 判断生成の起動条件
 
@@ -491,7 +503,7 @@ Phase 2.5 実装前に、対象環境で以下の接続を Power Automate UI か
 - **判断確定ツール**: Generative Orchestration は維持し、判断確定カードの表示・submit 受信だけ専用 Adaptive Card Topic で扱う。Power Automate agent flow は `issue_decision_card` と `confirm_decision` を提供する。
 - **カード責務**: Adaptive Card JSON は Copilot Studio 側に保持し、schema 1.5 と `Action.Submit` のみを使う。Power Automate はカード表示 JSON を所有しない。
 - **正本イベント**: Copilot Studio のカード処理は `ds_decision` を作成し、`ds_application` を直接更新しない。案件ステージ・通知は `Decision_OnCreated` に委譲する。
-- **通知連携**: `Application_OnSubmitted` / `Application_StalledReminder` の Outlook メールに、Teams エージェント会話へのディープリンクを追加可能。有効化には `.env` に `COPILOT_TEAMS_APP_ID` を設定する。
+- **通知連携**: `Application_OnSubmitted` / `Application_StalledReminder` の Outlook メールに、Teams エージェント会話へのディープリンクを追加可能。リンク設定はソリューション環境変数 `ds_DecisionFlowAppBaseUrl` / `ds_CopilotTeamsAppId` から実行時に読み取る。
 
 ---
 

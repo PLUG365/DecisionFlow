@@ -7,6 +7,11 @@ describe("parseAiDecisionBasis", () => {
     const result = parseAiDecisionBasis(
       JSON.stringify({
         risks: ["契約条件の追加確認が必要", "期限が短い"],
+        regulationContext: {
+          considered: true,
+          audience: "deciderReview",
+          message: "カテゴリ別レギュレーションを考慮しました。",
+        },
         similarCases: [
           {
             title: "顧客案件: 見積条件の例外承認",
@@ -26,6 +31,30 @@ describe("parseAiDecisionBasis", () => {
       },
     ]);
     expect(result.rawText).toBeNull();
+    expect(result.regulationContext).toEqual({
+      considered: true,
+      audience: "deciderReview",
+      message: "カテゴリ別レギュレーションを考慮しました。",
+    });
+  });
+
+  it("distinguishes applicant pre-check from decider review in regulation context", () => {
+    const applicant = parseAiDecisionBasis(
+      JSON.stringify({
+        regulationContext: {
+          considered: false,
+          audience: "applicantPreSubmit",
+        },
+      }),
+    );
+    const decider = parseAiDecisionBasis(
+      JSON.stringify({
+        regulationContext: { considered: true, audience: "deciderReview" },
+      }),
+    );
+
+    expect(applicant.regulationContext?.audience).toBe("applicantPreSubmit");
+    expect(decider.regulationContext?.audience).toBe("deciderReview");
   });
 
   it("extracts object-shaped risks from AI Builder output", () => {

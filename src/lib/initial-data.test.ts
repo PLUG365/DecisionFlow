@@ -17,6 +17,14 @@ describe("initial data", () => {
     ]);
   });
 
+  it("defines default regulation text for every startup category", () => {
+    expect(DEFAULT_CATEGORIES).toHaveLength(5);
+    for (const category of DEFAULT_CATEGORIES) {
+      expect(category.ds_regulationtext?.trim()).toBeTruthy();
+      expect(category.ds_regulationtext).toContain("確認");
+    }
+  });
+
   it("defines the fixed decision options as startup seed data", () => {
     expect(DEFAULT_DECISION_OPTIONS).toEqual([
       {

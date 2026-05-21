@@ -69,6 +69,12 @@ APPLICANT_READ_OWNED = table_defaults(Read="Basic", AppendTo="Basic")
 
 DECIDER_CONTEXT_READ = table_defaults(Read="Global", AppendTo="Global")
 
+DECIDER_CATEGORY_REGULATION_WRITE = table_defaults(
+    Read="Global",
+    Write="Global",
+    AppendTo="Global",
+)
+
 DECIDER_OWNED_WRITE = table_defaults(
     Create="Basic",
     Read="Basic",
@@ -107,7 +113,7 @@ ROLE_DEFINITIONS = [
         "description": "DecisionFlow decider role. Deciders can read all decision context and create their own decisions and discussion records.",
         "table_privileges": {
             "*": DECIDER_CONTEXT_READ,
-            f"{PREFIX}_category": MASTER_READ_ONLY,
+            f"{PREFIX}_category": DECIDER_CATEGORY_REGULATION_WRITE,
             f"{PREFIX}_decisionoption": MASTER_READ_ONLY,
             f"{PREFIX}_message": DECIDER_OWNED_WRITE | {"Read": "Global"},
             f"{PREFIX}_mention": MENTION_WRITABLE | {"Read": "Global"},

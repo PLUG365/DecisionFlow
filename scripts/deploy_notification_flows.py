@@ -45,8 +45,16 @@ NOTIFICATION_FLOW_NAMES = [
 TEAMS_GROUP_ID = os.environ.get("TEAMS_NOTIFICATION_GROUP_ID", "").strip()
 TEAMS_CHANNEL_ID = os.environ.get("TEAMS_NOTIFICATION_CHANNEL_ID", "").strip()
 ENABLE_TEAMS = bool(TEAMS_GROUP_ID and TEAMS_CHANNEL_ID)
-COPILOT_TEAMS_APP_ID = os.environ.get("COPILOT_TEAMS_APP_ID", "").strip()
-DECISIONFLOW_APP_BASE_URL = os.environ.get("DECISIONFLOW_APP_BASE_URL", "").strip().rstrip("/")
+
+# Deprecated compatibility hooks for unit tests. Notification links are resolved
+# from solution environment variables at flow runtime, not from .env.
+COPILOT_TEAMS_APP_ID = ""
+DECISIONFLOW_APP_BASE_URL = ""
+
+APP_BASE_URL_ENVVAR_DISPLAY_NAME = "DecisionFlow App Base URL"
+APP_BASE_URL_ENVVAR_SUFFIX = "DecisionFlowAppBaseUrl"
+COPILOT_TEAMS_APP_ID_ENVVAR_DISPLAY_NAME = "DecisionFlow Copilot Teams App ID"
+COPILOT_TEAMS_APP_ID_ENVVAR_SUFFIX = "CopilotTeamsAppId"
 
 
 def _connector_id(connector: str) -> str:
@@ -280,74 +288,129 @@ def _html(title: str, lines: list[str]) -> str:
     )
 
 
-def _teams_bot_user_id(app_id: str) -> str:
-    if app_id.startswith("T_"):
-        raise RuntimeError("COPILOT_TEAMS_APP_ID には titleId ではなく botChannelRegistrationAppId を設定してください。")
-    return app_id if app_id.startswith("28:") else f"28:{app_id}"
+def _environment_variable_schema_name(prefix: str, suffix: str) -> str:
+    return f"{prefix}_{suffix}"
+
+
+def _runtime_environment_variable_actions(schema_name: str, label: str, run_after: dict | None = None) -> dict:
+    definition_action = f"List_{label}_Definition"
+    value_action = f"List_{label}_Value"
+    compose_action = f"Get_{label}"
+    return {
+        definition_action: _list_records_action(
+            "environmentvariabledefinitions",
+            f"schemaname eq '{schema_name}'",
+            "environmentvariabledefinitionid,defaultvalue",
+            run_after,
+        ),
+        value_action: _list_records_action(
+            "environmentvariablevalues",
+            f"@{{concat('_environmentvariabledefinitionid_value eq ', first(outputs('{definition_action}')?['body/value'])?['environmentvariabledefinitionid'])}}",
+            "value",
+            {definition_action: ["Succeeded"]},
+        ),
+        compose_action: _compose_action(
+            f"@coalesce(first(outputs('{value_action}')?['body/value'])?['value'], first(outputs('{definition_action}')?['body/value'])?['defaultvalue'], '')",
+            {value_action: ["Succeeded"]},
+        ),
+    }
+
+
+def _notification_runtime_config_actions(prefix: str, include_copilot: bool = False) -> dict:
+    actions = _runtime_environment_variable_actions(
+        _environment_variable_schema_name(prefix, APP_BASE_URL_ENVVAR_SUFFIX),
+        "DecisionFlow_App_Base_Url",
+    )
+    if include_copilot:
+        actions.update(
+            _runtime_environment_variable_actions(
+                _environment_variable_schema_name(prefix, COPILOT_TEAMS_APP_ID_ENVVAR_SUFFIX),
+                "Copilot_Teams_App_Id",
+            )
+        )
+    return actions
+
+
+def _runtime_config_run_after(include_copilot: bool = False) -> dict:
+    run_after = {"Get_DecisionFlow_App_Base_Url": ["Succeeded"]}
+    if include_copilot:
+        run_after["Get_Copilot_Teams_App_Id"] = ["Succeeded"]
+    return run_after
 
 
 def _app_link_lines(application_id_expression: str) -> list[str]:
-    if not DECISIONFLOW_APP_BASE_URL:
-        return []
-    href = (
-        "@{concat('"
-        f"{DECISIONFLOW_APP_BASE_URL}?deepLink=%2Fapplications%2F"
-        "', "
-        f"{application_id_expression}"
-        ")}"
+    line = (
+        "@{if(equals(outputs('Get_DecisionFlow_App_Base_Url'),''),'',concat('申請を開く: <a href=\"', "
+        "outputs('Get_DecisionFlow_App_Base_Url'), "
+        "'?deepLink=%2Fapplications%2F', "
+        f"{application_id_expression}, "
+        "'\">申請詳細ページ</a>'))}"
     )
-    return [f"申請を開く: <a href=\"{href}\">申請詳細ページ</a>"]
+    return [line]
 
 
 def _assistant_link_lines(title_expression: str, application_id_expression: str | None = None) -> list[str]:
-    if not COPILOT_TEAMS_APP_ID:
-        return []
-
-    message_args = [
-        "'申請「'",
-        title_expression,
-        "'」について、概要・関連資料・過去類似案件・推奨判断と判断コメントドラフトを教えてください。'",
-    ]
-    if DECISIONFLOW_APP_BASE_URL and application_id_expression:
-        message_args.extend([
-            "' Code Apps URL: '",
-            f"concat('{DECISIONFLOW_APP_BASE_URL}/applications/', {application_id_expression})",
-        ])
-
-    message_expression = f"concat({', '.join(message_args)})"
-    href = (
-        "@{concat('https://teams.microsoft.com/l/chat/0/0?users="
-        f"{_teams_bot_user_id(COPILOT_TEAMS_APP_ID)}"
-        "&message=', encodeUriComponent("
-        f"{message_expression}"
-        "))}"
+    del application_id_expression
+    message_expression = (
+        "concat('申請「', "
+        f"{title_expression}, "
+        "'」について、概要・関連資料・過去類似案件・推奨判断と判断コメントドラフトを教えてください。')"
     )
-    return [
-        "AIアシスタント: "
-        f"<a href=\"{href}\">申請について相談する</a>",
-    ]
+    line = (
+        "@{if(equals(outputs('Get_Copilot_Teams_App_Id'),''),'',concat('AIアシスタント: <a href=\"https://teams.microsoft.com/l/chat/0/0?users=', "
+        "if(startsWith(outputs('Get_Copilot_Teams_App_Id'),'28:'), outputs('Get_Copilot_Teams_App_Id'), concat('28:', outputs('Get_Copilot_Teams_App_Id'))), "
+        "'&message=', encodeUriComponent("
+        f"{message_expression}"
+        "), "
+        "'\">申請について相談する</a>'))}"
+    )
+    return [line]
 
 
-def _participant_email_foreach(subject: str, body: str, run_after: dict, prefix: str = PREFIX) -> dict:
+def _participant_email_foreach(
+    subject: str,
+    body: str,
+    run_after: dict,
+    prefix: str = PREFIX,
+    exclude_user_expression: str | None = None,
+) -> dict:
+    actions = {
+        "Get_participant_user": _get_record_action(
+            "systemusers",
+            f"@items('Notify_participants')?['_{prefix}_userid_value']",
+            "internalemailaddress,fullname",
+        ),
+        **_send_email_if_present(
+            "If_participant_has_email",
+            "outputs('Get_participant_user')?['body/internalemailaddress']",
+            subject,
+            body,
+            {"Get_participant_user": ["Succeeded"]},
+        ),
+    }
+    if exclude_user_expression:
+        actions = {
+            "If_participant_is_not_decider": {
+                "type": "If",
+                "runAfter": {},
+                "expression": {
+                    "not": {
+                        "equals": [
+                            f"@toLower(coalesce(items('Notify_participants')?['_{prefix}_userid_value'],''))",
+                            f"@toLower(coalesce({exclude_user_expression},''))",
+                        ]
+                    }
+                },
+                "actions": actions,
+                "else": {"actions": {}},
+            }
+        }
     return {
         "Notify_participants": {
             "type": "Foreach",
             "runAfter": run_after,
             "foreach": "@outputs('List_participants')?['body/value']",
-            "actions": {
-                "Get_participant_user": _get_record_action(
-                    "systemusers",
-                    f"@items('Notify_participants')?['_{prefix}_userid_value']",
-                    "internalemailaddress,fullname",
-                ),
-                **_send_email_if_present(
-                    "If_participant_has_email",
-                    "outputs('Get_participant_user')?['body/internalemailaddress']",
-                    subject,
-                    body,
-                    {"Get_participant_user": ["Succeeded"]},
-                ),
-            },
+            "actions": actions,
         }
     }
 
@@ -370,6 +433,7 @@ def build_application_submitted_clientdata(connection_refs: dict[str, str], pref
             "type": "If",
             "expression": {"equals": [f"@triggerOutputs()?['body/{prefix}_stage']", SUBMITTED_STAGE]},
             "actions": {
+                **_notification_runtime_config_actions(prefix, include_copilot=True),
                 "Get_decider": _get_record_action(
                     "systemusers",
                     f"@triggerOutputs()?['body/_{prefix}_deciderid_value']",
@@ -385,9 +449,15 @@ def build_application_submitted_clientdata(connection_refs: dict[str, str], pref
                     "outputs('Get_decider')?['body/internalemailaddress']",
                     subject,
                     body,
-                    {"Get_decider": ["Succeeded"]},
+                    {"Get_decider": ["Succeeded"], **_runtime_config_run_after(include_copilot=True)},
                 ),
-                **_participant_email_foreach(subject, body, {"List_participants": ["Succeeded"]}, prefix),
+                **_participant_email_foreach(
+                    subject,
+                    body,
+                    {"List_participants": ["Succeeded"], **_runtime_config_run_after(include_copilot=True)},
+                    prefix,
+                    f"triggerOutputs()?['body/_{prefix}_deciderid_value']",
+                ),
             },
             "else": {"actions": {}},
         }
@@ -416,6 +486,7 @@ def build_decision_created_clientdata(connection_refs: dict[str, str], prefix: s
     )
     teams_body = "@{concat('<b>判断が確定しました</b><br>申請: ', outputs('Get_application')?['body/ds_name'], '<br>判断: ', outputs('Get_decision_option')?['body/ds_name'])}"
     actions = {
+        **_notification_runtime_config_actions(prefix),
         "Get_application": _get_record_action(
             f"{prefix}_applications",
             f"@triggerOutputs()?['body/_{prefix}_applicationid_value']",
@@ -481,12 +552,12 @@ def build_decision_created_clientdata(connection_refs: dict[str, str], prefix: s
             "outputs('Get_applicant')?['body/internalemailaddress']",
             subject,
             body,
-            {"List_participants": ["Succeeded"]},
+            {"List_participants": ["Succeeded"], **_runtime_config_run_after()},
         ),
         **_participant_email_foreach(
             subject,
             body,
-            {"If_applicant_has_email": ["Succeeded"]},
+            {"If_applicant_has_email": ["Succeeded"], **_runtime_config_run_after()},
             prefix,
         ),
     }
@@ -515,6 +586,7 @@ def build_mention_created_clientdata(connection_refs: dict[str, str], prefix: st
             "type": "If",
             "expression": {"equals": [f"@triggerOutputs()?['body/{prefix}_isread']", False]},
             "actions": {
+                **_notification_runtime_config_actions(prefix),
                 "Get_target_user": _get_record_action(
                     "systemusers",
                     f"@triggerOutputs()?['body/_{prefix}_targetuserid_value']",
@@ -536,7 +608,7 @@ def build_mention_created_clientdata(connection_refs: dict[str, str], prefix: st
                     "outputs('Get_target_user')?['body/internalemailaddress']",
                     subject,
                     body,
-                    {"Get_target_user": ["Succeeded"], "Get_application": ["Succeeded"]},
+                    {"Get_target_user": ["Succeeded"], "Get_application": ["Succeeded"], **_runtime_config_run_after()},
                 ),
             },
             "else": {"actions": {}},
@@ -613,6 +685,7 @@ def build_stalled_reminder_clientdata(connection_refs: dict[str, str], prefix: s
                     "type": "If",
                     "expression": stalled_expression,
                     "actions": {
+                        **_notification_runtime_config_actions(prefix, include_copilot=True),
                         "Get_decider": _get_record_action(
                             "systemusers",
                             f"@items('{foreach_name}')?['_{prefix}_deciderid_value']",
@@ -623,7 +696,7 @@ def build_stalled_reminder_clientdata(connection_refs: dict[str, str], prefix: s
                             "outputs('Get_decider')?['body/internalemailaddress']",
                             subject,
                             body,
-                            {"Get_decider": ["Succeeded"]},
+                            {"Get_decider": ["Succeeded"], **_runtime_config_run_after(include_copilot=True)},
                         ),
                     },
                     "else": {"actions": {}},
@@ -770,6 +843,47 @@ def ensure_connection_reference(connector: str, connection_name: str, display_na
     return logical_name
 
 
+def ensure_environment_variable_definition(schema_name: str, display_name: str, description: str) -> str:
+    escaped = _escape_odata_string(schema_name)
+    existing = api_get(
+        "environmentvariabledefinitions?"
+        f"$filter=schemaname eq '{escaped}'"
+        "&$select=environmentvariabledefinitionid,schemaname"
+    ).get("value", [])
+    if existing:
+        print(f"  環境変数定義は既存です: {schema_name}")
+        return existing[0]["environmentvariabledefinitionid"]
+
+    session = get_session()
+    session.headers["MSCRM.SolutionUniqueName"] = SOLUTION_NAME
+    body = {
+        "schemaname": schema_name,
+        "displayname": display_name,
+        "description": description,
+        "type": 100000000,
+        "defaultvalue": "",
+    }
+    response = session.post(f"{API}/environmentvariabledefinitions", json=body)
+    if not response.ok:
+        raise RuntimeError(f"環境変数定義の作成に失敗しました ({response.status_code})。\n{response.text[:800]}")
+    location = response.headers.get("OData-EntityId", "")
+    print(f"  環境変数定義を作成しました: {schema_name}")
+    return location.split("(")[-1].rstrip(")") if "(" in location else ""
+
+
+def ensure_notification_environment_variables(prefix: str = PREFIX) -> None:
+    ensure_environment_variable_definition(
+        _environment_variable_schema_name(prefix, APP_BASE_URL_ENVVAR_SUFFIX),
+        APP_BASE_URL_ENVVAR_DISPLAY_NAME,
+        "通知メールの申請詳細リンクで使用する Code Apps の公開 URL ベース。インポート先環境で設定する。",
+    )
+    ensure_environment_variable_definition(
+        _environment_variable_schema_name(prefix, COPILOT_TEAMS_APP_ID_ENVVAR_SUFFIX),
+        COPILOT_TEAMS_APP_ID_ENVVAR_DISPLAY_NAME,
+        "通知メールの Teams チャットリンクで使用する Copilot Studio Bot の botChannelRegistrationAppId。インポート先環境で設定する。",
+    )
+
+
 def delete_existing_flow(flow_name: str) -> None:
     escaped_name = _escape_odata_string(flow_name)
     existing = api_get(
@@ -903,11 +1017,14 @@ def main() -> None:
     if ENABLE_TEAMS:
         connection_refs[TEAMS_CONNECTOR] = ensure_connection_reference(TEAMS_CONNECTOR, connection_names[TEAMS_CONNECTOR], "DecisionFlow Teams connection")
 
-    print("\n=== Step 3: 廃止フロー削除 ===")
+    print("\n=== Step 3: 環境変数定義作成/確認 ===")
+    ensure_notification_environment_variables(PREFIX)
+
+    print("\n=== Step 4: 廃止フロー削除 ===")
     for flow_name in OBSOLETE_NOTIFICATION_FLOW_NAMES:
         delete_existing_flow(flow_name)
 
-    print("\n=== Step 4: フロー作成/更新 ===")
+    print("\n=== Step 5: フロー作成/更新 ===")
     flows = {
         APPLICATION_SUBMITTED_FLOW_NAME: (
             "ds_application 作成または更新時にステージが Submitted の場合、判断者・関係者へメール通知する。Teams チャネル設定がある場合はチャネルにも投稿する。",
@@ -933,10 +1050,10 @@ def main() -> None:
         deployed[flow_name] = workflow_id
         all_active = all_active and active
 
-    print("\n=== Step 5: Power Automate ランタイム start ===")
+    print("\n=== Step 6: Power Automate ランタイム start ===")
     all_started = start_deployed_flows(environment_id, deployed)
 
-    print("\n=== Step 6: 確認 ===")
+    print("\n=== Step 7: 確認 ===")
     for flow_name, workflow_id in get_existing_notification_flows().items():
         flow = api_get(f"workflows({workflow_id})?$select=workflowid,name,statecode,statuscode")
         state = "有効" if flow.get("statecode") == 1 else "無効"

@@ -10,8 +10,10 @@ import {
   useDecisionOptions,
   useDeleteCategory,
   useIsAdmin,
+  useIsDecider,
   useUpdateCategory,
 } from "@/hooks/use-decisionflow";
+import { validateCategoryRegulationInput } from "@/lib/decisionflow-utils";
 import { isFixedDecisionOptionName } from "@/lib/decision-options";
 import { toast } from "sonner";
 
@@ -19,20 +21,22 @@ type MasterRow = Record<string, unknown> & { id: string };
 
 export default function MastersPage() {
   const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
+  const { data: isDecider, isLoading: isDeciderLoading } = useIsDecider();
   const { data: categories = [] } = useCategories();
   const { data: decisionOptions = [] } = useDecisionOptions();
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   const deleteCategory = useDeleteCategory();
 
-  if (isAdminLoading) return <div />;
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  if (isAdminLoading || isDeciderLoading) return <div />;
+  if (!isAdmin && !isDecider) return <Navigate to="/dashboard" replace />;
 
   const categoryRows: MasterRow[] = categories.map((item) => ({
     id: item.ds_categoryid,
     name: item.ds_name,
     description: item.ds_description,
     template: item.ds_template,
+    regulationText: item.ds_regulationtext,
     sortOrder: item.ds_sortorder,
   }));
   const decisionRows: MasterRow[] = decisionOptions.map((item) => ({
@@ -50,6 +54,15 @@ export default function MastersPage() {
       label: "推奨フォーマット",
       editable: true,
       type: "textarea",
+    },
+    {
+      key: "regulationText",
+      label: "レギュレーション",
+      editable: true,
+      type: "textarea",
+      render: (value) =>
+        String(value ?? "").trim() ||
+        "このカテゴリにはレギュレーションが未設定です。",
     },
     { key: "sortOrder", label: "並び順", editable: true, type: "number" },
   ];
@@ -80,12 +93,20 @@ export default function MastersPage() {
   const handleSaveCategory = (id: string | number, row: Partial<MasterRow>) => {
     const name = requireName(row.name);
     if (!name) return;
+    const regulationValidation = validateCategoryRegulationInput(
+      String(row.regulationText ?? ""),
+    );
+    if (!regulationValidation.valid) {
+      toast.error(Object.values(regulationValidation.fieldErrors)[0]);
+      return;
+    }
     updateCategory.mutate(
       {
         id: String(id),
         ds_name: name,
         ds_description: String(row.description ?? "") || undefined,
         ds_template: String(row.template ?? "") || undefined,
+        ds_regulationtext: String(row.regulationText ?? "") || undefined,
         ds_sortorder: Number(row.sortOrder ?? 0),
       },
       {
@@ -98,11 +119,19 @@ export default function MastersPage() {
   const handleAddCategory = (row: Omit<MasterRow, "id">) => {
     const name = requireName(row.name);
     if (!name) return;
+    const regulationValidation = validateCategoryRegulationInput(
+      String(row.regulationText ?? ""),
+    );
+    if (!regulationValidation.valid) {
+      toast.error(Object.values(regulationValidation.fieldErrors)[0]);
+      return;
+    }
     createCategory.mutate(
       {
         ds_name: name,
         ds_description: String(row.description ?? "") || undefined,
         ds_template: String(row.template ?? "") || undefined,
+        ds_regulationtext: String(row.regulationText ?? "") || undefined,
         ds_sortorder: Number(row.sortOrder ?? 0),
       },
       {

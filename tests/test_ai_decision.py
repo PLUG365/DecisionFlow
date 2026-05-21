@@ -13,6 +13,18 @@ import setup_dataverse as setup_dataverse  # noqa: E402
 
 
 class AiDecisionDataverseMetadataTests(unittest.TestCase):
+    def test_category_table_defines_regulation_text_column(self):
+        category_table = next(
+            table
+            for table in setup_dataverse.TABLES
+            if table["logical"] == "ds_category"
+        )
+        columns = {column["logical"]: column for column in category_table["columns"]}
+
+        self.assertEqual(columns["ds_regulationtext"]["type"], "Memo")
+        self.assertEqual(columns["ds_regulationtext"]["display"], "レギュレーション")
+        self.assertGreaterEqual(columns["ds_regulationtext"]["maxLength"], 50000)
+
     def test_application_table_defines_ai_decision_columns(self):
         application_table = next(
             table
@@ -84,6 +96,12 @@ class AiDecisionPromptDefinitionTests(unittest.TestCase):
         self.assertEqual(run_ai["inputs"]["host"]["operationId"], "aibuilderpredict_customprompt")
         self.assertEqual(run_ai["inputs"]["parameters"]["recordId"], "model-id")
         self.assertIn("item/requestv2/application", run_ai["inputs"]["parameters"])
+        self.assertIn("item/requestv2/categoryRegulation", run_ai["inputs"]["parameters"])
+
+        category_regulation = definition["actions"]["List_category_regulation"]
+        self.assertEqual(category_regulation["inputs"]["host"]["operationId"], "ListRecords")
+        self.assertEqual(category_regulation["inputs"]["parameters"]["entityName"], "ds_categories")
+        self.assertIn("ds_regulationtext", category_regulation["inputs"]["parameters"]["$select"])
 
         similar = definition["actions"]["List_similar_applications"]
         self.assertEqual(similar["inputs"]["parameters"]["$top"], 30)
@@ -98,12 +116,17 @@ class AiDecisionPromptDefinitionTests(unittest.TestCase):
         prompt_inputs = definition["actions"]["Build_prompt_inputs"]
         self.assertIn("同一カテゴリ候補", prompt_inputs["inputs"]["similarCases"])
         self.assertIn("補助候補", prompt_inputs["inputs"]["similarCases"])
+        self.assertIn("categoryRegulation", prompt_inputs["inputs"])
+        self.assertIn("レギュレーション", prompt_inputs["inputs"]["categoryRegulation"])
+        self.assertIn("利用文脈", prompt_inputs["inputs"]["application"])
 
         basis_json = definition["actions"]["Build_basis_json"]["inputs"]
         self.assertIn("json('[]')", basis_json)
         self.assertNotIn("createArray()", basis_json)
         self.assertIn("structuredOutput/recommendation/risks", basis_json)
         self.assertIn("structuredOutput/recommendation/similarCases", basis_json)
+        self.assertIn("regulationContext", basis_json)
+        self.assertIn("audience", basis_json)
 
         update = definition["actions"]["Update_application_ai_decision"]
         item = update["inputs"]["parameters"]["item"]
@@ -116,6 +139,28 @@ class AiDecisionPromptDefinitionTests(unittest.TestCase):
         self.assertIn("structuredOutput/recommendation/applicationSummary", item["ds_aiapplicationsummary"])
         self.assertIn("structuredOutput/recommendation/recommendedDecision", item["ds_aidecisionoptiontext"])
         self.assertIn("structuredOutput/recommendation/recommendationReason", item["ds_aidecisioncomment"])
+
+    def test_flow_does_not_create_regulation_history_or_snapshot_fields(self):
+        application_table = next(
+            table
+            for table in setup_dataverse.TABLES
+            if table["logical"] == "ds_application"
+        )
+        columns = {column["logical"] for column in application_table["columns"]}
+
+        self.assertNotIn("ds_regulationhistory", columns)
+        self.assertNotIn("ds_regulationsnapshot", columns)
+        self.assertNotIn("ds_regulationtextsnapshot", columns)
+
+    def test_default_categories_include_regulation_text_seed(self):
+        categories = setup_dataverse.DEFAULT_CATEGORIES
+
+        self.assertEqual(len(categories), 5)
+        self.assertEqual(categories[0][0], "顧客案件")
+        self.assertIn("顧客影響", categories[0][3])
+        for category in categories:
+            self.assertTrue(category[3].strip())
+            self.assertIn("確認", category[3])
 
 
 if __name__ == "__main__":

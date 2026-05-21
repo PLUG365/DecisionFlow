@@ -50,6 +50,14 @@ export function useIsAdmin() {
   });
 }
 
+export function useIsDecider() {
+  return useQuery({
+    queryKey: ["decisionflow", "isDecider"] as const,
+    queryFn: () => DataverseService.isCurrentUserDecider(),
+    staleTime: Infinity,
+  });
+}
+
 export function useCurrentSystemUser() {
   const dataQuery = useDecisionFlowData();
   const userIdQuery = useQuery({
@@ -213,6 +221,43 @@ export function useGenerateAiDecision() {
   });
 }
 
+export function useSaveDraftForAiCheck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      payload: Parameters<typeof DataverseService.saveDraftForAiCheck>[0],
+    ) => DataverseService.saveDraftForAiCheck(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
+export function useRunAiPreCheck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (applicationId: string) =>
+      DataverseService.runAiPreCheck(applicationId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
+export function useConfirmFinalSubmit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (applicationId: string) =>
+      DataverseService.confirmFinalSubmit(applicationId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
+export function useKeepDraftAfterAiCheck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (applicationId: string) =>
+      DataverseService.keepDraftAfterAiCheck(applicationId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
 export function useCreateApplication() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -342,8 +387,9 @@ export function useCreateParticipant() {
 export function useAddParticipantWithMention() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: Parameters<typeof DataverseService.addParticipantWithMention>[0]) =>
-      DataverseService.addParticipantWithMention(input),
+    mutationFn: (
+      input: Parameters<typeof DataverseService.addParticipantWithMention>[0],
+    ) => DataverseService.addParticipantWithMention(input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
   });
 }

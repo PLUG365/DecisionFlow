@@ -15,7 +15,7 @@
 5. Release title に利用者向けの名前を入力する
    - 例: `DecisionFlow ソリューションZip v0.1.0`
 6. Release Assets にソリューションZipを添付する
-7. リリースノートに、通常のソリューションZipには `ds_category` / `ds_decisionoption` の行データは含まれないが、Code Apps 初回起動時に初期カテゴリと固定判断選択肢が自動補完されることを明記する
+7. リリースノートに、通常のソリューションZipには `ds_category` / `ds_decisionoption` の行データは含まれないが、Code Apps 初回起動時に初期カテゴリ、各カテゴリの初期レギュレーション、固定判断選択肢が自動補完されることを明記する
 8. Zipファイル本体は Git にコミットしない
 
 Zipファイルは環境やリリース単位で差し替わるため、リポジトリにはこの README だけを保持します。

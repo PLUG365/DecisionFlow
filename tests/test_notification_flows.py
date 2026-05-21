@@ -34,6 +34,10 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
 
         if_submitted = definition["actions"]["If_submitted"]
         self.assertEqual(if_submitted["expression"], {"equals": ["@triggerOutputs()?['body/ds_stage']", 100000001]})
+
+        condition_json = json.dumps(if_submitted["expression"], ensure_ascii=False)
+        self.assertIn("ds_stage", condition_json)
+        self.assertNotIn("ds_aidecisionupdatedat", trigger["inputs"]["parameters"]["subscriptionRequest/filteringattributes"])
         actions = if_submitted["actions"]
         self.assertEqual(actions["Get_decider"]["inputs"]["host"]["operationId"], "GetItem")
         self.assertEqual(actions["List_participants"]["inputs"]["host"]["operationId"], "ListRecords")
@@ -44,24 +48,46 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             "SendEmailV2",
         )
 
-    def test_application_submitted_email_includes_deeplink_when_base_url_set(self):
+    def test_application_submitted_participant_notifications_skip_decider(self):
+        clientdata = _clientdata(flows.build_application_submitted_clientdata(CONNECTION_REFS, "ds"))
+        actions = clientdata["properties"]["definition"]["actions"]["If_submitted"]["actions"]
+        notify_participants = actions["Notify_participants"]["actions"]
+
+        self.assertIn("If_participant_is_not_decider", notify_participants)
+        skip_decider = notify_participants["If_participant_is_not_decider"]
+        condition_json = json.dumps(skip_decider["expression"], ensure_ascii=False)
+        self.assertIn("items('Notify_participants')?['_ds_userid_value']", condition_json)
+        self.assertIn("triggerOutputs()?['body/_ds_deciderid_value']", condition_json)
+        self.assertIn("toLower(coalesce", condition_json)
+        self.assertIn("not", condition_json)
+        self.assertIn("Get_participant_user", skip_decider["actions"])
+        self.assertIn("If_participant_has_email", skip_decider["actions"])
+
+    def test_application_submitted_email_resolves_deeplink_from_solution_environment_variable(self):
         previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
         previous_app_id = flows.COPILOT_TEAMS_APP_ID
         try:
             flows.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
             flows.COPILOT_TEAMS_APP_ID = ""
             clientdata = _clientdata(flows.build_application_submitted_clientdata(CONNECTION_REFS, "ds"))
-            body = clientdata["properties"]["definition"]["actions"]["If_submitted"]["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+            actions = clientdata["properties"]["definition"]["actions"]["If_submitted"]["actions"]
+            body = actions["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
 
             self.assertIn("申請を開く", body)
-            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", body)
+            self.assertIn("Get_DecisionFlow_App_Base_Url", body)
+            self.assertIn("?deepLink=%2Fapplications%2F", body)
             self.assertIn("triggerOutputs()?['body/ds_applicationid']", body)
-            self.assertNotIn("teams.microsoft.com/l/chat", body)
+            self.assertNotIn("https://apps.powerapps.com/play/decisionflow", body)
+            self.assertIn("teams.microsoft.com/l/chat/0/0", body)
+            self.assertIn("Get_Copilot_Teams_App_Id", body)
+            self.assertIn("List_DecisionFlow_App_Base_Url_Definition", actions)
+            self.assertIn("Get_DecisionFlow_App_Base_Url", actions)
+            self.assertIn("ds_DecisionFlowAppBaseUrl", json.dumps(actions["List_DecisionFlow_App_Base_Url_Definition"], ensure_ascii=False))
         finally:
             flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
             flows.COPILOT_TEAMS_APP_ID = previous_app_id
 
-    def test_application_submitted_email_omits_app_link_when_base_url_unset(self):
+    def test_application_submitted_email_keeps_runtime_deeplink_when_base_url_unset(self):
         previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
         previous_app_id = flows.COPILOT_TEAMS_APP_ID
         try:
@@ -70,12 +96,13 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             clientdata = _clientdata(flows.build_application_submitted_clientdata(CONNECTION_REFS, "ds"))
             body = clientdata["properties"]["definition"]["actions"]["If_submitted"]["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
 
-            self.assertNotIn("申請を開く", body)
+            self.assertIn("申請を開く", body)
+            self.assertIn("Get_DecisionFlow_App_Base_Url", body)
         finally:
             flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
             flows.COPILOT_TEAMS_APP_ID = previous_app_id
 
-    def test_stalled_reminder_email_includes_deeplink_when_base_url_set(self):
+    def test_stalled_reminder_email_resolves_deeplink_from_solution_environment_variable(self):
         previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
         previous_app_id = flows.COPILOT_TEAMS_APP_ID
         try:
@@ -86,7 +113,8 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             body = condition["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
 
             self.assertIn("申請を開く", body)
-            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", body)
+            self.assertIn("Get_DecisionFlow_App_Base_Url", body)
+            self.assertNotIn("https://apps.powerapps.com/play/decisionflow", body)
             self.assertIn("ds_applicationid", body)
         finally:
             flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
@@ -102,16 +130,18 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             mention_body = mention_clientdata["properties"]["definition"]["actions"]["If_unread_mention"]["actions"]["If_target_has_email"]["actions"]["If_target_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
 
             self.assertIn("申請を開く", decision_body)
-            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", decision_body)
+            self.assertIn("Get_DecisionFlow_App_Base_Url", decision_body)
+            self.assertNotIn("https://apps.powerapps.com/play/decisionflow", decision_body)
             self.assertIn("triggerOutputs()?['body/_ds_applicationid_value']", decision_body)
 
             self.assertIn("申請を開く", mention_body)
-            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", mention_body)
+            self.assertIn("Get_DecisionFlow_App_Base_Url", mention_body)
+            self.assertNotIn("https://apps.powerapps.com/play/decisionflow", mention_body)
             self.assertIn("outputs('Get_message')?['body/_ds_applicationid_value']", mention_body)
         finally:
             flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
 
-    def test_decision_and_mention_emails_omit_app_link_when_base_url_unset(self):
+    def test_decision_and_mention_emails_keep_runtime_deeplink_when_base_url_unset(self):
         previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
         try:
             flows.DECISIONFLOW_APP_BASE_URL = ""
@@ -120,24 +150,31 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             decision_body = decision_clientdata["properties"]["definition"]["actions"]["If_applicant_has_email"]["actions"]["If_applicant_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
             mention_body = mention_clientdata["properties"]["definition"]["actions"]["If_unread_mention"]["actions"]["If_target_has_email"]["actions"]["If_target_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
 
-            self.assertNotIn("申請を開く", decision_body)
-            self.assertNotIn("申請を開く", mention_body)
+            self.assertIn("申請を開く", decision_body)
+            self.assertIn("申請を開く", mention_body)
+            self.assertIn("Get_DecisionFlow_App_Base_Url", decision_body)
+            self.assertIn("Get_DecisionFlow_App_Base_Url", mention_body)
         finally:
             flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
 
-    def test_application_submitted_email_can_include_copilot_deep_link(self):
+    def test_application_submitted_email_resolves_copilot_deep_link_from_solution_environment_variable(self):
         previous_app_id = flows.COPILOT_TEAMS_APP_ID
         previous_app_url = flows.DECISIONFLOW_APP_BASE_URL
         try:
             flows.COPILOT_TEAMS_APP_ID = "bot-app-id"
             flows.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
             clientdata = _clientdata(flows.build_application_submitted_clientdata(CONNECTION_REFS, "ds"))
-            body = clientdata["properties"]["definition"]["actions"]["If_submitted"]["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
+            actions = clientdata["properties"]["definition"]["actions"]["If_submitted"]["actions"]
+            body = actions["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
 
             self.assertIn("teams.microsoft.com/l/chat/0/0", body)
-            self.assertIn("users=28:bot-app-id", body)
+            self.assertIn("Get_Copilot_Teams_App_Id", body)
+            self.assertIn("startsWith(outputs('Get_Copilot_Teams_App_Id'),'28:')", body)
             self.assertIn("encodeUriComponent", body)
-            self.assertIn("https://apps.powerapps.com/play/decisionflow/applications/", body)
+            self.assertNotIn("bot-app-id", body)
+            self.assertNotIn("https://apps.powerapps.com/play/decisionflow", body)
+            self.assertIn("List_Copilot_Teams_App_Id_Definition", actions)
+            self.assertIn("ds_CopilotTeamsAppId", json.dumps(actions["List_Copilot_Teams_App_Id_Definition"], ensure_ascii=False))
         finally:
             flows.COPILOT_TEAMS_APP_ID = previous_app_id
             flows.DECISIONFLOW_APP_BASE_URL = previous_app_url
@@ -157,12 +194,15 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertEqual(actions["Get_decision_option"]["runAfter"], {"Get_applicant": ["Succeeded"]})
         self.assertEqual(actions["List_participants"]["runAfter"], {"Clear_submitted_at_if_returned_to_draft": ["Succeeded"]})
         self.assertIn("If_applicant_has_email", actions)
-        self.assertEqual(actions["If_applicant_has_email"]["runAfter"], {"List_participants": ["Succeeded"]})
+        self.assertEqual(
+            actions["If_applicant_has_email"]["runAfter"],
+            {"List_participants": ["Succeeded"], "Get_DecisionFlow_App_Base_Url": ["Succeeded"]},
+        )
         self.assertIn("Notify_participants", actions)
         participant_get = actions["Notify_participants"]["actions"]["Get_participant_user"]
         self.assertEqual(
             actions["Notify_participants"]["runAfter"],
-            {"If_applicant_has_email": ["Succeeded"]},
+            {"If_applicant_has_email": ["Succeeded"], "Get_DecisionFlow_App_Base_Url": ["Succeeded"]},
         )
         self.assertEqual(participant_get["inputs"]["parameters"]["recordId"], "@items('Notify_participants')?['_ds_userid_value']")
 
@@ -202,7 +242,10 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertIn("ds_submittedat", clear_json)
 
         self.assertEqual(actions["List_participants"]["runAfter"], {"Clear_submitted_at_if_returned_to_draft": ["Succeeded"]})
-        self.assertEqual(actions["If_applicant_has_email"]["runAfter"], {"List_participants": ["Succeeded"]})
+        self.assertEqual(
+            actions["If_applicant_has_email"]["runAfter"],
+            {"List_participants": ["Succeeded"], "Get_DecisionFlow_App_Base_Url": ["Succeeded"]},
+        )
 
     def test_mention_created_flow_notifies_target_user(self):
         clientdata = _clientdata(flows.build_mention_created_clientdata(CONNECTION_REFS, "ds"))
@@ -243,7 +286,7 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertIn("Get_decider", condition["actions"])
         self.assertIn("If_decider_has_email", condition["actions"])
 
-    def test_stalled_reminder_email_can_include_copilot_deep_link(self):
+    def test_stalled_reminder_email_resolves_copilot_deep_link_from_solution_environment_variable(self):
         previous_app_id = flows.COPILOT_TEAMS_APP_ID
         try:
             flows.COPILOT_TEAMS_APP_ID = "28:already-prefixed"
@@ -252,10 +295,29 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             body = condition["actions"]["If_decider_has_email"]["actions"]["If_decider_has_email_send"]["inputs"]["parameters"]["emailMessage/Body"]
 
             self.assertIn("teams.microsoft.com/l/chat/0/0", body)
-            self.assertIn("users=28:already-prefixed", body)
+            self.assertIn("Get_Copilot_Teams_App_Id", body)
+            self.assertNotIn("28:already-prefixed", body)
             self.assertIn("推奨判断と判断コメントドラフト", body)
         finally:
             flows.COPILOT_TEAMS_APP_ID = previous_app_id
+
+    def test_ensure_notification_environment_variables_upserts_solution_environment_definitions(self):
+        existing = {"value": [{"environmentvariabledefinitionid": "existing-app-url"}]}
+        created_response = unittest.mock.Mock(ok=True, headers={"OData-EntityId": "environmentvariabledefinitions(created-copilot-id)"})
+        session = unittest.mock.Mock()
+        session.headers = {}
+        session.post.return_value = created_response
+
+        with patch.object(flows, "api_get", side_effect=[existing, {"value": []}]) as api_get, patch.object(flows, "get_session", return_value=session):
+            flows.ensure_notification_environment_variables("ds")
+
+        self.assertEqual(api_get.call_count, 2)
+        self.assertIn("ds_DecisionFlowAppBaseUrl", api_get.call_args_list[0].args[0])
+        self.assertIn("ds_CopilotTeamsAppId", api_get.call_args_list[1].args[0])
+        self.assertEqual(session.post.call_count, 1)
+        body = session.post.call_args.kwargs["json"]
+        self.assertEqual(body["schemaname"], "ds_CopilotTeamsAppId")
+        self.assertEqual(body["type"], 100000000)
 
     def test_teams_action_is_optional_and_uses_supported_parameters(self):
         previous_enabled = flows.ENABLE_TEAMS
