@@ -1,5 +1,7 @@
 import { LoaderCircle } from "lucide-react";
+import { createPortal } from "react-dom";
 
+import { OPERATION_WAIT_OVERLAY_LAYER_CLASS } from "@/components/operation-wait-overlay-constants";
 import { cn } from "@/lib/utils";
 
 type OperationWaitOverlayProps = {
@@ -17,12 +19,9 @@ export function OperationWaitOverlay({
 }: OperationWaitOverlayProps) {
   if (!open) return null;
 
-  return (
+  const overlay = (
     <div
-      className={cn(
-        "fixed inset-0 z-[600] flex items-center justify-center bg-background/70 px-4 backdrop-blur-sm",
-        className,
-      )}
+      className={cn(OPERATION_WAIT_OVERLAY_LAYER_CLASS, className)}
       role="status"
       aria-live="polite"
       aria-busy="true"
@@ -38,4 +37,8 @@ export function OperationWaitOverlay({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return overlay;
+
+  return createPortal(overlay, document.body);
 }

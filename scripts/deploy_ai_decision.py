@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from auth_helper import DATAVERSE_URL, api_get, api_patch, api_post, flow_api_call, get_session, get_token  # noqa: E402
+from auth_helper import DATAVERSE_URL, api_delete, api_get, api_patch, api_post, flow_api_call, get_session, get_token  # noqa: E402
 
 load_dotenv()
 
@@ -40,6 +40,8 @@ PROMPT_SEGMENTS = [
 - 申請概要は3〜5文で、判断者が論点を素早く把握できる粒度にする。
 - 会話概要は会話履歴がある場合だけ論点、追加確認、合意事項を要約する。会話履歴がない場合は「提出時点では会話履歴はありません。」と返す。
 - 類似案件が少ない、または確度が低い場合はその旨を similarCases または risks に明記する。
+- カテゴリ別レギュレーションが入力されている場合は、充足状況、懸念、追加確認事項を comment または risks に含める。
+- カテゴリ別レギュレーションが未設定の場合は、その旨を comment または risks に明記し、通常のAI判断を継続する。
 - 出力は指定 JSON スキーマに厳密に従う。
 
 申請情報:
@@ -54,6 +56,8 @@ PROMPT_SEGMENTS = [
     {"type": "inputVariable", "id": "similarCases"},
     {"type": "literal", "text": "\n\n判断選択肢:\n"},
     {"type": "inputVariable", "id": "decisionOptions"},
+    {"type": "literal", "text": "\n\nカテゴリ別レギュレーション:\n"},
+    {"type": "inputVariable", "id": "categoryRegulation"},
 ]
 
 AI_INPUT_DEFINITIONS = [
@@ -62,6 +66,7 @@ AI_INPUT_DEFINITIONS = [
     {"id": "conversation", "text": "conversation", "type": "text", "quickTestValue": "提出時点では会話履歴はありません。"},
     {"id": "similarCases", "text": "similarCases", "type": "text", "quickTestValue": "顧客案件: 前回の例外承認 / 判断: 承認 / 理由: 顧客影響が大きい"},
     {"id": "decisionOptions", "text": "decisionOptions", "type": "text", "quickTestValue": "承認\n却下\n差し戻し"},
+    {"id": "categoryRegulation", "text": "categoryRegulation", "type": "text", "quickTestValue": "例外条件は収益影響、顧客影響、回収条件を確認する。"},
 ]
 
 AI_OUTPUT_DEFINITION = {
@@ -108,6 +113,41 @@ CUSTOM_CONFIG = {
     "code": "",
     "signature": "",
 }
+
+
+def delete_ai_prompt_model(model_id: str) -> None:
+    try:
+        api_patch(
+            f"msdyn_aimodels({model_id})",
+            {"msdyn_name": AI_PROMPT_NAME, "statecode": 0, "statuscode": 0},
+        )
+    except Exception as exc:
+        print(f"  Warning: AI Builder model の Draft 戻しをスキップしました: {exc}")
+
+    configs = api_get(
+        f"msdyn_aiconfigurations?$filter=_msdyn_aimodelid_value eq '{model_id}'"
+        "&$select=msdyn_aiconfigurationid&$orderby=createdon desc"
+    )
+    for config in configs.get("value", []):
+        config_id = config["msdyn_aiconfigurationid"]
+        try:
+            api_delete(f"msdyn_aiconfigurations({config_id})")
+            print(f"  Deleted AI Builder config: {config_id}")
+        except Exception as exc:
+            print(f"  Warning: AI Builder config 削除をスキップしました ({config_id}): {exc}")
+
+    try:
+        api_delete(f"msdyn_aimodels({model_id})")
+        print(f"  Deleted AI Builder model: {model_id}")
+    except Exception as exc:
+        archive_name = f"{AI_PROMPT_NAME}_Archived_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        try:
+            session = get_session()
+            response = session.patch(f"{API}/msdyn_aimodels({model_id})", json={"msdyn_name": archive_name})
+            response.raise_for_status()
+            print(f"  Archived AI Builder model: {archive_name}")
+        except Exception as rename_exc:
+            raise RuntimeError(f"既存 AI Builder model の退避に失敗しました: {exc}; rename: {rename_exc}") from rename_exc
 
 
 def _connector_id(connector: str = DATAVERSE_CONNECTOR) -> str:
@@ -189,7 +229,8 @@ def build_ai_decision_flow_clientdata(connection_refs: dict[str, str], model_id:
     }
     actions = {
         "Get_application": _openapi_action("GetItem", {"entityName": f"{prefix}_applications", "recordId": "@triggerBody()?['text']", "$select": f"{prefix}_applicationid,{prefix}_name,{prefix}_body,{prefix}_stage,{prefix}_duedate,{prefix}_submittedat,_{prefix}_categoryid_value"}),
-        "List_messages": _openapi_action("ListRecords", {"entityName": f"{prefix}_messages", "$filter": f"_{prefix}_applicationid_value eq @{{triggerBody()?['text']}}", "$select": f"{prefix}_body,createdon", "$orderby": "createdon asc"}, {"Get_application": ["Succeeded"]}),
+        "List_category_regulation": _openapi_action("ListRecords", {"entityName": f"{prefix}_categories", "$filter": f"{prefix}_categoryid eq @{{coalesce(outputs('Get_application')?['body/_{prefix}_categoryid_value'], '00000000-0000-0000-0000-000000000000')}}", "$select": f"{prefix}_categoryid,{prefix}_name,{prefix}_regulationtext", "$top": 1}, {"Get_application": ["Succeeded"]}),
+        "List_messages": _openapi_action("ListRecords", {"entityName": f"{prefix}_messages", "$filter": f"_{prefix}_applicationid_value eq @{{triggerBody()?['text']}}", "$select": f"{prefix}_body,createdon", "$orderby": "createdon asc"}, {"List_category_regulation": ["Succeeded"]}),
         "List_resources": _openapi_action("ListRecords", {"entityName": f"{prefix}_applicationresources", "$filter": f"_{prefix}_applicationid_value eq @{{triggerBody()?['text']}}", "$select": f"{prefix}_name,{prefix}_url,{prefix}_description"}, {"List_messages": ["Succeeded"]}),
         "List_decision_options": _openapi_action("ListRecords", {"entityName": f"{prefix}_decisionoptions", "$select": f"{prefix}_name,{prefix}_description", "$orderby": f"{prefix}_sortorder asc"}, {"List_resources": ["Succeeded"]}),
         "List_similar_applications": _openapi_action("ListRecords", {"entityName": f"{prefix}_applications", "$filter": f"{prefix}_applicationid ne @{{triggerBody()?['text']}} and {prefix}_stage eq 100000004 and _{prefix}_categoryid_value eq @{{coalesce(outputs('Get_application')?['body/_{prefix}_categoryid_value'], '00000000-0000-0000-0000-000000000000')}}", "$select": f"{prefix}_applicationid,{prefix}_name,{prefix}_aiapplicationsummary,{prefix}_aidecisionoptiontext,{prefix}_aidecisioncomment,{prefix}_aidecisionupdatedat", "$top": 30, "$orderby": f"{prefix}_aidecisionupdatedat desc"}, {"List_decision_options": ["Succeeded"]}),
@@ -198,11 +239,12 @@ def build_ai_decision_flow_clientdata(connection_refs: dict[str, str], model_id:
             "type": "Compose",
             "runAfter": {"List_recent_decided_applications": ["Succeeded"]},
             "inputs": {
-                "application": f"@{{concat('タイトル: ', outputs('Get_application')?['body/{prefix}_name'], '\\n本文: ', coalesce(outputs('Get_application')?['body/{prefix}_body'], ''), '\\n希望期限: ', coalesce(outputs('Get_application')?['body/{prefix}_duedate'], '未設定'))}}",
+                "application": f"@{{concat('利用文脈: ', if(equals(outputs('Get_application')?['body/{prefix}_stage'], 100000001), '判断者向け判断支援', '申請者向け提出前確認'), '\\nタイトル: ', outputs('Get_application')?['body/{prefix}_name'], '\\n本文: ', coalesce(outputs('Get_application')?['body/{prefix}_body'], ''), '\\n希望期限: ', coalesce(outputs('Get_application')?['body/{prefix}_duedate'], '未設定'))}}",
                 "resources": "@string(outputs('List_resources')?['body/value'])",
                 "conversation": "@if(empty(outputs('List_messages')?['body/value']), '提出時点では会話履歴はありません。', string(outputs('List_messages')?['body/value']))",
                 "similarCases": "@concat('同一カテゴリ候補: ', if(empty(outputs('List_similar_applications')?['body/value']), 'なし', string(outputs('List_similar_applications')?['body/value'])), '\n補助候補（直近判断済み）: ', if(empty(outputs('List_recent_decided_applications')?['body/value']), 'なし', string(outputs('List_recent_decided_applications')?['body/value'])))",
                 "decisionOptions": "@string(outputs('List_decision_options')?['body/value'])",
+                "categoryRegulation": f"@if(or(empty(outputs('List_category_regulation')?['body/value']), empty(first(outputs('List_category_regulation')?['body/value'])?['{prefix}_regulationtext'])), 'カテゴリ固有のレギュレーションは未設定です。通常のAI判断を継続してください。', concat('カテゴリ別レギュレーション: ', first(outputs('List_category_regulation')?['body/value'])?['{prefix}_regulationtext']))",
             },
         },
         "Run_AI_Prompt": _openapi_action(
@@ -214,6 +256,7 @@ def build_ai_decision_flow_clientdata(connection_refs: dict[str, str], model_id:
                 "item/requestv2/conversation": "@outputs('Build_prompt_inputs')?['conversation']",
                 "item/requestv2/similarCases": "@outputs('Build_prompt_inputs')?['similarCases']",
                 "item/requestv2/decisionOptions": "@outputs('Build_prompt_inputs')?['decisionOptions']",
+                "item/requestv2/categoryRegulation": "@outputs('Build_prompt_inputs')?['categoryRegulation']",
             },
             {"Build_prompt_inputs": ["Succeeded"]},
             DATAVERSE_CONNECTOR_AI,
@@ -221,7 +264,7 @@ def build_ai_decision_flow_clientdata(connection_refs: dict[str, str], model_id:
         "Build_basis_json": {
             "type": "Compose",
             "runAfter": {"Run_AI_Prompt": ["Succeeded"]},
-            "inputs": f"@string(json(concat('{{\"risks\":', string(coalesce({ai_output('risks')}, {ai_output('recommendation/risks')}, json('[]'))), ',\"similarCases\":', string(coalesce({ai_output('similarCases')}, {ai_output('recommendation/similarCases')}, json('[]'))), '}}')))",
+            "inputs": f"@string(json(concat('{{\"risks\":', string(coalesce({ai_output('risks')}, {ai_output('recommendation/risks')}, json('[]'))), ',\"similarCases\":', string(coalesce({ai_output('similarCases')}, {ai_output('recommendation/similarCases')}, json('[]'))), ',\"regulationContext\":{{\"considered\":', if(startsWith(outputs('Build_prompt_inputs')?['categoryRegulation'], 'カテゴリ別レギュレーション:'), 'true', 'false'), ',\"audience\":\"', if(equals(outputs('Get_application')?['body/{prefix}_stage'], 100000001), 'deciderReview', 'applicantPreSubmit'), '\",\"message\":\"', if(startsWith(outputs('Build_prompt_inputs')?['categoryRegulation'], 'カテゴリ別レギュレーション:'), 'カテゴリ別レギュレーションを考慮しました。', 'カテゴリ固有のレギュレーションは未設定です。'), '\"}}}}')))",
         },
         "Update_application_ai_decision": _openapi_action(
             "UpdateRecord",
@@ -312,6 +355,14 @@ def deploy_ai_prompt() -> str:
         model_id = existing[0]["msdyn_aimodelid"]
         run_config_id = existing[0].get("_msdyn_activerunconfigurationid_value")
         if run_config_id:
+            current_config = api_get(
+                f"msdyn_aiconfigurations({run_config_id})?$select=msdyn_customconfiguration"
+            ).get("msdyn_customconfiguration")
+            try:
+                if json.loads(current_config or "{}") == CUSTOM_CONFIG:
+                    return model_id
+            except json.JSONDecodeError:
+                pass
             session = get_session()
             patch_response = session.patch(
                 f"{API}/msdyn_aiconfigurations({run_config_id})",
@@ -319,10 +370,14 @@ def deploy_ai_prompt() -> str:
             )
             if not patch_response.ok:
                 print(
-                    "  Warning: 既存 AI Builder run configuration の更新をスキップしました "
+                    "  Warning: 既存 AI Builder run configuration の直接更新に失敗しました "
                     f"({patch_response.status_code})"
                 )
-        return model_id
+                delete_ai_prompt_model(model_id)
+            else:
+                return model_id
+        else:
+            delete_ai_prompt_model(model_id)
     model_id = api_post("msdyn_aimodels", {"msdyn_name": AI_PROMPT_NAME, "msdyn_TemplateId@odata.bind": f"/msdyn_aitemplates({GPT_PROMPT_TEMPLATE_ID})", "msdyn_sharewithorganizationoncreate": False}, solution=SOLUTION_NAME)
     now_str = datetime.now(timezone.utc).strftime("%m/%d/%Y %I:%M:%S %p")
     training_id = api_post("msdyn_aiconfigurations", {"msdyn_AIModelId@odata.bind": f"/msdyn_aimodels({model_id})", "msdyn_type": 190690000, "msdyn_name": f"{model_id}_Training_{now_str}"}, solution=SOLUTION_NAME)
@@ -373,13 +428,16 @@ def create_flow(clientdata: str) -> str:
 def update_flow(workflow_id: str, statecode: int, clientdata: str) -> str:
     session = get_session()
     session.headers["MSCRM.SolutionUniqueName"] = SOLUTION_NAME
+    deactivated = False
     if statecode == 1:
         deactivate_response = session.patch(f"{API}/workflows({workflow_id})", json={"statecode": 0, "statuscode": 1})
         if not deactivate_response.ok:
-            raise RuntimeError(
-                f"{AI_FLOW_NAME} の無効化に失敗しました: {deactivate_response.status_code}\n"
-                f"{deactivate_response.text[:2000]}"
+            print(
+                f"  Warning: {AI_FLOW_NAME} の無効化に失敗しました。"
+                "active のまま clientdata 更新を試行します。"
             )
+        else:
+            deactivated = True
     body = {"clientdata": clientdata, "description": "Code Apps から申請 ID を受け取り AI 判断を生成して ds_application に保存する。"}
     update_response = session.patch(f"{API}/workflows({workflow_id})", json=body)
     if not update_response.ok:
@@ -389,7 +447,8 @@ def update_flow(workflow_id: str, statecode: int, clientdata: str) -> str:
             f"{AI_FLOW_NAME} の更新に失敗しました: {update_response.status_code}\n"
             f"{update_response.text[:2000]}\nDebug: {debug_path}"
         )
-    activate_flow(session, workflow_id, body)
+    if statecode != 1 or deactivated:
+        activate_flow(session, workflow_id, body)
     return workflow_id
 
 

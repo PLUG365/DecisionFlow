@@ -1,7 +1,7 @@
 # DecisionFlow プロジェクト計画
 
-> **ステータス**: IMPLEMENTATION（Adaptive Card 判断確定 US1-US3 実装・環境スクリプト/agent flow 反映済み / 手動 Copilot Studio wiring 確認済み）
-> **最終更新**: 2026-05-21
+> **ステータス**: IMPLEMENTATION（カテゴリ別レギュレーションAIチェック環境反映済み / ユーザー実機検証待ち）
+> **最終更新**: 2026-05-22
 > **次フェーズ**: 追加の本番化 hardening（厳密ロック、運用監視、補正手順）
 
 ---
@@ -73,9 +73,12 @@
 - [x] 申請詳細の会話タブからコメント投稿時にメンション作成
 - [x] 判断タブに AI 判断カードを追加し、申請概要・会話概要・推奨判断・コメント・リスク・類似案件を表示
 - [x] Submitted 保存時と判断タブの「AI判断更新」から `Application_GenerateAiDecision` を起動
+- [x] 申請提出時はいったん Draft 保存し、AI判断確認後に `本提出` または `下書き維持` を選択する
+- [x] 申請作成/詳細画面で選択カテゴリのレギュレーションを申請者・判断者が読取りできる
 - [x] 関連資料リンク追加
 - [x] 関連資料リンクの確認付き削除
 - [x] マスタ追加/更新
+- [x] カテゴリマスタで `ds_regulationtext` を編集できる（`ds_Admin` / `ds_Decider`）
 - [x] 申請者本人向けの編集操作表示
 - [x] Choice フィルタ
 - [x] Power Apps 実機で SDK postMessage、リンク登録、申請削除、関係者追加/削除、セキュリティロールの動作を確認する
@@ -87,6 +90,7 @@
 - [x] `Decision_OnCreated` を設計・実装する
 - [x] `Mention_OnCreated` を設計・実装する
 - [x] `Application_GenerateAiDecision` を設計・実装する
+- [x] `Application_GenerateAiDecision` はカテゴリ別レギュレーションを prompt 入力へ追加し、既存AI列のみを最新結果として更新する
 - [x] `Participant_OnCreated_GrantAccess` を設計・実装する
 - [x] `Participant_PreDelete_RevokeAccess` を設計・実装する
 - [x] 関係者追加後に、申請者/判断者以外の関係者が対象申請を閲覧できることを実機確認する
@@ -98,8 +102,8 @@
 - [x] `py scripts/deploy_copilot_agent.py` を実行し、生成オーケストレーション・Instructions・推奨プロンプト・アイコン・チャネル設定を適用する
 - [x] Copilot Studio UI で認証を Microsoft Entra ID ユーザー認証に設定する
 - [x] Copilot Studio UI で Dataverse ナレッジを追加する
-- [x] Teams チャネルを利用可能にし、`botChannelRegistrationAppId` を `.env` の `COPILOT_TEAMS_APP_ID` に設定する
-- [x] `py scripts/deploy_notification_flows.py` を再実行し、Outlook メール内のエージェント相談リンクを有効化する
+- [x] Teams チャネルを利用可能にし、`botChannelRegistrationAppId` を確認する
+- [x] `py scripts/deploy_notification_flows.py` で Outlook メール内リンク用のソリューション環境変数を作成し、環境ごとに設定可能にする
 
 ### Phase 5: Adaptive Card 判断確定
 
@@ -131,7 +135,7 @@
 - ✅ 判断者の管理: **M365 グループ** + Dataverse グループチーム経由でロール付与
 - ✅ 申請者の閲覧範囲: **自分の申請のみ**（メンション / 関係者追加時のみ拡張）
 - ✅ ソリューション名・プレフィックス: `DecisionSupport` / `ds`
-- ✅ カテゴリ初期マスタ: 顧客案件 / 部内案件 / 課内案件 / 他部署案件 / 事務処理
+- ✅ カテゴリ初期マスタ: 顧客案件 / 部内案件 / 課内案件 / 他部署案件 / 事務処理。各カテゴリにデモ用レギュレーション初期値も補完する
 - ✅ 判断選択肢: 承認 / 却下 / 差し戻し（固定システムマスタ。フロー・Copilot Studio・Adaptive Card が名称で参照するため追加・名称変更・削除しない）
 - ✅ ソリューション配布時の注意: 通常のソリューションZipには `ds_category` / `ds_decisionoption` の行データは含まれないため、Code Apps 初回起動時に初期カテゴリと固定判断選択肢を自動補完する
 - ✅ 判断確定の正本イベント: `ds_decision` 作成
@@ -142,6 +146,8 @@
 - ✅ first-write-wins MVP: lookup-then-insert で現在提出サイクル内の既存判断を確認し、差し戻し後の再提出では再判断できる。厳密な同時実行制御は ETag / optimistic concurrency を将来検討
 - ✅ 停滞リマインド閾値: 3 営業日（`ds_submittedat` 基準）
 - ✅ AI 判断生成方針: Submitted 保存時に自動生成し、判断タブの「AI判断更新」から同じフローを手動再実行できる
+- ✅ カテゴリ別レギュレーション: `ds_category.ds_regulationtext` に1カテゴリ1文章で保持し、申請者の提出前確認と判断者向けAI判断に利用する。履歴テーブルやレギュレーション本文スナップショットは作成しない
+- ✅ 提出確認フロー: 申請者の提出操作は Draft 保存 → AI判断 → `本提出` / `下書き維持` の確認を経て、`本提出` のときだけ `ds_stage=Submitted` と `ds_submittedat` を設定する
 - ✅ AI 判断の入力: 初回提出時も類似過去案件を検索対象にし、会話履歴は存在する分だけ使用する
 - ✅ 会話自動要約: 会話ログが一定数たまったら要約するバッチは実装しない
 - ✅ M365 グループ名: `DecisionFlow-Deciders`
@@ -196,8 +202,8 @@ PUBLISHER_PREFIX=ds
 
 # ===== Code Apps =====
 PAC_AUTH_PROFILE=DecisionSupportProfile
-COPILOT_TEAMS_APP_ID=
-COPILOT_TEAMS_TITLE_ID=
+# 通知メールのリンクは .env ではなく、ソリューション環境変数で設定する:
+# ds_DecisionFlowAppBaseUrl / ds_CopilotTeamsAppId
 
 # ===== Copilot Studio =====
 # エージェント作成後に設定

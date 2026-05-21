@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from auth_helper import (  # noqa: E402
     DATAVERSE_URL,
     api_get,
+    api_patch,
     api_post,
     get_session,
     retry_metadata,
@@ -30,6 +31,40 @@ LANGUAGE_CODE = int(os.getenv("DATAVERSE_LANGUAGE_CODE", "1033"))
 
 if not DATAVERSE_URL or not SOLUTION_NAME or not PREFIX:
     raise SystemExit("DATAVERSE_URL, SOLUTION_NAME, PUBLISHER_PREFIX must be set in .env")
+
+
+DEFAULT_CATEGORIES = [
+    (
+        "顧客案件",
+        "顧客に関わる見積、契約、提案、例外対応など",
+        "背景 / 顧客影響 / 判断してほしいこと / 期限 / 関連資料",
+        "顧客影響、契約条件、収益影響、例外条件の妥当性を確認する。重要顧客対応の場合は、短期的な採算だけでなく継続取引への影響とリスク低減策も確認する。",
+    ),
+    (
+        "部内案件",
+        "部内で判断が必要な施策や運用変更",
+        "目的 / 対象範囲 / 選択肢 / 推奨案 / 懸念点",
+        "目的、対象範囲、必要工数、既存業務への影響、代替案を確認する。部内メンバーの負荷や運用定着の見込みが説明されているか確認する。",
+    ),
+    (
+        "課内案件",
+        "課内の業務改善や進め方の判断",
+        "現状 / 課題 / 提案 / 必要な判断 / 希望期限",
+        "現状課題、期待効果、実施範囲、担当、期限を確認する。課内で完結できる判断か、上位者や他部署の合意が必要かも確認する。",
+    ),
+    (
+        "他部署案件",
+        "他部署との調整や合意が必要な案件",
+        "関係部署 / 依頼事項 / 影響範囲 / 期限 / 未解決事項",
+        "関係部署、依頼事項、影響範囲、合意状況、未解決事項を確認する。相手部署の責任範囲、期限、コミュニケーション計画が明確か確認する。",
+    ),
+    (
+        "事務処理",
+        "定型的な承認・確認が必要な事務処理",
+        "処理内容 / 根拠 / 期限 / 添付資料",
+        "処理内容、根拠資料、期限、必要な添付資料、承認条件を確認する。定型処理から外れる例外や不備がある場合は、差し戻しまたは追加確認の必要性を確認する。",
+    ),
+]
 
 
 def label(text: str) -> dict:
@@ -102,6 +137,7 @@ TABLES = [
         "columns": [
             {"logical": f"{PREFIX}_description", "type": "Memo", "display": "説明", "maxLength": 2000},
             {"logical": f"{PREFIX}_template", "type": "Memo", "display": "推奨フォーマット", "maxLength": 4000},
+            {"logical": f"{PREFIX}_regulationtext", "type": "Memo", "display": "レギュレーション", "maxLength": 50000},
             {"logical": f"{PREFIX}_sortorder", "type": "Integer", "display": "並び順", "minValue": 0, "maxValue": 1000},
         ],
     },
@@ -512,20 +548,18 @@ def create_demo_data() -> None:
     decision_set = entity_set(f"{PREFIX}_decision")
     resource_set = entity_set(f"{PREFIX}_applicationresource")
 
-    categories = [
-        ("顧客案件", "顧客に関わる見積、契約、提案、例外対応など", "背景 / 顧客影響 / 判断してほしいこと / 期限 / 関連資料"),
-        ("部内案件", "部内で判断が必要な施策や運用変更", "目的 / 対象範囲 / 選択肢 / 推奨案 / 懸念点"),
-        ("課内案件", "課内の業務改善や進め方の判断", "現状 / 課題 / 提案 / 必要な判断 / 希望期限"),
-        ("他部署案件", "他部署との調整や合意が必要な案件", "関係部署 / 依頼事項 / 影響範囲 / 期限 / 未解決事項"),
-        ("事務処理", "定型的な承認・確認が必要な事務処理", "処理内容 / 根拠 / 期限 / 添付資料"),
-    ]
     category_ids: dict[str, str] = {}
-    for index, (name, description, template) in enumerate(categories, start=1):
+    for index, (name, description, template, regulation_text) in enumerate(DEFAULT_CATEGORIES, start=1):
+        existing_category = find_by_name(category_set, name)
         category_ids[name] = ensure_row(category_set, name, {
             f"{PREFIX}_description": description,
             f"{PREFIX}_template": template,
+            f"{PREFIX}_regulationtext": regulation_text,
             f"{PREFIX}_sortorder": index,
         })
+        if existing_category and not str(existing_category.get(f"{PREFIX}_regulationtext") or "").strip():
+            api_patch(f"{category_set}({category_ids[name]})", {f"{PREFIX}_regulationtext": regulation_text})
+            print(f"  Category regulation backfilled: {name}")
         print(f"  Category: {name}")
 
     decisions = [

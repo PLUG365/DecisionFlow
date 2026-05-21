@@ -121,6 +121,29 @@ export const DataverseService = {
   }) {
     const categoriesToCreate =
       input.categories.length === 0 ? DEFAULT_CATEGORIES : [];
+    const defaultCategoryByName = new Map<
+      string,
+      (typeof DEFAULT_CATEGORIES)[number]
+    >(DEFAULT_CATEGORIES.map((category) => [category.ds_name, category]));
+    const categoriesToBackfill: Array<{
+      id: string;
+      ds_regulationtext: string;
+    }> = [];
+    if (input.categories.length > 0) {
+      for (const category of input.categories) {
+        const defaultCategory = defaultCategoryByName.get(category.ds_name);
+        if (
+          defaultCategory?.ds_regulationtext?.trim() &&
+          !category.ds_regulationtext?.trim() &&
+          category.ds_categoryid
+        ) {
+          categoriesToBackfill.push({
+            id: category.ds_categoryid,
+            ds_regulationtext: defaultCategory.ds_regulationtext,
+          });
+        }
+      }
+    }
     const decisionOptionsToCreate = getMissingInitialRows(
       input.decisionOptions,
       DEFAULT_DECISION_OPTIONS,
@@ -128,6 +151,7 @@ export const DataverseService = {
 
     await Promise.all([
       ...categoriesToCreate.map((category) => this.createCategory(category)),
+      ...categoriesToBackfill.map((category) => this.updateCategory(category)),
       ...decisionOptionsToCreate.map((option) =>
         this.createDecisionOption(option),
       ),
@@ -135,13 +159,16 @@ export const DataverseService = {
 
     if (
       categoriesToCreate.length === 0 &&
+      categoriesToBackfill.length === 0 &&
       decisionOptionsToCreate.length === 0
     ) {
       return input;
     }
 
     const [categories, decisionOptions] = await Promise.all([
-      categoriesToCreate.length > 0 ? this.getCategories() : input.categories,
+      categoriesToCreate.length > 0 || categoriesToBackfill.length > 0
+        ? this.getCategories()
+        : input.categories,
       decisionOptionsToCreate.length > 0
         ? this.getDecisionOptions()
         : input.decisionOptions,
@@ -302,6 +329,25 @@ export const DataverseService = {
     }
   },
 
+  async isCurrentUserDecider(): Promise<boolean> {
+    try {
+      const userId = await this.getCurrentSystemUserId();
+      if (!userId) return false;
+      const matched = requireData(
+        await SystemusersService.getAll({
+          select: ["systemuserid"],
+          filter: `systemuserid eq ${userId} and (systemuserroles_association/any(r: r/name eq 'ds_Decider') or teammembership_association/any(t: t/name eq 'DecisionFlow-Deciders'))`,
+          top: 1,
+        }),
+        "isCurrentUserDecider",
+      ) as SystemUser[];
+      return matched.length > 0;
+    } catch (error) {
+      console.warn("[DecisionFlow] decider role check failed", error);
+      return false;
+    }
+  },
+
   async createApplication(application: CreateApplication) {
     const created = requireData(
       await Ds_applicationsService.create(
@@ -371,6 +417,7 @@ export const DataverseService = {
           ds_name: category.ds_name,
           ds_description: category.ds_description,
           ds_template: category.ds_template,
+          ds_regulationtext: category.ds_regulationtext,
           ds_sortorder: category.ds_sortorder,
         }) as Parameters<typeof Ds_categoriesService.create>[0],
       ),
@@ -387,6 +434,7 @@ export const DataverseService = {
           ds_name: changes.ds_name,
           ds_description: changes.ds_description,
           ds_template: changes.ds_template,
+          ds_regulationtext: changes.ds_regulationtext,
           ds_sortorder: changes.ds_sortorder,
         }) as Parameters<typeof Ds_categoriesService.update>[1],
       ),
@@ -453,6 +501,48 @@ export const DataverseService = {
       ),
       "updateApplication",
     ) as Application;
+  },
+
+  async saveDraftForAiCheck(
+    payload: CreateApplication & { id?: string },
+  ): Promise<Application> {
+    const draftPayload = {
+      ...payload,
+      ds_stage: ApplicationStage.Draft,
+      ds_submittedat: null,
+    };
+    if (payload.id) {
+      return this.updateApplication({ id: payload.id, ...draftPayload });
+    }
+    return this.createApplication(draftPayload);
+  },
+
+  async runAiPreCheck(applicationId: string) {
+    await this.generateAiDecision(applicationId);
+    return requireData(
+      await Ds_applicationsService.get(applicationId),
+      "getApplicationAfterAiPreCheck",
+    ) as Application;
+  },
+
+  async confirmFinalSubmit(applicationId: string) {
+    return this.updateApplication({
+      id: applicationId,
+      ds_stage: ApplicationStage.Submitted,
+      ds_submittedat: new Date().toISOString(),
+    });
+  },
+
+  async keepDraftAfterAiCheck(applicationId: string) {
+    return this.updateApplication({
+      id: applicationId,
+      ds_stage: ApplicationStage.Draft,
+      ds_submittedat: null,
+    });
+  },
+
+  async refreshSubmittedAiDecision(applicationId: string) {
+    return this.runAiPreCheck(applicationId);
   },
 
   async deleteApplication(applicationId: string) {

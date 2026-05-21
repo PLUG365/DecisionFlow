@@ -15,7 +15,8 @@
 - `DATAVERSE_URL`, `TENANT_ID`, `ENVIRONMENT_ID`: Dataverse / Flow / Copilot Studio API 用
 - `SOLUTION_NAME=DecisionSupport`, `PUBLISHER_PREFIX=ds`: すべての追加テーブル・フロー・Bot component を同一ソリューションへ含めるために使用
 - `BOT_ID`: Copilot Studio UI で作成済みの DecisionFlow Assistant の Bot URL または GUID
-- `DECISIONFLOW_APP_BASE_URL`: 通知・Copilot 応答から Code Apps 申請詳細へ誘導する場合に使用
+- `ds_DecisionFlowAppBaseUrl`: 通知メールから Code Apps 申請詳細へ誘導する場合に使うソリューション環境変数
+- `ds_CopilotTeamsAppId`: 通知メールから Copilot Studio Teams チャットへ誘導する場合に使うソリューション環境変数
 
 ### Copilot Studio wiring assumptions
 
