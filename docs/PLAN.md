@@ -104,6 +104,7 @@
 - [x] Copilot Studio UI で Dataverse ナレッジを追加する
 - [x] Teams チャネルを利用可能にし、`botChannelRegistrationAppId` を確認する
 - [x] `py scripts/deploy_notification_flows.py` で Outlook メール内リンク用のソリューション環境変数を作成し、環境ごとに設定可能にする
+- [x] `py scripts/deploy_application_link_flow.py` で `Get_ApplicationDetailUrl` agent flow を `Skills` トリガーで作成・有効化し、Copilot Studio UI でエージェントツールとして登録する。エージェントは固定 URL を埋め込まず、このツール経由で `ds_DecisionFlowAppBaseUrl` を実行時解決して申請詳細リンクを案内する
 
 ### Phase 5: Adaptive Card 判断確定
 
