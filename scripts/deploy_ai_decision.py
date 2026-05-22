@@ -78,7 +78,16 @@ AI_OUTPUT_DEFINITION = {
             "conversationSummary": {"type": "string"},
             "recommendedOption": {"type": "string"},
             "comment": {"type": "string"},
-            "risks": {"type": "array", "items": {"type": "string"}},
+            "risks": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "category": {"type": "string"},
+                        "detail": {"type": "string"},
+                    },
+                },
+            },
             "similarCases": {
                 "type": "array",
                 "items": {
@@ -98,7 +107,7 @@ AI_OUTPUT_DEFINITION = {
             "conversationSummary": "提出時点では会話履歴はありません。",
             "recommendedOption": "承認",
             "comment": "顧客関係への影響が大きく、提示条件の例外は限定的であるため承認を推奨します。収益影響の上限と回収条件は資料で再確認してください。",
-            "risks": ["収益影響の試算が更新されていない場合は追加確認が必要です。"],
+            "risks": [{"category": "収益影響", "detail": "収益影響の試算が更新されていない場合は追加確認が必要です。"}],
             "similarCases": [{"title": "顧客案件: 見積条件の例外承認", "decision": "承認", "reason": "重要顧客維持と例外条件の範囲が類似しています。"}],
         }
     ],
