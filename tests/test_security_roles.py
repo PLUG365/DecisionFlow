@@ -34,7 +34,7 @@ class SecurityRoleDefinitionsTest(unittest.TestCase):
         self.assertEqual(participant["Delete"], "Basic")
         decision = roles.privileges_for_table(decider, "ds_decision")
         self.assertEqual(decision["Create"], "Basic")
-        self.assertEqual(decision["Read"], "Basic")
+        self.assertEqual(decision["Read"], "Global")
         self.assertEqual(decision["Write"], "Basic")
 
     def test_decider_can_write_categories_for_regulation_management(self):

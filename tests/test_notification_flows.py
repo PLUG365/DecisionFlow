@@ -196,7 +196,7 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertIn("If_applicant_has_email", actions)
         self.assertEqual(
             actions["If_applicant_has_email"]["runAfter"],
-            {"List_participants": ["Succeeded"], "Get_DecisionFlow_App_Base_Url": ["Succeeded"]},
+            {"Grant_decision_access_to_participants": ["Succeeded"], "Get_DecisionFlow_App_Base_Url": ["Succeeded"]},
         )
         self.assertIn("Notify_participants", actions)
         participant_get = actions["Notify_participants"]["actions"]["Get_participant_user"]
@@ -205,6 +205,35 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
             {"If_applicant_has_email": ["Succeeded"], "Get_DecisionFlow_App_Base_Url": ["Succeeded"]},
         )
         self.assertEqual(participant_get["inputs"]["parameters"]["recordId"], "@items('Notify_participants')?['_ds_userid_value']")
+
+    def test_decision_created_flow_grants_decision_read_access_to_applicant_and_participants(self):
+        clientdata = _clientdata(flows.build_decision_created_clientdata(CONNECTION_REFS, "ds"))
+        actions = clientdata["properties"]["definition"]["actions"]
+
+        applicant_payload = actions["Build_grant_decision_access_to_applicant_payload"]
+        self.assertEqual(applicant_payload["type"], "Compose")
+        self.assertEqual(applicant_payload["runAfter"], {"List_participants": ["Succeeded"]})
+        applicant_item = applicant_payload["inputs"]
+        self.assertEqual(applicant_item["Target"]["@@odata.type"], "Microsoft.Dynamics.CRM.ds_decision")
+        self.assertEqual(applicant_item["Target"]["ds_decisionid"], "@triggerOutputs()?['body/ds_decisionid']")
+        self.assertEqual(applicant_item["PrincipalAccess"]["Principal"]["systemuserid"], "@outputs('Get_application')?['body/_createdby_value']")
+        self.assertEqual(applicant_item["PrincipalAccess"]["AccessMask"], "ReadAccess")
+
+        grant_applicant = actions["Grant_decision_access_to_applicant"]
+        self.assertEqual(grant_applicant["runAfter"], {"Build_grant_decision_access_to_applicant_payload": ["Succeeded"]})
+        self.assertEqual(grant_applicant["inputs"]["host"]["operationId"], "PerformUnboundAction")
+        self.assertEqual(grant_applicant["inputs"]["parameters"]["actionName"], "GrantAccess")
+
+        participant_loop = actions["Grant_decision_access_to_participants"]
+        self.assertEqual(participant_loop["type"], "Foreach")
+        self.assertEqual(participant_loop["runAfter"], {"Grant_decision_access_to_applicant": ["Succeeded"]})
+        participant_actions = participant_loop["actions"]
+        participant_payload = participant_actions["Build_grant_decision_access_to_participant_payload"]
+        self.assertEqual(participant_payload["inputs"]["PrincipalAccess"]["Principal"]["systemuserid"], "@items('Grant_decision_access_to_participants')?['_ds_userid_value']")
+        self.assertEqual(participant_payload["inputs"]["PrincipalAccess"]["AccessMask"], "ReadAccess")
+        self.assertEqual(participant_actions["Grant_decision_access_to_participant"]["inputs"]["parameters"]["actionName"], "GrantAccess")
+
+        self.assertEqual(actions["If_applicant_has_email"]["runAfter"], {"Grant_decision_access_to_participants": ["Succeeded"], "Get_DecisionFlow_App_Base_Url": ["Succeeded"]})
 
     def test_decision_created_flow_reconciles_application_stage_before_notifications(self):
         clientdata = _clientdata(flows.build_decision_created_clientdata(CONNECTION_REFS, "ds"))
@@ -244,7 +273,7 @@ class NotificationFlowDefinitionTests(unittest.TestCase):
         self.assertEqual(actions["List_participants"]["runAfter"], {"Clear_submitted_at_if_returned_to_draft": ["Succeeded"]})
         self.assertEqual(
             actions["If_applicant_has_email"]["runAfter"],
-            {"List_participants": ["Succeeded"], "Get_DecisionFlow_App_Base_Url": ["Succeeded"]},
+            {"Grant_decision_access_to_participants": ["Succeeded"], "Get_DecisionFlow_App_Base_Url": ["Succeeded"]},
         )
 
     def test_mention_created_flow_notifies_target_user(self):

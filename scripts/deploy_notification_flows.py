@@ -210,6 +210,25 @@ def _update_record_action(entity_set_name: str, record_id: str, item: dict, run_
     }
 
 
+def _dataverse_unbound_action(action_name: str, item: dict | str, run_after: dict | None = None) -> dict:
+    return {
+        "type": "OpenApiConnection",
+        "runAfter": run_after or {},
+        "inputs": {
+            "host": {
+                "apiId": _connector_id(DATAVERSE_CONNECTOR),
+                "connectionName": DATAVERSE_CONNECTOR,
+                "operationId": "PerformUnboundAction",
+            },
+            "parameters": {
+                "actionName": action_name,
+                "item": item,
+            },
+            "authentication": "@parameters('$authentication')",
+        },
+    }
+
+
 def _compose_action(inputs: str | dict, run_after: dict | None = None) -> dict:
     return {"type": "Compose", "runAfter": run_after or {}, "inputs": inputs}
 
@@ -415,6 +434,46 @@ def _participant_email_foreach(
     }
 
 
+def _grant_decision_access_payload(prefix: str, principal_systemuser_expression: str) -> dict:
+    return {
+        "Target": {
+            "@@odata.type": f"Microsoft.Dynamics.CRM.{prefix}_decision",
+            f"{prefix}_decisionid": "@triggerOutputs()?['body/ds_decisionid']",
+        },
+        "PrincipalAccess": {
+            "Principal": {
+                "@@odata.type": "Microsoft.Dynamics.CRM.systemuser",
+                "systemuserid": principal_systemuser_expression,
+            },
+            "AccessMask": "ReadAccess",
+        },
+    }
+
+
+def _grant_decision_access_to_participants_foreach(prefix: str) -> dict:
+    payload_action = "Build_grant_decision_access_to_participant_payload"
+    return {
+        "Grant_decision_access_to_participants": {
+            "type": "Foreach",
+            "runAfter": {"Grant_decision_access_to_applicant": ["Succeeded"]},
+            "foreach": "@outputs('List_participants')?['body/value']",
+            "actions": {
+                payload_action: _compose_action(
+                    _grant_decision_access_payload(
+                        prefix,
+                        "@items('Grant_decision_access_to_participants')?['_ds_userid_value']",
+                    ),
+                ),
+                "Grant_decision_access_to_participant": _dataverse_unbound_action(
+                    "GrantAccess",
+                    f"@outputs('{payload_action}')",
+                    {payload_action: ["Succeeded"]},
+                ),
+            },
+        }
+    }
+
+
 def build_application_submitted_clientdata(connection_refs: dict[str, str], prefix: str = PREFIX) -> str:
     subject = "@{concat('【DecisionFlow】申請が提出されました: ', triggerOutputs()?['body/ds_name'])}"
     body = _html(
@@ -547,12 +606,22 @@ def build_decision_created_clientdata(connection_refs: dict[str, str], prefix: s
             f"{prefix}_participantid,_{prefix}_userid_value",
             {"Clear_submitted_at_if_returned_to_draft": ["Succeeded"]},
         ),
+        "Build_grant_decision_access_to_applicant_payload": _compose_action(
+            _grant_decision_access_payload(prefix, "@outputs('Get_application')?['body/_createdby_value']"),
+            {"List_participants": ["Succeeded"]},
+        ),
+        "Grant_decision_access_to_applicant": _dataverse_unbound_action(
+            "GrantAccess",
+            "@outputs('Build_grant_decision_access_to_applicant_payload')",
+            {"Build_grant_decision_access_to_applicant_payload": ["Succeeded"]},
+        ),
+        **_grant_decision_access_to_participants_foreach(prefix),
         **_send_email_if_present(
             "If_applicant_has_email",
             "outputs('Get_applicant')?['body/internalemailaddress']",
             subject,
             body,
-            {"List_participants": ["Succeeded"], **_runtime_config_run_after()},
+            {"Grant_decision_access_to_participants": ["Succeeded"], **_runtime_config_run_after()},
         ),
         **_participant_email_foreach(
             subject,

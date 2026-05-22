@@ -1,7 +1,7 @@
 # DecisionFlow プロジェクト計画
 
 > **ステータス**: IMPLEMENTATION（カテゴリ別レギュレーションAIチェック環境反映済み / ユーザー実機検証待ち）
-> **最終更新**: 2026-05-22
+> **最終更新**: 2026-05-23
 > **次フェーズ**: 追加の本番化 hardening（厳密ロック、運用監視、補正手順）
 
 ---
@@ -93,6 +93,8 @@
 - [x] `Application_GenerateAiDecision` はカテゴリ別レギュレーションを prompt 入力へ追加し、既存AI列のみを最新結果として更新する
 - [x] `Participant_OnCreated_GrantAccess` を設計・実装する
 - [x] `Participant_PreDelete_RevokeAccess` を設計・実装する
+- [x] `Decision_OnCreated` で判断結果 `ds_decision` を申請者・関係者へ読取り共有し、`ds_Decider` は判断結果を全体閲覧できるようにする
+- [x] `ds_application` から関連資料・会話履歴・判断結果などの子レコードへ Cascade Share/Unshare を適用し、既存関係者分の申請共有を再付与する
 - [x] 関係者追加後に、申請者/判断者以外の関係者が対象申請を閲覧できることを実機確認する
 - [x] 関係者削除後に、対象ユーザーの申請閲覧権限が除外されることを実機確認する
 
@@ -110,7 +112,7 @@
 
 - [x] `ds_decisioncard` テーブル定義を追加する
 - [x] `ds_decisioncard` のセキュリティロール権限を追加する
-- [x] Code Apps の `createDecision` は画面の即時反映のため `ds_application.ds_stage` を同じ操作内で更新し、通知と最終整合は `Decision_OnCreated` に任せる
+- [x] Code Apps の `createDecision` は画面の即時反映のため `ds_application.ds_stage` を同じ操作内で更新し、通知・最終整合・判断結果共有は `Decision_OnCreated` に任せる
 - [x] `Decision_OnCreated` で判断選択肢から `ds_application.ds_stage` を導出し、`差し戻し` の場合だけ `ds_submittedat` をクリアする
 - [x] Adaptive Card submit 用の `confirm_decision` flow definition builder を追加し、`ds_decision` 作成と `ds_decisioncard` 消費を定義する
 - [x] Adaptive Card 発行用の `issue_decision_card` flow definition builder を追加し、`cardInstanceId` を返す定義を追加する
@@ -132,9 +134,9 @@
 
 ## 4. 確定済み事項
 
-- ✅ セキュリティ方針: ロール（全体閲覧権）× テーブル（案件参加）のハイブリッド
+- ✅ セキュリティ方針: ロール（判断者の全体閲覧権）× Share API（申請者・関係者の案件単位閲覧）のハイブリッド
 - ✅ 判断者の管理: **M365 グループ** + Dataverse グループチーム経由でロール付与
-- ✅ 申請者の閲覧範囲: **自分の申請のみ**（メンション / 関係者追加時のみ拡張）
+- ✅ 申請者の閲覧範囲: **自分の申請のみ**（関係者追加時のみ案件単位で拡張。メンションは通知・既読管理のみで閲覧権を拡張しない）
 - ✅ ソリューション名・プレフィックス: `DecisionSupport` / `ds`
 - ✅ カテゴリ初期マスタ: 顧客案件 / 部内案件 / 課内案件 / 他部署案件 / 事務処理。各カテゴリにデモ用レギュレーション初期値も補完する
 - ✅ 判断選択肢: 承認 / 却下 / 差し戻し（固定システムマスタ。フロー・Copilot Studio・Adaptive Card が名称で参照するため追加・名称変更・削除しない）
@@ -143,7 +145,7 @@
 - ✅ 案件ステージ整合: `Decision_OnCreated` が `ds_decisionoption` から導出して更新
 - ✅ Adaptive Card 表示 JSON: Copilot Studio 専用 Topic 側で管理。Power Automate はカード表示 JSON を所有しない
 - ✅ Adaptive Card submit: schema 1.5 + `Action.Submit` を使用し、`Action.Execute` は MVP では使わない
-- ✅ Code Apps: `createDecision` は `ds_decision` 作成後、利用者に結果がすぐ分かるよう `ds_application.ds_stage` も即時更新する。`Decision_OnCreated` は通知と最終整合を担当する
+- ✅ Code Apps: `createDecision` は `ds_decision` 作成後、利用者に結果がすぐ分かるよう `ds_application.ds_stage` も即時更新する。`Decision_OnCreated` は通知・最終整合・判断結果共有を担当する
 - ✅ first-write-wins MVP: lookup-then-insert で現在提出サイクル内の既存判断を確認し、差し戻し後の再提出では再判断できる。厳密な同時実行制御は ETag / optimistic concurrency を将来検討
 - ✅ 停滞リマインド閾値: 3 営業日（`ds_submittedat` 基準）
 - ✅ AI 判断生成方針: Submitted 保存時に自動生成し、判断タブの「AI判断更新」から同じフローを手動再実行できる

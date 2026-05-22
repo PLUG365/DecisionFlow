@@ -96,6 +96,27 @@ class AccessFlowDefinitionTests(unittest.TestCase):
         self.assertEqual(response_schema["properties"]["ok"]["x-ms-content-hint"], "TEXT")
         self.assertEqual(response_schema["additionalProperties"], {})
 
+    def test_revoke_flow_revokes_direct_decision_shares_for_removed_participant(self):
+        clientdata = _clientdata(build_revoke_flow_clientdata("ds", "ds_shared_commondataserviceforapps"))
+        actions = clientdata["properties"]["definition"]["actions"]
+
+        list_decisions = actions["List_application_decisions"]
+        self.assertEqual(list_decisions["inputs"]["host"]["operationId"], "ListRecords")
+        self.assertEqual(list_decisions["inputs"]["parameters"]["entityName"], "ds_decisions")
+        self.assertEqual(list_decisions["inputs"]["parameters"]["$filter"], "_ds_applicationid_value eq @{triggerBody()?['text_1']}")
+        self.assertEqual(list_decisions["runAfter"], {"Revoke_application_access": ["Succeeded"]})
+
+        revoke_decisions = actions["Revoke_decision_access"]
+        self.assertEqual(revoke_decisions["type"], "Foreach")
+        self.assertEqual(revoke_decisions["runAfter"], {"List_application_decisions": ["Succeeded"]})
+        payload = revoke_decisions["actions"]["Build_revoke_decision_access_payload"]
+        self.assertEqual(payload["inputs"]["Target"]["@@odata.type"], "Microsoft.Dynamics.CRM.ds_decision")
+        self.assertEqual(payload["inputs"]["Target"]["ds_decisionid"], "@items('Revoke_decision_access')?['ds_decisionid']")
+        self.assertEqual(payload["inputs"]["Revokee"]["systemuserid"], "@triggerBody()?['text_2']")
+        self.assertEqual(revoke_decisions["actions"]["Revoke_single_decision_access"]["inputs"]["parameters"]["actionName"], "RevokeAccess")
+
+        self.assertEqual(actions["Respond_success"]["runAfter"], {"Revoke_decision_access": ["Succeeded"]})
+
     def test_start_deployed_flows_calls_flow_management_start_endpoint(self):
         deployed = {
             "Participant_OnCreated_GrantAccess": "flow-grant",

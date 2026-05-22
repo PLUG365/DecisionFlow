@@ -351,29 +351,33 @@ erDiagram
 
 ### 4.1 フロー一覧
 
-| フロー名                             | 目的                                           | トリガー                                                                  |
-| ------------------------------------ | ---------------------------------------------- | ------------------------------------------------------------------------- |
-| `Participant_OnCreated_GrantAccess`  | 関係者追加時に対象申請を共有する               | Dataverse: `ds_participant` 行追加                                        |
-| `Participant_PreDelete_RevokeAccess` | 関係者削除前に対象申請の共有を外す             | Power Apps V2: Code Apps から申請 ID・ユーザー ID・関係者 ID を渡して起動 |
-| `Application_OnSubmitted`            | 申請提出時に判断者・関係者へ通知する           | Dataverse: `ds_application` 行変更                                        |
-| `Decision_OnCreated`                 | 判断確定時にステージ整合・通知する             | Dataverse: `ds_decision` 行追加                                           |
-| `Mention_OnCreated`                  | メンション対象ユーザーへ通知する               | Dataverse: `ds_mention` 行追加                                            |
-| `Application_StalledReminder`        | 期限超過または停滞申請を判断者へリマインドする | Recurrence: 毎朝 9:00 JST                                                 |
-| `Application_GenerateAiDecision`     | 申請の AI 判断を生成・更新する                 | Power Apps V2: Code Apps の Submitted 保存時 / 「AI判断更新」ボタン       |
+<!-- markdownlint-disable MD060 -->
+
+| フロー名                             | 目的                                               | トリガー                                                                  |
+| ------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------- |
+| `Participant_OnCreated_GrantAccess`  | 関係者追加時に対象申請を共有する                   | Dataverse: `ds_participant` 行追加                                        |
+| `Participant_PreDelete_RevokeAccess` | 関係者削除前に対象申請と判断結果の共有を外す       | Power Apps V2: Code Apps から申請 ID・ユーザー ID・関係者 ID を渡して起動 |
+| `Application_OnSubmitted`            | 申請提出時に判断者・関係者へ通知する               | Dataverse: `ds_application` 行変更                                        |
+| `Decision_OnCreated`                 | 判断確定時にステージ整合・判断結果共有・通知を行う | Dataverse: `ds_decision` 行追加                                           |
+| `Mention_OnCreated`                  | メンション対象ユーザーへ通知する                   | Dataverse: `ds_mention` 行追加                                            |
+| `Application_StalledReminder`        | 期限超過または停滞申請を判断者へリマインドする     | Recurrence: 毎朝 9:00 JST                                                 |
+| `Application_GenerateAiDecision`     | 申請の AI 判断を生成・更新する                     | Power Apps V2: Code Apps の Submitted 保存時 / 「AI判断更新」ボタン       |
+
+<!-- markdownlint-enable MD060 -->
 
 ### 4.2 フロー設計詳細
 
 <!-- markdownlint-disable MD060 -->
 
-| フロー名                             | 主な条件                                                                                                | 主なアクション                                                                                                                                                                                                                                     | 必要な接続                                     |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `Participant_OnCreated_GrantAccess`  | `_ds_applicationid_value` と `_ds_userid_value` がある                                                  | Dataverse `PerformUnboundAction` で `Target` に対象 `ds_application` を渡し、`GrantAccess` を実行する。権限は `ReadAccess` + `AppendToAccess`                                                                                                      | Dataverse                                      |
-| `Participant_PreDelete_RevokeAccess` | 申請 ID とユーザー ID がある。`RevokeAccess` 成功後に Code Apps が `ds_participant` を削除する          | Dataverse `PerformUnboundAction` で `Target` に対象 `ds_application` を渡し、`RevokeAccess` を実行する。成功/失敗を Code Apps に返す                                                                                                               | Dataverse                                      |
-| `Application_OnSubmitted`            | `ds_stage` が Submitted                                                                                 | 判断者と関係者を取得し、Outlook メール通知。関係者通知では判断者を除外し、判断者が `ds_participant` に登録済みでも同一メールを重複送信しない。Teams チャネル設定がある場合はチャネルにも投稿                                                       | Dataverse, Microsoft Teams, Office 365 Outlook |
-| `Decision_OnCreated`                 | 申請 Lookup がある                                                                                      | 申請、判断者、判断選択肢、関係者を取得する。判断選択肢から次ステージを導出し、`ds_application.ds_stage` を更新する。`差し戻し` の場合だけ `ds_submittedat` をクリアする。その後 Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿 | Dataverse, Microsoft Teams, Office 365 Outlook |
-| `Mention_OnCreated`                  | 対象ユーザー Lookup がある、`ds_isread` が false                                                        | メッセージと申請を取得し、対象ユーザーへ Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                        | Dataverse, Microsoft Teams, Office 365 Outlook |
-| `Application_StalledReminder`        | `ds_stage` が Submitted、希望期限超過または `ds_submittedat` から 3 日以上経過。`modifiedon` は使わない | 対象申請ごとに判断者を取得し、Outlook メールで通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                 | Dataverse, Office 365 Outlook, Microsoft Teams |
-| `Application_GenerateAiDecision`     | 対象申請が Submitted。提出直後は会話履歴が空でもよい。類似過去案件は初回提出時から検索対象にする。      | 申請、関連資料、会話履歴、過去類似案件、判断選択肢を取得し、AI Builder `DecisionRecommendation` を実行。申請概要・会話概要・推奨判断・コメント・根拠を `ds_application` に保存し、Code Apps 呼び出し時は結果を返す。                               | Dataverse, AI Builder                          |
+| フロー名                             | 主な条件                                                                                                | 主なアクション                                                                                                                                                                                                                                                                                                          | 必要な接続                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `Participant_OnCreated_GrantAccess`  | `_ds_applicationid_value` と `_ds_userid_value` がある                                                  | Dataverse `PerformUnboundAction` で `Target` に対象 `ds_application` を渡し、`GrantAccess` を実行する。権限は `ReadAccess` + `AppendToAccess`                                                                                                                                                                           | Dataverse                                      |
+| `Participant_PreDelete_RevokeAccess` | 申請 ID とユーザー ID がある。`RevokeAccess` 成功後に Code Apps が `ds_participant` を削除する          | Dataverse `PerformUnboundAction` で対象 `ds_application` の共有を解除し、対象申請の既存 `ds_decision` 直接共有も解除する。成功/失敗を Code Apps に返す                                                                                                                                                                  | Dataverse                                      |
+| `Application_OnSubmitted`            | `ds_stage` が Submitted                                                                                 | 判断者と関係者を取得し、Outlook メール通知。関係者通知では判断者を除外し、判断者が `ds_participant` に登録済みでも同一メールを重複送信しない。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                            | Dataverse, Microsoft Teams, Office 365 Outlook |
+| `Decision_OnCreated`                 | 申請 Lookup がある                                                                                      | 申請、判断者、判断選択肢、関係者を取得する。判断選択肢から次ステージを導出し、`ds_application.ds_stage` を更新する。`差し戻し` の場合だけ `ds_submittedat` をクリアする。通知前に当該 `ds_decision` を申請者・関係者へ `ReadAccess` 共有し、共有後に Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿 | Dataverse, Microsoft Teams, Office 365 Outlook |
+| `Mention_OnCreated`                  | 対象ユーザー Lookup がある、`ds_isread` が false                                                        | メッセージと申請を取得し、対象ユーザーへ Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                                                                             | Dataverse, Microsoft Teams, Office 365 Outlook |
+| `Application_StalledReminder`        | `ds_stage` が Submitted、希望期限超過または `ds_submittedat` から 3 日以上経過。`modifiedon` は使わない | 対象申請ごとに判断者を取得し、Outlook メールで通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                                                                                      | Dataverse, Office 365 Outlook, Microsoft Teams |
+| `Application_GenerateAiDecision`     | 対象申請が Submitted。提出直後は会話履歴が空でもよい。類似過去案件は初回提出時から検索対象にする。      | 申請、関連資料、会話履歴、過去類似案件、判断選択肢を取得し、AI Builder `DecisionRecommendation` を実行。申請概要・会話概要・推奨判断・コメント・根拠を `ds_application` に保存し、Code Apps 呼び出し時は結果を返す。                                                                                                    | Dataverse, AI Builder                          |
 
 <!-- markdownlint-enable MD060 -->
 
@@ -392,14 +396,17 @@ erDiagram
 Power Apps V2 のインスタントフローのため、関係者削除を実行する Code Apps 利用者には Power Automate の run-only 実行権限を付与する。
 編集権限（Owner）は開発・運用担当者に限定する。
 
+`Decision_OnCreated` は、判断結果 `ds_decision` が作成されたタイミングで当該判断レコードへの `ReadAccess` を申請者と関係者へ付与する。`ds_decision` は判断者が作成する子レコードのため、申請者が親申請を所有していても判断レコード自体は自動では読めない。通知メールを送る前に `GrantAccess` を実行し、申請者・関係者がリンク先の申請詳細で最新判断結果を読めるようにする。
+
 削除前 revoke の処理順:
 
 1. Code Apps が削除対象の `ds_participantid`、`ds_applicationid`、`systemuserid` を保持する
 2. Code Apps が Power Apps V2 トリガーの `Participant_PreDelete_RevokeAccess` を呼び出す
 3. フローが対象 `ds_application` に `RevokeAccess` を実行する
-4. フローが成功/失敗を Code Apps に返す
-5. 成功時のみ Code Apps が `ds_participant` を削除する
-6. 失敗時は関係者レコードを残し、ユーザーにエラーを表示する
+4. フローが対象申請に紐づく既存 `ds_decision` を列挙し、削除対象ユーザーへの直接 `ReadAccess` を `RevokeAccess` する
+5. フローが成功/失敗を Code Apps に返す
+6. 成功時のみ Code Apps が `ds_participant` を削除する
+7. 失敗時は関係者レコードを残し、ユーザーにエラーを表示する
 
 ### 4.4 通知フローの本文方針
 
@@ -416,10 +423,10 @@ Power Apps V2 のインスタントフローのため、関係者削除を実行
 
 通知メール内の環境依存リンクは、フロー定義に固定値として埋め込まない。通知フローは以下のソリューション環境変数を実行時に読み取る。
 
-| 環境変数スキーマ名          | 用途                                                                                                                            |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `ds_DecisionFlowAppBaseUrl` | Outlook メールの「申請を開く」リンクの Code Apps URL ベース／Copilot Studio エージェントの `Get_ApplicationDetailUrl` 解決元    |
-| `ds_CopilotTeamsAppId`      | Outlook メールの「申請について相談する」Teams チャットリンクの botChannelRegistrationAppId                                      |
+| 環境変数スキーマ名          | 用途                                                                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `ds_DecisionFlowAppBaseUrl` | Outlook メールの「申請を開く」リンクの Code Apps URL ベース／Copilot Studio エージェントの `Get_ApplicationDetailUrl` 解決元 |
+| `ds_CopilotTeamsAppId`      | Outlook メールの「申請について相談する」Teams チャットリンクの botChannelRegistrationAppId                                   |
 
 ソリューションインポート先では、この 2 つを対象環境の値に設定する。チャット起動プロンプトには Code Apps URL を含めず、申請タイトルだけを渡す。
 
@@ -431,7 +438,7 @@ Power Apps V2 のインスタントフローのため、関係者削除を実行
 - Applicant は自分がアクセスできる Submitted 申請の AI 判断生成を実行できる。Decider は判断対象申請の AI 判断を手動更新できる。フローを所有者接続で実行する場合は、Code Apps から渡された申請 ID に対して呼び出しユーザーが申請者・判断者・関係者のいずれかであることをフロー側で検証する。
 - 初回提出時は会話履歴が空でも実行し、過去類似案件は初回提出時から検索対象にする。
 - 過去案件候補はトークン消費を抑えるため、同一カテゴリの判断済み案件を最大 30 件、補助候補として直近判断済み案件を最大 10 件に制限する。
-- AI Builder の出力は `structuredOutput` 直下と `structuredOutput.recommendation` 配下の両方を許容し、推奨判断は `recommendedOption` / `recommendedDecision`、コメントは `comment` / `recommendationReason` の両方を読み取る。
+- AI Builder の出力は `structuredOutput` 直下と `structuredOutput.recommendation` 配下の両方を許容し、推奨判断は `recommendedOption` / `recommendedDecision` / `suggestedDecision`、コメントは `comment` / `recommendationReason` の両方を読み取る。
 - 会話ログが一定数たまったら要約する自動要約バッチは実装しない。
 
 ### 4.6 必要な接続（事前作成）
@@ -447,9 +454,13 @@ Phase 2.5 実装前に、対象環境で以下の接続を Power Automate UI か
 
 ## 5. AI Builder プロンプト
 
-| プロンプト                           | 入力                                                       | 出力 (JSON)                                                                                  |
-| ------------------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| **DecisionRecommendation**（AI判断） | 申請 + 関連資料一覧 + 会話履歴 + 過去類似案件 + 判断選択肢 | `{applicationSummary, conversationSummary, recommendedOption, comment, risks, similarCases}` |
+<!-- markdownlint-disable MD060 -->
+
+| プロンプト                           | 入力                                                       | 出力 (JSON)                                                                                                        |
+| ------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **DecisionRecommendation**（AI判断） | 申請 + 関連資料一覧 + 会話履歴 + 過去類似案件 + 判断選択肢 | `{applicationSummary, conversationSummary, recommendedOption, comment, risks: [{category, detail}], similarCases}` |
+
+<!-- markdownlint-enable MD060 -->
 
 `IssueExtraction`（論点抽出）は将来候補。2026-05-03 時点では作成・デプロイしていない。
 
@@ -461,7 +472,12 @@ Phase 2.5 実装前に、対象環境で以下の接続を Power Automate UI か
   "conversationSummary": "会話履歴がある場合は論点、追加確認、合意事項を要約する。会話履歴がない場合は『提出時点では会話履歴はありません。』と返す。",
   "recommendedOption": "承認",
   "comment": "推奨判断の理由を、判断者がそのまま判断コメントのたたき台にできる粒度で記述する。",
-  "risks": ["追加確認が必要なリスクや前提条件"],
+  "risks": [
+    {
+      "category": "確認事項",
+      "detail": "追加確認が必要なリスクや前提条件"
+    }
+  ],
   "similarCases": [
     {
       "title": "過去類似案件名",
@@ -556,15 +572,16 @@ sequenceDiagram
 
 ## 8. セキュリティ
 
-### 8.1 設計方針: ロール × テーブルのハイブリッド
+### 8.1 設計方針: ロール × Share API のハイブリッド
 
-- **セキュリティロール** = 「職位」を表す権限（全体閲覧権の付与）
+- **セキュリティロール** = 「職位」を表す権限（判断者・管理者の全体閲覧権など）
 - **`ds_participant` テーブル** = 「個別案件の参加者」を表すデータ（通知対象・案件単位の役割）
+- **Share API** = 申請者・関係者の案件単位閲覧を補完する行レベル共有
 
 ### 8.2 セキュリティロール定義
 
-- `ds_Applicant`（申請者）: 全社員に付与。`ds_application` は User: Read/Create/Write/Delete（自分の申請のみ）、`ds_message` は User: Read/Create、`ds_decision` はなし、`ds_participant` は User: Read。
-- `ds_Decider`（判断者）: DecisionFlow-Deciders グループのメンバーに付与。`ds_application` は Organization: Read（全申請閲覧可）、`ds_message` は Organization: Read、`ds_decision` は User: Create/Write/Read、`ds_participant` は Organization: Read。
+- `ds_Applicant`（申請者）: 全社員に付与。`ds_application` は User: Read/Create/Write/Delete（自分の申請のみ）、`ds_message` は User: Read/Create、`ds_decision` は通常ロールでは User: Read。判断者が作成した判断結果は `Decision_OnCreated` の `GrantAccess` により当該レコードだけ閲覧可能、`ds_participant` は User: Read。
+- `ds_Decider`（判断者）: DecisionFlow-Deciders グループのメンバーに付与。`ds_application` は Organization: Read（全申請閲覧可）、`ds_message` は Organization: Read、`ds_decision` は Organization: Read + User: Create/Write、`ds_participant` は Organization: Read。
 - `ds_Admin`（管理者）: 経営・管理者に付与。`ds_application`、`ds_message`、`ds_decision`、`ds_participant` は Organization: 全権限。
 
 `ds_applicationresource` は申請に紐づく根拠資料のため、`ds_application` と同等の閲覧範囲を適用する。
@@ -590,18 +607,19 @@ flowchart LR
 ### 8.4 申請者の閲覧範囲
 
 - 申請者は **自分の申請のみ閲覧可能**（他者の過去申請は見えない）
-- メンションされた / 関係者に追加された場合のみ、当該申請を閲覧可能
+- 関係者に追加された場合のみ、当該申請を案件単位で閲覧可能
   - Power Automate で対象ユーザーに **`Share` API**（GrantAccess）で当該申請レコードへの Read 権を付与
   - `ds_application` から子テーブル（`ds_participant`, `ds_message`, `ds_decision`, `ds_applicationresource`）への リレーションは Cascade Share が設定されており、申請の共有時に既存子レコードも自動的に共有される（`scripts/migrate_cascade_share.py` で適用）
+    - 判断結果 `ds_decision` は判断作成時にも申請者・関係者へ直接 `ReadAccess` を付与する。これにより、申請共有後に作成された判断結果もリンク先で読める
   - 関係者削除時は、Code Apps が削除前に Power Automate を呼び出して `Share` を Revoke し、成功後に `ds_participant` を削除
 
 ### 8.5 関係者参加と通知
 
 - 申請者・判断者は申請作成時に自動で `ds_participant` に登録（それぞれ Applicant / Decider ロール）
-- メンションだけでは `ds_participant` への自動追加や `Share` 付与は行わない
+- メンションだけでは `ds_participant` への自動追加や `Share` 付与は行わず、通知と既読管理だけを行う
 - 関係者として閲覧権を付与する場合は、申請詳細の関係者追加操作で `ds_participant` を Contributor ロールで作成し、`Participant_OnCreated_GrantAccess` で対象申請を共有する
 - 関係者追加時は `addParticipantWithMention` メソッドが System メッセージと Mention を作成し、追加対象者に通知する。Mention の `ownerid` は target ユーザーに設定され、本人が既読化できるようにしている
-- マスタ管理（`ds_category`, `ds_decisionoption` の編集）は `ds_Admin` ロール保持者のみ。サイドバー表示と `/masters` ルートガードで二重に制御。Dataverse レベルでも非 Admin は Read+AppendTo のみ
+- マスタ管理画面は全ユーザーに表示する。`ds_category` は `ds_Admin` / `ds_Decider` のみ追加・編集・削除でき、申請者はカテゴリ別レギュレーションを読取り専用で参照する。`ds_decisionoption` は固定システムマスタとして全ロール参照のみとし、追加・編集・削除しない
 
 ### 8.6 別テナントへのソリューション移送
 
