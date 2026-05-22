@@ -118,7 +118,7 @@ ROLE_DEFINITIONS = [
             f"{PREFIX}_message": DECIDER_OWNED_WRITE | {"Read": "Global"},
             f"{PREFIX}_mention": MENTION_WRITABLE | {"Read": "Global"},
             f"{PREFIX}_participant": table_defaults(Create="Basic", Read="Global", Write="Basic", Delete="Basic", Append="Basic", AppendTo="Global", Share="Basic"),
-            f"{PREFIX}_decision": DECIDER_OWNED_WRITE,
+            f"{PREFIX}_decision": DECIDER_OWNED_WRITE | {"Read": "Global"},
             f"{PREFIX}_decisioncard": DECISION_CARD_ASSIGNED_ACTOR,
         },
     },

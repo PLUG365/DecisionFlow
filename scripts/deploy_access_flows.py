@@ -89,6 +89,26 @@ def _dataverse_action(action_name: str, item: dict | str, run_after: dict | None
     }
 
 
+def _list_records_action(entity_set_name: str, filter_query: str, select: str, run_after: dict | None = None) -> dict:
+    return {
+        "type": "OpenApiConnection",
+        "runAfter": run_after or {},
+        "inputs": {
+            "host": {
+                "apiId": DATAVERSE_CONNECTOR_ID,
+                "connectionName": DATAVERSE_CONNECTOR,
+                "operationId": "ListRecords",
+            },
+            "parameters": {
+                "entityName": entity_set_name,
+                "$filter": filter_query,
+                "$select": select,
+            },
+            "authentication": "@parameters('$authentication')",
+        },
+    }
+
+
 def build_grant_flow_clientdata(
     prefix: str = PREFIX,
     connection_reference_logical_name: str = DATAVERSE_CONNREF_LOGICAL_NAME,
@@ -207,10 +227,40 @@ def build_revoke_flow_clientdata(
                 f"@outputs('{revoke_payload_action}')",
                 {revoke_payload_action: ["Succeeded"]},
             ),
+            "List_application_decisions": _list_records_action(
+                f"{prefix}_decisions",
+                f"_{prefix}_applicationid_value eq @{{triggerBody()?['text_1']}}",
+                f"{prefix}_decisionid",
+                {"Revoke_application_access": ["Succeeded"]},
+            ),
+            "Revoke_decision_access": {
+                "type": "Foreach",
+                "runAfter": {"List_application_decisions": ["Succeeded"]},
+                "foreach": "@outputs('List_application_decisions')?['body/value']",
+                "actions": {
+                    "Build_revoke_decision_access_payload": _compose_action(
+                        {
+                            "Target": {
+                                "@@odata.type": f"Microsoft.Dynamics.CRM.{prefix}_decision",
+                                f"{prefix}_decisionid": "@items('Revoke_decision_access')?['ds_decisionid']",
+                            },
+                            "Revokee": {
+                                "@@odata.type": "Microsoft.Dynamics.CRM.systemuser",
+                                "systemuserid": "@triggerBody()?['text_2']",
+                            },
+                        },
+                    ),
+                    "Revoke_single_decision_access": _dataverse_action(
+                        "RevokeAccess",
+                        "@outputs('Build_revoke_decision_access_payload')",
+                        {"Build_revoke_decision_access_payload": ["Succeeded"]},
+                    ),
+                },
+            },
             "Respond_success": {
                 "type": "Response",
                 "kind": "PowerApp",
-                "runAfter": {"Revoke_application_access": ["Succeeded"]},
+                "runAfter": {"Revoke_decision_access": ["Succeeded"]},
                 "inputs": {
                     "statusCode": 200,
                     "body": {
@@ -304,9 +354,27 @@ def _status_is_connected(connection: dict) -> bool:
     return any(status.get("status", "").lower() == "connected" for status in statuses)
 
 
+def _connection_connector_name(connection: dict) -> str:
+    return (connection.get("properties", {}).get("apiId") or "").rstrip("/").split("/")[-1]
+
+
+def _connection_auth_score(connection: dict) -> tuple[int, int, str]:
+    values = connection.get("properties", {}).get("connectionParametersSet", {}).get("values", {})
+    has_oauth_grant = "token:grantType" in values
+    return (
+        1 if _status_is_connected(connection) else 0,
+        1 if has_oauth_grant else 0,
+        connection.get("properties", {}).get("createdTime") or "",
+    )
+
+
 def find_dataverse_connections(environment_id: str) -> list[str]:
     encoded_env = quote(environment_id, safe="")
     urls = [
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/scopes/admin/environments/{encoded_env}/connections"
+        "?api-version=2016-11-01",
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/scopes/admin/environments/{encoded_env}/apis/{DATAVERSE_CONNECTOR}/connections"
+        "?api-version=2016-11-01",
         f"{POWERAPPS_API}/providers/Microsoft.PowerApps/apis/{DATAVERSE_CONNECTOR}/connections"
         f"?$filter=environment eq '{environment_id}'&api-version=2016-11-01",
         f"{POWERAPPS_API}/providers/Microsoft.PowerApps/environments/{encoded_env}/apis/{DATAVERSE_CONNECTOR}/connections"
@@ -315,7 +383,11 @@ def find_dataverse_connections(environment_id: str) -> list[str]:
     candidates: list[dict] = []
     for url in urls:
         try:
-            candidates.extend(_powerapps_get(url).get("value", []))
+            candidates.extend(
+                candidate
+                for candidate in _powerapps_get(url).get("value", [])
+                if _connection_connector_name(candidate) == DATAVERSE_CONNECTOR
+            )
         except RuntimeError as exc:
             print(f"  接続検索エンドポイントをスキップ: {exc}")
 
@@ -325,7 +397,7 @@ def find_dataverse_connections(environment_id: str) -> list[str]:
         )
 
     connected = [candidate for candidate in candidates if _status_is_connected(candidate)]
-    ordered = connected or candidates
+    ordered = sorted(connected or candidates, key=_connection_auth_score, reverse=True)
     connection_names = [
         candidate.get("name") or candidate.get("properties", {}).get("connectionName") for candidate in ordered
     ]
@@ -384,16 +456,17 @@ def ensure_connection_reference(connection_name: str) -> str:
     return logical_name
 
 
-def delete_existing_flow(flow_name: str) -> None:
+def delete_existing_flow(flow_name: str) -> str | None:
     escaped_name = _escape_odata_string(flow_name)
     existing = api_get(
         f"workflows?$filter=name eq '{escaped_name}' and category eq 5&$select=workflowid,name,statecode"
     ).get("value", [])
     if not existing:
         print(f"  {flow_name}: 既存フローなし")
-        return
+        return None
 
     session = get_session()
+    reusable_workflow_id: str | None = None
     for flow in existing:
         workflow_id = flow["workflowid"]
         print(f"  {flow_name}: 既存フローを再作成します ({workflow_id})")
@@ -402,7 +475,14 @@ def delete_existing_flow(flow_name: str) -> None:
             if not response.ok:
                 print(f"    無効化失敗: {response.status_code} {response.text[:250]}")
         response = session.delete(f"{API}/workflows({workflow_id})")
+        if response.ok:
+            continue
+        if response.status_code == 400 and "referenced by" in response.text:
+            print(f"    削除不可の参照があるため既存フローを更新します: {workflow_id}")
+            reusable_workflow_id = workflow_id
+            continue
         response.raise_for_status()
+    return reusable_workflow_id
 
 
 def create_flow(flow_name: str, description: str, clientdata: str) -> tuple[str, bool]:
@@ -439,8 +519,38 @@ def create_flow(flow_name: str, description: str, clientdata: str) -> tuple[str,
     return workflow_id, True
 
 
+def update_flow(workflow_id: str, flow_name: str, description: str, clientdata: str) -> tuple[str, bool]:
+    session = get_session()
+    session.headers["MSCRM.SolutionUniqueName"] = SOLUTION_NAME
+    body = {
+        "name": flow_name,
+        "type": 1,
+        "category": 5,
+        "statecode": 0,
+        "statuscode": 1,
+        "primaryentity": "none",
+        "clientdata": clientdata,
+        "description": description,
+    }
+    response = session.patch(f"{API}/workflows({workflow_id})", json=body)
+    if not response.ok:
+        debug_path = ROOT / "scripts" / f"{_safe_debug_name(flow_name)}_debug.json"
+        debug_path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+        raise RuntimeError(f"{flow_name} の更新に失敗しました ({response.status_code})。Debug: {debug_path}\n{response.text[:800]}")
+
+    activate = session.patch(f"{API}/workflows({workflow_id})", json={"statecode": 1, "statuscode": 2})
+    if not activate.ok:
+        print(f"  ⚠️ {flow_name}: 更新後の有効化失敗 ({activate.status_code})。Power Automate UI で手動有効化してください。")
+        print(f"     {activate.text[:2000]}")
+        return workflow_id, False
+    print(f"  ✅ {flow_name}: 既存フローを更新して有効化しました ({workflow_id})")
+    return workflow_id, True
+
+
 def deploy_flow(flow_name: str, description: str, clientdata: str) -> tuple[str, bool]:
-    delete_existing_flow(flow_name)
+    reusable_workflow_id = delete_existing_flow(flow_name)
+    if reusable_workflow_id:
+        return update_flow(reusable_workflow_id, flow_name, description, clientdata)
     return create_flow(flow_name, description, clientdata)
 
 
