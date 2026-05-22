@@ -138,6 +138,7 @@ class AiDecisionPromptDefinitionTests(unittest.TestCase):
         self.assertIn("ds_aidecisionupdatedat", item)
         self.assertIn("structuredOutput/recommendation/applicationSummary", item["ds_aiapplicationsummary"])
         self.assertIn("structuredOutput/recommendation/recommendedDecision", item["ds_aidecisionoptiontext"])
+        self.assertIn("structuredOutput/recommendation/suggestedDecision", item["ds_aidecisionoptiontext"])
         self.assertIn("structuredOutput/recommendation/recommendationReason", item["ds_aidecisioncomment"])
 
     def test_flow_does_not_create_regulation_history_or_snapshot_fields(self):

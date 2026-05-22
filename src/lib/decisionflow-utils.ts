@@ -75,6 +75,17 @@ export type MentionInput = {
   targetUserId?: string | null;
 };
 
+export function shouldShowMasterManagementNavigation(): boolean {
+  return true;
+}
+
+export function canEditMasterData(input: {
+  isAdmin?: boolean | null;
+  isDecider?: boolean | null;
+}): boolean {
+  return Boolean(input.isAdmin || input.isDecider);
+}
+
 export function validateResourceInput(input: ResourceInput): ValidationResult {
   const fieldErrors: Record<string, string> = {};
 

@@ -68,6 +68,24 @@ describe("parseAiDecisionBasis", () => {
     expect(result.risks).toEqual(["予算額が未記載です。", "期限が近いです。"]);
   });
 
+  it("extracts category and detail shaped risks from AI Builder output", () => {
+    const result = parseAiDecisionBasis(
+      JSON.stringify({
+        risks: [
+          {
+            category: "情報不足リスク",
+            detail: "判断に必要な情報が不足しています。",
+          },
+        ],
+        similarCases: [],
+      }),
+    );
+
+    expect(result.risks).toEqual([
+      "情報不足リスク: 判断に必要な情報が不足しています。",
+    ]);
+  });
+
   it("falls back to raw text when basis is not JSON", () => {
     const result = parseAiDecisionBasis("類似案件は見つかりませんでした。");
 
