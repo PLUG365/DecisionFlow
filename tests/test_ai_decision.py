@@ -78,6 +78,16 @@ class AiDecisionPromptDefinitionTests(unittest.TestCase):
         self.assertIn("risks", properties)
         self.assertIn("similarCases", properties)
 
+        risks = properties["risks"]
+        self.assertEqual(risks["type"], "array")
+        self.assertEqual(risks["items"]["type"], "object")
+        self.assertIn("category", risks["items"]["properties"])
+        self.assertIn("detail", risks["items"]["properties"])
+
+        example_risk = output["jsonExamples"][0]["risks"][0]
+        self.assertIsInstance(example_risk, dict)
+        self.assertIn("detail", example_risk)
+
     def test_flow_uses_powerapp_v2_trigger_and_ai_builder_action(self):
         clientdata = json.loads(
             ai_decision.build_ai_decision_flow_clientdata(
