@@ -1,7 +1,13 @@
 import {
   ApplicationStage,
+  type Category,
   type ApplicationStageValue,
 } from "@/types/decisionflow";
+
+export const EMPTY_CATEGORY_REGULATION_MESSAGE =
+  "このカテゴリにはレギュレーションが未設定です。";
+
+export const CATEGORY_REGULATION_MAX_LENGTH = 50000;
 
 export type ResourceInput = {
   title?: string | null;
@@ -14,6 +20,8 @@ export type ApplicationInput = {
   body?: string | null;
   stage?: number | null;
   deciderId?: string | null;
+  categoryId?: string | null;
+  categoriesAvailable?: boolean;
 };
 
 export const applicantSelectableStageValues: ApplicationStageValue[] = [
@@ -47,6 +55,15 @@ export type OperationWaitState = {
   visible: boolean;
   title: string;
   description: string;
+};
+
+export type AiResultDialogMode = "draft" | "submit";
+
+export type AiResultDialogConfig = {
+  title: string;
+  primaryLabel: string;
+  showFinalSubmit: boolean;
+  showKeepDraft: boolean;
 };
 
 export type ParticipantInput = {
@@ -99,6 +116,119 @@ export function validateApplicationInput(
     fieldErrors.deciderId = "提出時は判断者を選択してください";
   }
 
+  if (
+    normalizeApplicationStage(input.stage) === ApplicationStage.Submitted &&
+    input.categoriesAvailable === true &&
+    !input.categoryId?.trim()
+  ) {
+    fieldErrors.categoryId = "提出時はカテゴリを選択してください";
+  }
+
+  return {
+    valid: Object.keys(fieldErrors).length === 0,
+    fieldErrors,
+  };
+}
+
+export function shouldRequireCategoryForSubmission(
+  categories: Pick<Category, "ds_categoryid">[],
+): boolean {
+  return categories.length > 0;
+}
+
+export function getSelectedCategoryRegulationText(
+  categories: Pick<
+    Category,
+    "ds_categoryid" | "ds_name" | "ds_regulationtext"
+  >[],
+  categoryId: string | null | undefined,
+): string | null {
+  const selectedCategoryId = normalizeGuid(categoryId);
+  if (!selectedCategoryId) return null;
+
+  const category = categories.find(
+    (item) => normalizeGuid(item.ds_categoryid) === selectedCategoryId,
+  );
+  if (!category) return null;
+
+  const regulationText = category.ds_regulationtext?.trim();
+  return regulationText || EMPTY_CATEGORY_REGULATION_MESSAGE;
+}
+
+export function getSelectedCategoryRegulationInfo(
+  categories: Pick<
+    Category,
+    "ds_categoryid" | "ds_name" | "ds_regulationtext"
+  >[],
+  categoryId: string | null | undefined,
+): { categoryName: string; regulationText: string } | null {
+  const selectedCategoryId = normalizeGuid(categoryId);
+  if (!selectedCategoryId) return null;
+
+  const category = categories.find(
+    (item) => normalizeGuid(item.ds_categoryid) === selectedCategoryId,
+  );
+  if (!category) return null;
+
+  return {
+    categoryName: category.ds_name,
+    regulationText:
+      category.ds_regulationtext?.trim() || EMPTY_CATEGORY_REGULATION_MESSAGE,
+  };
+}
+
+export function getAiCheckWaitState(isPending: boolean): OperationWaitState {
+  return {
+    visible: isPending,
+    title: "AI判断を生成しています ✨",
+    description:
+      "申請内容とカテゴリ別レギュレーションを確認しています。このままお待ちください ☕",
+  };
+}
+
+export function canRefreshAiDecisionFromDecisionTab(
+  stage: number | null | undefined,
+  isPending: boolean,
+): boolean {
+  return (
+    !isPending && normalizeApplicationStage(stage) !== ApplicationStage.Decided
+  );
+}
+
+export function getAiResultDialogConfig(
+  mode: AiResultDialogMode,
+): AiResultDialogConfig {
+  if (mode === "submit") {
+    return {
+      title: "AI判断結果を確認しましたか？ 🔎",
+      primaryLabel: "本提出",
+      showFinalSubmit: true,
+      showKeepDraft: true,
+    };
+  }
+  return {
+    title: "AI事前確認が完了しました ✨",
+    primaryLabel: "閉じる",
+    showFinalSubmit: false,
+    showKeepDraft: false,
+  };
+}
+
+export function getApplicationDecisionDetailPath(
+  applicationId: string | null | undefined,
+): string | null {
+  const normalizedApplicationId = applicationId?.trim();
+  if (!normalizedApplicationId) return null;
+  return `/applications/${normalizedApplicationId}?tab=decision`;
+}
+
+export function validateCategoryRegulationInput(
+  regulationText: string | null | undefined,
+): ValidationResult {
+  const fieldErrors: Record<string, string> = {};
+  if ((regulationText ?? "").length > CATEGORY_REGULATION_MAX_LENGTH) {
+    fieldErrors.regulationText = `レギュレーションは${CATEGORY_REGULATION_MAX_LENGTH}文字以内で入力してください`;
+  }
   return {
     valid: Object.keys(fieldErrors).length === 0,
     fieldErrors,

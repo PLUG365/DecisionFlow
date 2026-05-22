@@ -1,13 +1,22 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Info, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 
 import { FormColumns, FormModal, FormSection } from "@/components/form-modal";
 import { ListTable, type TableColumn } from "@/components/list-table";
+import { OperationWaitOverlay } from "@/components/operation-wait-overlay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,7 +29,10 @@ import {
   useDeleteApplication,
   useDecisionOptions,
   useDecisions,
-  useGenerateAiDecision,
+  useConfirmFinalSubmit,
+  useKeepDraftAfterAiCheck,
+  useRunAiPreCheck,
+  useSaveDraftForAiCheck,
   useSystemUsers,
   useUpdateApplication,
 } from "@/hooks/use-decisionflow";
@@ -29,8 +41,13 @@ import {
   canEditApplication,
   canReturnApplicationToDraft,
   filterRowsForCurrentUser,
+  getAiCheckWaitState,
+  getAiResultDialogConfig,
+  getApplicationDecisionDetailPath,
+  getSelectedCategoryRegulationInfo,
   normalizeApplicationStage,
   normalizeGuid,
+  shouldRequireCategoryForSubmission,
   validateApplicationInput,
 } from "@/lib/decisionflow-utils";
 import {
@@ -42,6 +59,11 @@ import {
 import { toast } from "sonner";
 
 type ApplicationRow = Application & Record<string, unknown>;
+type AiResultDialogState = {
+  applicationId: string;
+  description: string;
+  mode: "draft" | "submit";
+};
 
 export default function ApplicationsPage() {
   const navigate = useNavigate();
@@ -55,7 +77,10 @@ export default function ApplicationsPage() {
   const createApplication = useCreateApplication();
   const updateApplication = useUpdateApplication();
   const deleteApplication = useDeleteApplication();
-  const generateAiDecision = useGenerateAiDecision();
+  const saveDraftForAiCheck = useSaveDraftForAiCheck();
+  const runAiPreCheck = useRunAiPreCheck();
+  const confirmFinalSubmit = useConfirmFinalSubmit();
+  const keepDraftAfterAiCheck = useKeepDraftAfterAiCheck();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingApplication, setEditingApplication] =
     useState<Application | null>(null);
@@ -69,6 +94,9 @@ export default function ApplicationsPage() {
   const [formStage, setFormStage] = useState<ApplicationStageValue>(
     ApplicationStage.Draft,
   );
+  const [aiResultDialog, setAiResultDialog] =
+    useState<AiResultDialogState | null>(null);
+  const [isRegulationDialogOpen, setIsRegulationDialogOpen] = useState(false);
 
   const categoryMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -247,6 +275,13 @@ export default function ApplicationsPage() {
     value: category.ds_categoryid,
     label: category.ds_name,
   }));
+  const selectedCategoryRegulationInfo = getSelectedCategoryRegulationInfo(
+    categories,
+    formCategoryId,
+  );
+  const aiResultDialogConfig = aiResultDialog
+    ? getAiResultDialogConfig(aiResultDialog.mode)
+    : null;
   const userOptions = deciders
     .filter((user) => Boolean(user.azureactivedirectoryobjectid?.trim()))
     .map((user) => ({
@@ -262,6 +297,7 @@ export default function ApplicationsPage() {
     setFormDeciderId("");
     setFormDueDate("");
     setFormStage(ApplicationStage.Draft);
+    setIsRegulationDialogOpen(false);
   };
 
   const openCreate = () => {
@@ -286,6 +322,70 @@ export default function ApplicationsPage() {
     setIsFormOpen(true);
   };
 
+  const buildFormPayload = (stage: ApplicationStageValue) => ({
+    ds_name: formName.trim(),
+    ds_body: formBody.trim(),
+    ds_stage: stage,
+    ds_duedate: formDueDate || undefined,
+    ds_submittedat:
+      stage === ApplicationStage.Submitted
+        ? (editingApplication?.ds_submittedat ?? new Date().toISOString())
+        : null,
+    _ds_categoryid_value: formCategoryId || undefined,
+    _ds_deciderid_value: formDeciderId || undefined,
+  });
+
+  const validateForm = (stage: ApplicationStageValue) => {
+    const validation = validateApplicationInput({
+      name: formName,
+      body: formBody,
+      stage,
+      deciderId: formDeciderId,
+      categoryId: formCategoryId,
+      categoriesAvailable: shouldRequireCategoryForSubmission(categories),
+    });
+    if (!validation.valid) {
+      toast.error(Object.values(validation.fieldErrors)[0]);
+      return false;
+    }
+    return true;
+  };
+
+  const handleDraftAiPreCheck = () => {
+    if (!validateForm(ApplicationStage.Draft)) return;
+    saveDraftForAiCheck.mutate(
+      {
+        id: editingApplication?.ds_applicationid,
+        ...buildFormPayload(ApplicationStage.Draft),
+      },
+      {
+        onSuccess: (savedApplication) => {
+          setEditingApplication(savedApplication);
+          setFormStage(ApplicationStage.Draft);
+          runAiPreCheck.mutate(savedApplication.ds_applicationid, {
+            onSuccess: (applicationWithAi) => {
+              toast.success("AI事前確認を更新しました");
+              setAiResultDialog({
+                applicationId: savedApplication.ds_applicationid,
+                mode: "draft",
+                description:
+                  applicationWithAi.ds_aidecisioncomment ||
+                  applicationWithAi.ds_aiapplicationsummary ||
+                  "AI判断結果を確認しました。",
+              });
+              setIsFormOpen(false);
+            },
+            onError: () =>
+              toast.error(
+                "AI事前確認に失敗しました。下書きのまま再試行できます。",
+              ),
+          });
+        },
+        onError: () => toast.error("AI事前確認用の下書き保存に失敗しました"),
+      },
+    );
+  };
+
   const handleSave = () => {
     if (
       editingApplication &&
@@ -298,29 +398,38 @@ export default function ApplicationsPage() {
       return;
     }
 
-    const validation = validateApplicationInput({
-      name: formName,
-      body: formBody,
-      stage: formStage,
-      deciderId: formDeciderId,
-    });
-    if (!validation.valid) {
-      toast.error(Object.values(validation.fieldErrors)[0]);
+    if (!validateForm(formStage)) return;
+    const payload = buildFormPayload(formStage);
+
+    if (formStage === ApplicationStage.Submitted) {
+      saveDraftForAiCheck.mutate(
+        { id: editingApplication?.ds_applicationid, ...payload },
+        {
+          onSuccess: (savedApplication) => {
+            runAiPreCheck.mutate(savedApplication.ds_applicationid, {
+              onSuccess: (applicationWithAi) => {
+                setAiResultDialog({
+                  applicationId: savedApplication.ds_applicationid,
+                  mode: "submit",
+                  description:
+                    applicationWithAi.ds_aidecisioncomment ||
+                    applicationWithAi.ds_aiapplicationsummary ||
+                    "AI判断結果を確認しました。",
+                });
+                toast.success("AI判断を確認しました");
+                setIsFormOpen(false);
+              },
+              onError: () =>
+                toast.error(
+                  "AI判断の取得に失敗しました。申請は下書きのままです。",
+                ),
+            });
+          },
+          onError: () => toast.error("下書き保存に失敗しました"),
+        },
+      );
       return;
     }
-
-    const payload = {
-      ds_name: formName.trim(),
-      ds_body: formBody.trim(),
-      ds_stage: formStage,
-      ds_duedate: formDueDate || undefined,
-      ds_submittedat:
-        formStage === ApplicationStage.Submitted
-          ? (editingApplication?.ds_submittedat ?? new Date().toISOString())
-          : null,
-      _ds_categoryid_value: formCategoryId || undefined,
-      _ds_deciderid_value: formDeciderId || undefined,
-    };
 
     if (editingApplication) {
       updateApplication.mutate(
@@ -328,12 +437,6 @@ export default function ApplicationsPage() {
         {
           onSuccess: () => {
             toast.success("申請を更新しました");
-            if (formStage === ApplicationStage.Submitted) {
-              generateAiDecision.mutate(editingApplication.ds_applicationid, {
-                onSuccess: () => toast.success("AI判断を更新しました"),
-                onError: () => toast.error("AI判断の更新に失敗しました"),
-              });
-            }
             setIsFormOpen(false);
             resetForm();
           },
@@ -344,14 +447,8 @@ export default function ApplicationsPage() {
     }
 
     createApplication.mutate(payload, {
-      onSuccess: (createdApplication) => {
+      onSuccess: () => {
         toast.success("申請を作成しました");
-        if (formStage === ApplicationStage.Submitted) {
-          generateAiDecision.mutate(createdApplication.ds_applicationid, {
-            onSuccess: () => toast.success("AI判断を更新しました"),
-            onError: () => toast.error("AI判断の更新に失敗しました"),
-          });
-        }
         setIsFormOpen(false);
         resetForm();
       },
@@ -393,7 +490,55 @@ export default function ApplicationsPage() {
     });
   };
 
-  const isSaving = createApplication.isPending || updateApplication.isPending;
+  const handleConfirmFinalSubmit = () => {
+    if (!aiResultDialog) return;
+    confirmFinalSubmit.mutate(aiResultDialog.applicationId, {
+      onSuccess: () => {
+        toast.success("申請を提出しました");
+        setAiResultDialog(null);
+        resetForm();
+      },
+      onError: () => toast.error("本提出に失敗しました"),
+    });
+  };
+
+  const handleKeepDraftAfterAiCheck = () => {
+    if (!aiResultDialog) return;
+    keepDraftAfterAiCheck.mutate(aiResultDialog.applicationId, {
+      onSuccess: () => {
+        toast.success("申請を下書きのまま保持しました");
+        setAiResultDialog(null);
+        resetForm();
+      },
+      onError: () => toast.error("下書き維持の保存に失敗しました"),
+    });
+  };
+
+  const handleCloseDraftAiResult = () => {
+    setAiResultDialog(null);
+    resetForm();
+  };
+
+  const handleOpenAiResultDetail = () => {
+    const detailPath = getApplicationDecisionDetailPath(
+      aiResultDialog?.applicationId,
+    );
+    if (!detailPath) return;
+    setAiResultDialog(null);
+    resetForm();
+    navigate(detailPath);
+  };
+
+  const isSaving =
+    createApplication.isPending ||
+    updateApplication.isPending ||
+    saveDraftForAiCheck.isPending ||
+    runAiPreCheck.isPending ||
+    confirmFinalSubmit.isPending ||
+    keepDraftAfterAiCheck.isPending;
+  const aiCheckWaitState = getAiCheckWaitState(
+    saveDraftForAiCheck.isPending || runAiPreCheck.isPending,
+  );
 
   return (
     <div className="space-y-6">
@@ -465,14 +610,32 @@ export default function ApplicationsPage() {
           <FormSection title="分類と担当">
             <FormColumns columns={2}>
               <div className="space-y-2">
-                <Label>カテゴリ</Label>
+                <Label>
+                  カテゴリ
+                  {shouldRequireCategoryForSubmission(categories) ? " *" : ""}
+                </Label>
                 <Combobox
                   options={categoryOptions}
                   value={formCategoryId}
-                  onValueChange={setFormCategoryId}
+                  onValueChange={(value) => {
+                    setFormCategoryId(value);
+                    setIsRegulationDialogOpen(false);
+                  }}
                   placeholder="カテゴリを選択"
                   searchPlaceholder="カテゴリを検索"
                 />
+                {selectedCategoryRegulationInfo && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 w-full justify-start gap-2 text-muted-foreground"
+                    onClick={() => setIsRegulationDialogOpen(true)}
+                  >
+                    <Info className="h-4 w-4" />
+                    レギュレーションを確認
+                  </Button>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>判断者</Label>
@@ -522,8 +685,102 @@ export default function ApplicationsPage() {
               </div>
             </FormColumns>
           </FormSection>
+
+          <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              下書き保存済みの申請をもとに、提出前のAI事前確認を実行できます ✨
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDraftAiPreCheck}
+              disabled={isSaving}
+            >
+              AI事前確認 ✨
+            </Button>
+          </div>
         </div>
       </FormModal>
+
+      <Dialog
+        open={isRegulationDialogOpen && Boolean(selectedCategoryRegulationInfo)}
+        onOpenChange={setIsRegulationDialogOpen}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>カテゴリ別レギュレーション</DialogTitle>
+            <DialogDescription>
+              {selectedCategoryRegulationInfo?.categoryName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[55vh] overflow-y-auto rounded-md border bg-muted/20 p-4 text-sm leading-7 whitespace-pre-wrap">
+            {selectedCategoryRegulationInfo?.regulationText}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsRegulationDialogOpen(false)}
+            >
+              閉じる
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(aiResultDialog)}
+        onOpenChange={(open) => {
+          if (!open && aiResultDialog?.mode === "draft") {
+            handleCloseDraftAiResult();
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{aiResultDialogConfig?.title}</DialogTitle>
+            <DialogDescription>
+              AI判断結果を確認できます。詳細な根拠やリスクは判断タブで確認してください
+              🔎
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[45vh] overflow-y-auto rounded-md border bg-muted/20 p-4 text-sm leading-7 whitespace-pre-wrap">
+            {aiResultDialog?.description || "AI判断結果を確認しました。"}
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleOpenAiResultDetail}
+            >
+              詳細はこちら 🔎
+            </Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              {aiResultDialogConfig?.showKeepDraft && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleKeepDraftAfterAiCheck}
+                  disabled={isSaving}
+                >
+                  下書き維持
+                </Button>
+              )}
+              <Button
+                type="button"
+                onClick={
+                  aiResultDialogConfig?.showFinalSubmit
+                    ? handleConfirmFinalSubmit
+                    : handleCloseDraftAiResult
+                }
+                disabled={isSaving}
+              >
+                {aiResultDialogConfig?.primaryLabel}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={Boolean(applicationToDelete)}
@@ -539,6 +796,12 @@ export default function ApplicationsPage() {
         confirmLabel="削除"
         variant="destructive"
         onConfirm={handleDelete}
+      />
+
+      <OperationWaitOverlay
+        open={aiCheckWaitState.visible}
+        title={aiCheckWaitState.title}
+        description={aiCheckWaitState.description}
       />
     </div>
   );

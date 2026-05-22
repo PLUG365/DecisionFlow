@@ -72,6 +72,7 @@ export type Category = {
   ds_name: string;
   ds_description?: string;
   ds_template?: string;
+  ds_regulationtext?: string;
   ds_sortorder?: number;
 };
 
