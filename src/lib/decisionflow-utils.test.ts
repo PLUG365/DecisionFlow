@@ -3,14 +3,22 @@ import { describe, expect, it } from "vitest";
 import {
   applicantSelectableStageValues,
   canDecideApplication,
+  canRefreshAiDecisionFromDecisionTab,
   canEditApplication,
   canReturnApplicationToDraft,
+  getAiCheckWaitState,
+  getAiResultDialogConfig,
+  getApplicationDecisionDetailPath,
   getDecisionNextApplicationStage,
   getDeciderQueueApplications,
   getParticipantDeleteWaitState,
+  getSelectedCategoryRegulationInfo,
+  getSelectedCategoryRegulationText,
   isIgnorableParticipantRevokeFailure,
   filterRowsForCurrentUser,
   isApplicantSelectableStage,
+  shouldRequireCategoryForSubmission,
+  validateCategoryRegulationInput,
   validateApplicationInput,
   validateMentionInput,
   validateParticipantInput,
@@ -300,6 +308,135 @@ describe("validateApplicationInput", () => {
 
     expect(result.valid).toBe(true);
     expect(result.fieldErrors).toEqual({});
+  });
+
+  it("requires a category for final submission when category master rows exist", () => {
+    const result = validateApplicationInput({
+      name: "判断依頼",
+      body: "本文",
+      stage: 100000001,
+      deciderId: "decider-1",
+      categoryId: "",
+      categoriesAvailable: true,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.fieldErrors.categoryId).toBe(
+      "提出時はカテゴリを選択してください",
+    );
+  });
+
+  it("allows final submission without a category when no category master rows exist", () => {
+    const result = validateApplicationInput({
+      name: "判断依頼",
+      body: "本文",
+      stage: 100000001,
+      deciderId: "decider-1",
+      categoryId: "",
+      categoriesAvailable: false,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.fieldErrors).toEqual({});
+  });
+});
+
+describe("category regulation helpers", () => {
+  const categories = [
+    {
+      ds_categoryid: "category-1",
+      ds_name: "顧客案件",
+      ds_regulationtext: "契約条件と収益影響を確認する。",
+    },
+  ];
+
+  it("requires category only when category master rows exist", () => {
+    expect(shouldRequireCategoryForSubmission(categories)).toBe(true);
+    expect(shouldRequireCategoryForSubmission([])).toBe(false);
+  });
+
+  it("returns selected regulation text for applicant read-only display", () => {
+    expect(getSelectedCategoryRegulationText(categories, "category-1")).toBe(
+      "契約条件と収益影響を確認する。",
+    );
+  });
+
+  it("returns selected regulation dialog information without changing form layout", () => {
+    expect(getSelectedCategoryRegulationInfo(categories, "CATEGORY-1")).toEqual(
+      {
+        categoryName: "顧客案件",
+        regulationText: "契約条件と収益影響を確認する。",
+      },
+    );
+  });
+
+  it("returns missing regulation copy for empty selected category regulation", () => {
+    expect(
+      getSelectedCategoryRegulationText(
+        [
+          {
+            ds_categoryid: "category-1",
+            ds_name: "顧客案件",
+            ds_regulationtext: "",
+          },
+        ],
+        "category-1",
+      ),
+    ).toBe("このカテゴリにはレギュレーションが未設定です。");
+  });
+
+  it("validates long regulation text with the Dataverse Memo limit", () => {
+    expect(validateCategoryRegulationInput("a".repeat(50000)).valid).toBe(true);
+    const result = validateCategoryRegulationInput("a".repeat(50001));
+    expect(result.valid).toBe(false);
+    expect(result.fieldErrors.regulationText).toContain("50000文字以内");
+  });
+});
+
+describe("AI check feedback helpers", () => {
+  it("allows decision-tab AI refresh before an application is decided", () => {
+    expect(canRefreshAiDecisionFromDecisionTab(100000000, false)).toBe(true);
+    expect(canRefreshAiDecisionFromDecisionTab(100000001, false)).toBe(true);
+  });
+
+  it("blocks decision-tab AI refresh only after decided or while pending", () => {
+    expect(canRefreshAiDecisionFromDecisionTab(100000004, false)).toBe(false);
+    expect(canRefreshAiDecisionFromDecisionTab(100000001, true)).toBe(false);
+  });
+
+  it("shows a blocking wait message while AI judgment is running", () => {
+    expect(getAiCheckWaitState(true)).toEqual({
+      visible: true,
+      title: "AI判断を生成しています ✨",
+      description:
+        "申請内容とカテゴリ別レギュレーションを確認しています。このままお待ちください ☕",
+    });
+    expect(getAiCheckWaitState(false).visible).toBe(false);
+  });
+
+  it("uses a read-only AI result dialog for draft pre-check", () => {
+    expect(getAiResultDialogConfig("draft")).toEqual({
+      title: "AI事前確認が完了しました ✨",
+      primaryLabel: "閉じる",
+      showFinalSubmit: false,
+      showKeepDraft: false,
+    });
+  });
+
+  it("uses final submit actions for submit-time AI result dialog", () => {
+    expect(getAiResultDialogConfig("submit")).toEqual({
+      title: "AI判断結果を確認しましたか？ 🔎",
+      primaryLabel: "本提出",
+      showFinalSubmit: true,
+      showKeepDraft: true,
+    });
+  });
+
+  it("builds a decision-tab detail link for AI result details", () => {
+    expect(getApplicationDecisionDetailPath("application-1")).toBe(
+      "/applications/application-1?tab=decision",
+    );
+    expect(getApplicationDecisionDetailPath(null)).toBeNull();
   });
 });
 

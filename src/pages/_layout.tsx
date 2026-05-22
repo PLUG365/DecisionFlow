@@ -59,7 +59,7 @@ function LayoutContent({ showHeader = true }: LayoutProps) {
               <div>
                 <h1 className="text-lg font-bold text-primary">DecisionFlow</h1>
                 <p className="text-xs text-muted-foreground hidden sm:block">
-                  Decision Support
+                  判断を前に進めるワークスペース
                 </p>
               </div>
             </div>

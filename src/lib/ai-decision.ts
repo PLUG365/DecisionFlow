@@ -7,6 +7,11 @@ export type AiSimilarCase = {
 export type ParsedAiDecisionBasis = {
   risks: string[];
   similarCases: AiSimilarCase[];
+  regulationContext?: {
+    considered: boolean;
+    audience?: string;
+    message?: string;
+  };
   rawText: string | null;
 };
 
@@ -42,6 +47,18 @@ function toSimilarCases(value: unknown): AiSimilarCase[] {
     .filter((item) => item.title.trim());
 }
 
+function toRegulationContext(
+  value: unknown,
+): ParsedAiDecisionBasis["regulationContext"] {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  return {
+    considered: record.considered === true || record.considered === "true",
+    audience: typeof record.audience === "string" ? record.audience : undefined,
+    message: typeof record.message === "string" ? record.message : undefined,
+  };
+}
+
 export function parseAiDecisionBasis(
   basis: string | null | undefined,
 ): ParsedAiDecisionBasis {
@@ -55,6 +72,7 @@ export function parseAiDecisionBasis(
     return {
       risks: toStringArray(parsed.risks),
       similarCases: toSimilarCases(parsed.similarCases),
+      regulationContext: toRegulationContext(parsed.regulationContext),
       rawText: null,
     };
   } catch {

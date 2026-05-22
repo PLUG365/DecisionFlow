@@ -57,6 +57,7 @@
   --sidebar-ring: #3b82f6;
   --header-bg: #ffffff;
   --menu-bg: #f0f7ff;
+  --date-picker-indicator-filter: none;
 }
 
 @theme inline {
@@ -155,11 +156,14 @@
   --sidebar-ring: #60a5fa;
   --header-bg: #0a1929;
   --menu-bg: #1e293b;
+  --date-picker-indicator-filter: invert(1) brightness(1.35);
 }
 
 @layer base {
-  html, body, #root { 
-    height: 100%; 
+  html,
+  body,
+  #root {
+    height: 100%;
   }
   * {
     @apply border-border outline-ring/50;
@@ -167,29 +171,59 @@
   body {
     @apply bg-background text-foreground;
   }
-  
+
+  input[type="date"] {
+    color-scheme: light;
+  }
+
+  .dark input[type="date"] {
+    color-scheme: dark;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: var(--date-picker-indicator-filter);
+    opacity: 0.8;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
   /* クリック可能な要素にカーソルポインターを適用 */
-  a, button, [role="button"], [type="button"], [type="submit"], [type="reset"],
-  input[type="checkbox"], input[type="radio"], select, label[for],
-  summary, [tabindex]:not([tabindex="-1"]), [onclick] {
+  a,
+  button,
+  [role="button"],
+  [type="button"],
+  [type="submit"],
+  [type="reset"],
+  input[type="checkbox"],
+  input[type="radio"],
+  select,
+  label[for],
+  summary,
+  [tabindex]:not([tabindex="-1"]),
+  [onclick] {
     cursor: pointer;
   }
-  
+
   /* 無効な要素は通常のカーソル */
-  a[disabled], button[disabled], [aria-disabled="true"] {
+  a[disabled],
+  button[disabled],
+  [aria-disabled="true"] {
     cursor: not-allowed;
   }
-  
+
   /* スクロールバーを非表示にする */
   .scrollbar-hide {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
   }
-  
+
   .scrollbar-hide::-webkit-scrollbar {
-    display: none;  /* Chrome, Safari, Opera */
+    display: none; /* Chrome, Safari, Opera */
   }
-  
+
   /* アンカーリンクのスクロール位置調整（ヘッダーの高さ分） */
   [id] {
     scroll-margin-top: 6rem; /* ヘッダー高さ (64px) + 余白 (32px) = 96px = 6rem */

@@ -37,6 +37,15 @@ class SecurityRoleDefinitionsTest(unittest.TestCase):
         self.assertEqual(decision["Read"], "Basic")
         self.assertEqual(decision["Write"], "Basic")
 
+    def test_decider_can_write_categories_for_regulation_management(self):
+        decider = roles.role_by_name("ds_Decider")
+        privileges = roles.privileges_for_table(decider, "ds_category")
+
+        self.assertEqual(privileges["Read"], "Global")
+        self.assertEqual(privileges["Write"], "Global")
+        self.assertEqual(privileges["AppendTo"], "Global")
+        self.assertIsNone(privileges["Delete"])
+
     def test_admin_has_global_full_access(self):
         admin = roles.role_by_name("ds_Admin")
         privileges = roles.privileges_for_table(admin, "ds_application")

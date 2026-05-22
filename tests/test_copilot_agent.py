@@ -34,33 +34,23 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         self.assertIn("判断待ちの申請を一覧で教えて", yaml_text)
         self.assertIn("\n\n", yaml_text)
 
-    def test_gpt_instructions_includes_app_url_section_when_set(self):
-        previous = agent.DECISIONFLOW_APP_BASE_URL
-        try:
-            agent.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
-            yaml_text = agent.build_gpt_yaml("")
+    def test_gpt_instructions_do_not_embed_environment_specific_app_url(self):
+        yaml_text = agent.build_gpt_yaml("")
 
-            self.assertIn("申請詳細リンク", yaml_text)
-            self.assertIn("https://apps.powerapps.com/play/decisionflow?deepLink=%2Fapplications%2F", yaml_text)
-        finally:
-            agent.DECISIONFLOW_APP_BASE_URL = previous
+        self.assertNotIn("apps.powerapps.com/play", yaml_text)
+        self.assertNotIn("?deepLink=%2Fapplications%2F", yaml_text)
 
     def test_gpt_instructions_have_no_curly_brace_placeholders(self):
         """Copilot Studio は `{name}` を式ノードとして解釈し ContentValidationError になる。"""
-        previous = agent.DECISIONFLOW_APP_BASE_URL
-        try:
-            agent.DECISIONFLOW_APP_BASE_URL = "https://apps.powerapps.com/play/decisionflow"
-            instructions = agent.build_gpt_instructions()
+        instructions = agent.build_gpt_instructions()
 
-            import re
-            placeholders = re.findall(r"\{[A-Za-z_][A-Za-z0-9_.]*\}", instructions)
-            self.assertEqual(
-                placeholders,
-                [],
-                f"Curly-brace placeholders {placeholders} would be parsed as Power Fx expressions by Copilot Studio.",
-            )
-        finally:
-            agent.DECISIONFLOW_APP_BASE_URL = previous
+        import re
+        placeholders = re.findall(r"\{[A-Za-z_][A-Za-z0-9_.]*\}", instructions)
+        self.assertEqual(
+            placeholders,
+            [],
+            f"Curly-brace placeholders {placeholders} would be parsed as Power Fx expressions by Copilot Studio.",
+        )
 
     def test_gpt_instructions_use_fixed_decision_options(self):
         instructions = agent.build_gpt_instructions()
@@ -69,15 +59,24 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         self.assertNotIn("条件付き承認", instructions)
         self.assertNotIn("否認", instructions)
 
-    def test_gpt_instructions_omits_app_url_section_when_unset(self):
-        previous = agent.DECISIONFLOW_APP_BASE_URL
-        try:
-            agent.DECISIONFLOW_APP_BASE_URL = ""
-            yaml_text = agent.build_gpt_yaml("")
+    def test_gpt_instructions_delegate_application_detail_url_to_tool(self):
+        instructions = agent.build_gpt_instructions()
 
-            self.assertNotIn("申請詳細リンク", yaml_text)
-        finally:
-            agent.DECISIONFLOW_APP_BASE_URL = previous
+        self.assertIn("Get_ApplicationDetailUrl", instructions)
+        self.assertIn("applicationId", instructions)
+        self.assertIn("applicationUrl", instructions)
+        self.assertNotIn("apps.powerapps.com/play", instructions)
+
+    def test_manual_followups_mention_application_link_flow_deployment(self):
+        import io
+        from contextlib import redirect_stdout
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            agent.print_manual_followups()
+        output = buffer.getvalue()
+        self.assertIn("Get_ApplicationDetailUrl", output)
+        self.assertIn("deploy_application_link_flow", output)
 
     def test_deep_merge_preserves_existing_config(self):
         merged = agent.deep_merge(

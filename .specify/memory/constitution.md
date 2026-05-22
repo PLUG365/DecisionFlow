@@ -1,28 +1,34 @@
 <!--
 Sync Impact Report
-- Version change: N/A (template) -> 1.0.0
+- Version change: 1.0.0 -> 1.0.1
 - Modified principles:
-	- Template Principle 1 -> I. Single-Solution Integrity
-	- Template Principle 2 -> II. Deterministic, Idempotent Deployment
-	- Template Principle 3 -> III. Security and Data Hygiene
-	- Template Principle 4 -> IV. Verification Before Merge
-	- Template Principle 5 -> V. Documentation as Source of Truth
+  - IV. Verification Before Merge -> IV. Verification Before Merge (clarified concrete evidence expectations)
 - Added sections:
-	- Operational Constraints
-	- Delivery Workflow and Quality Gates
+  - None
 - Removed sections:
-	- None
+  - None
 - Templates requiring updates:
-	- ✅ Reviewed (no content change required): .specify/templates/plan-template.md
-	- ✅ Reviewed (no content change required): .specify/templates/spec-template.md
-	- ✅ Reviewed (no content change required): .specify/templates/tasks-template.md
-	- ✅ Reviewed (no content change required): .github/prompts/speckit.constitution.prompt.md
-	- ✅ Reviewed (no content change required): .github/prompts/speckit.specify.prompt.md
-	- ✅ Reviewed (no content change required): .github/prompts/speckit.plan.prompt.md
-	- ✅ Reviewed (no content change required): .github/prompts/speckit.tasks.prompt.md
-	- ✅ Reviewed (no content change required): .github/prompts/speckit.implement.prompt.md
+  - ✅ Updated: .specify/templates/plan-template.md
+  - ✅ Updated: .specify/templates/spec-template.md
+  - ✅ Updated: .specify/templates/tasks-template.md
+  - ✅ Reviewed (no content change required): .specify/templates/checklist-template.md
+  - ✅ Reviewed (no command files present): .specify/templates/commands/*.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.constitution.prompt.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.specify.prompt.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.plan.prompt.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.tasks.prompt.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.implement.prompt.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.clarify.prompt.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.checklist.prompt.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.analyze.prompt.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.taskstoissues.prompt.md
+  - ✅ Reviewed (no content change required): .github/prompts/speckit.git.*.prompt.md
+  - ✅ Reviewed (no content change required): README.md
+  - ✅ Reviewed (no content change required): docs/ARCHITECTURE.md
+  - ✅ Reviewed (no content change required): docs/PLAN.md
+  - ✅ Reviewed (no content change required): docs/POWER_PLATFORM_DEVELOPMENT_STANDARD.md
 - Follow-up TODOs:
-	- None
+  - None
 -->
 
 # DecisionFlow Constitution
@@ -56,11 +62,13 @@ compliance failures are high-impact and non-recoverable after publication.
 
 ### IV. Verification Before Merge
 
-Every change MUST include evidence of verification proportional to impact (build,
-lint, unit/integration tests, and where relevant runtime checks for deployed flows).
-When verification cannot be executed, the PR or handoff note MUST state what was
-skipped, why it was skipped, and the residual risk. Rationale: explicit quality
-signals prevent silent regressions in mixed frontend/Dataverse/flow systems.
+Every change MUST include evidence of verification proportional to impact. Code Apps
+changes MUST identify the build, lint, or test signal used; Python automation changes
+MUST identify relevant script or pytest coverage; Power Automate, Copilot Studio, and
+AI Builder changes MUST identify definition validation, deployment output, or runtime
+checks used. When verification cannot be executed, the PR or handoff note MUST state
+what was skipped, why it was skipped, and the residual risk. Rationale: explicit
+quality signals prevent silent regressions in mixed frontend/Dataverse/flow systems.
 
 ### V. Documentation as Source of Truth
 
@@ -73,7 +81,7 @@ be reproducible by first-time contributors, not only current maintainers.
 ## Operational Constraints
 
 - Primary stack MUST remain Power Platform-centric: Dataverse + Power Automate +
-  Power Apps Code Apps + Copilot Studio.
+  Power Apps Code Apps + Copilot Studio + AI Builder.
 - Generated artifacts and local auth/cache files MUST remain excluded from git as
   defined in `.gitignore`.
 - Script execution environment MUST stay compatible with documented prerequisites
@@ -89,7 +97,8 @@ be reproducible by first-time contributors, not only current maintainers.
 2. Each feature spec MUST define independently testable user stories with measurable
    success criteria before implementation.
 3. Implementation plans MUST pass a Constitution Check gate before design or code
-   execution.
+   execution, covering solution membership, idempotent deployment, security/data
+   hygiene, verification evidence, and documentation impact.
 4. Task breakdowns MUST preserve dependency order and identify parallel-safe work
    explicitly.
 5. Release/publish changes MUST include documentation updates and a check that no
@@ -119,4 +128,4 @@ Compliance expectations:
 - Exceptions MUST be documented with owner, rationale, mitigation, and follow-up date
   in `docs/PLAN.md` or equivalent tracked record.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-18 | **Last Amended**: 2026-05-18
+**Version**: 1.0.1 | **Ratified**: 2026-05-18 | **Last Amended**: 2026-05-22

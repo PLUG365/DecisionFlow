@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ExternalLink,
@@ -37,15 +37,14 @@ import {
   useDeleteParticipant,
   useDecisionOptions,
   useDecisions,
-  useGenerateAiDecision,
   useMentionsByMessage,
   useMessages,
   useParticipants,
+  useRunAiPreCheck,
   useResources,
   useSystemUsers,
 } from "@/hooks/use-decisionflow";
 import {
-  ApplicationStage,
   MessageKind,
   participantRoleLabels,
   stageMeta,
@@ -53,6 +52,8 @@ import {
 } from "@/types/decisionflow";
 import {
   canDecideApplication,
+  canRefreshAiDecisionFromDecisionTab,
+  getAiCheckWaitState,
   getDecisionNextApplicationStage,
   getParticipantDeleteWaitState,
   normalizeApplicationStage,
@@ -68,6 +69,7 @@ import { toast } from "sonner";
 export default function ApplicationDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: application, isLoading: isApplicationLoading } =
     useApplication(id);
   const { data: categories = [] } = useCategories();
@@ -84,7 +86,7 @@ export default function ApplicationDetailPage() {
   const createDecision = useCreateDecision();
   const addParticipant = useAddParticipantWithMention();
   const deleteParticipant = useDeleteParticipant();
-  const generateAiDecision = useGenerateAiDecision();
+  const runAiPreCheck = useRunAiPreCheck();
   const [messageBody, setMessageBody] = useState("");
   const [mentionTargetUserId, setMentionTargetUserId] = useState("");
   const [decisionOptionId, setDecisionOptionId] = useState("");
@@ -93,9 +95,18 @@ export default function ApplicationDetailPage() {
   const [participantUserId, setParticipantUserId] = useState("");
   const [participantToDelete, setParticipantToDelete] =
     useState<Participant | null>(null);
+  const tabValue = [
+    "summary",
+    "thread",
+    "resources",
+    "people",
+    "decision",
+  ].includes(searchParams.get("tab") ?? "")
+    ? (searchParams.get("tab") ?? "summary")
+    : "summary";
 
   const categoryMap = useMemo(
-    () => new Map(categories.map((item) => [item.ds_categoryid, item.ds_name])),
+    () => new Map(categories.map((item) => [item.ds_categoryid, item])),
     [categories],
   );
   const userMap = useMemo(
@@ -198,6 +209,9 @@ export default function ApplicationDetailPage() {
   const deciderName = application._ds_deciderid_value
     ? userMap.get(application._ds_deciderid_value)
     : "";
+  const selectedCategory = application._ds_categoryid_value
+    ? categoryMap.get(application._ds_categoryid_value)
+    : undefined;
   const canDecide = canDecideApplication({
     application,
     currentSystemUserId: systemUserId,
@@ -205,11 +219,12 @@ export default function ApplicationDetailPage() {
   const participantDeleteWaitState = getParticipantDeleteWaitState(
     deleteParticipant.isPending,
   );
+  const aiCheckWaitState = getAiCheckWaitState(runAiPreCheck.isPending);
   const aiDecisionBasis = parseAiDecisionBasis(application.ds_aidecisionbasis);
 
   const handleGenerateAiDecision = () => {
     if (!id) return;
-    generateAiDecision.mutate(id, {
+    runAiPreCheck.mutate(id, {
       onSuccess: () => toast.success("AI判断を更新しました"),
       onError: () => toast.error("AI判断の更新に失敗しました"),
     });
@@ -355,9 +370,7 @@ export default function ApplicationDetailPage() {
               </Badge>
             )}
             {application._ds_categoryid_value && (
-              <Badge variant="secondary">
-                {categoryMap.get(application._ds_categoryid_value)}
-              </Badge>
+              <Badge variant="secondary">{selectedCategory?.ds_name}</Badge>
             )}
             {deciderName && (
               <Badge variant="outline">判断者: {deciderName}</Badge>
@@ -366,7 +379,13 @@ export default function ApplicationDetailPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="summary" className="min-w-0">
+      <Tabs
+        value={tabValue}
+        onValueChange={(value) =>
+          setSearchParams(value === "summary" ? {} : { tab: value })
+        }
+        className="min-w-0"
+      >
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="summary">概要</TabsTrigger>
           <TabsTrigger value="thread">会話</TabsTrigger>
@@ -386,6 +405,10 @@ export default function ApplicationDetailPage() {
               </p>
               <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                 <div>
+                  <span className="text-muted-foreground">カテゴリ</span>
+                  <p>{selectedCategory?.ds_name ?? "未設定"}</p>
+                </div>
+                <div>
                   <span className="text-muted-foreground">希望期限</span>
                   <p>
                     {application.ds_duedate
@@ -403,6 +426,15 @@ export default function ApplicationDetailPage() {
                           "ja-JP",
                         )
                       : "未提出"}
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-muted-foreground">
+                    レギュレーション
+                  </span>
+                  <p className="whitespace-pre-wrap leading-6">
+                    {selectedCategory?.ds_regulationtext?.trim() ||
+                      "このカテゴリにはレギュレーションが未設定です。"}
                   </p>
                 </div>
               </div>
@@ -659,12 +691,14 @@ export default function ApplicationDetailPage() {
                     size="sm"
                     onClick={handleGenerateAiDecision}
                     disabled={
-                      stage !== ApplicationStage.Submitted ||
-                      generateAiDecision.isPending
+                      !canRefreshAiDecisionFromDecisionTab(
+                        stage,
+                        runAiPreCheck.isPending,
+                      )
                     }
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
-                    AI判断更新
+                    AI判断更新 ✨
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -673,6 +707,16 @@ export default function ApplicationDetailPage() {
                     application.ds_aidecisionupdatedat,
                   )}
                 </p>
+                {aiDecisionBasis.regulationContext && (
+                  <p className="text-xs text-muted-foreground">
+                    利用文脈:{" "}
+                    {aiDecisionBasis.regulationContext.audience ===
+                    "deciderReview"
+                      ? "判断者向け判断支援"
+                      : "申請者向け提出前確認"}{" "}
+                    / {aiDecisionBasis.regulationContext.message}
+                  </p>
+                )}
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 <div className="space-y-1">
@@ -798,9 +842,17 @@ export default function ApplicationDetailPage() {
       />
 
       <OperationWaitOverlay
-        open={participantDeleteWaitState.visible}
-        title={participantDeleteWaitState.title}
-        description={participantDeleteWaitState.description}
+        open={participantDeleteWaitState.visible || aiCheckWaitState.visible}
+        title={
+          participantDeleteWaitState.visible
+            ? participantDeleteWaitState.title
+            : aiCheckWaitState.title
+        }
+        description={
+          participantDeleteWaitState.visible
+            ? participantDeleteWaitState.description
+            : aiCheckWaitState.description
+        }
       />
     </div>
   );

@@ -21,7 +21,6 @@ load_dotenv()
 SOLUTION_NAME = os.environ.get("SOLUTION_NAME", "DecisionSupport")
 SOLUTION_DISPLAY_NAME = os.environ.get("SOLUTION_DISPLAY_NAME", "意思決定支援 (Decision Support)")
 PREFIX = os.environ.get("PUBLISHER_PREFIX", "ds")
-DECISIONFLOW_APP_BASE_URL = os.environ.get("DECISIONFLOW_APP_BASE_URL", "").strip().rstrip("/")
 
 BOT_NAME = "DecisionFlow Assistant"
 BOT_SCHEMA_NAME = f"{PREFIX}_DecisionFlowAssistant"
@@ -76,19 +75,16 @@ GPT_INSTRUCTIONS = f"""\
 - 判断コメントドラフトは、そのまま Code Apps の判断コメント欄に貼り付けられる文章にする。
 - 根拠は箇条書きで、リスク、前提条件、追加確認事項を分けて提示する。
 - 最後に「最終判断は Code Apps の判断タブで確定してください」と案内する。
+
+## 申請詳細リンク
+- 申請を案内する際は、その申請の applicationId を Get_ApplicationDetailUrl ツールに渡し、戻り値の applicationUrl をユーザーに提示する。URLを推測したり固定値を埋め込んだりしない。
+- Get_ApplicationDetailUrl が空文字列を返した場合は、URL を提示せず「Code Apps の申請詳細画面で確認してください」と案内する。
+- 判断確定、申請編集、関係者追加など Code Apps への誘導時は、可能ならこのツールで取得した URL をリンクとして添える。
 """
 
 
 def build_gpt_instructions() -> str:
-    base = GPT_INSTRUCTIONS
-    if not DECISIONFLOW_APP_BASE_URL:
-        return base
-    app_link_section = (
-        "\n## 申請詳細リンク\n"
-        f"- 申請を案内する際は、Code Apps の申請詳細URLとして `{DECISIONFLOW_APP_BASE_URL}?deepLink=%2Fapplications%2F` の末尾に対象申請の applicationId (GUID) を付加した URL を提示する。\n"
-        "- 判断確定、申請編集、関係者追加など Code Apps への誘導時は、上記URLをリンクとして添える。\n"
-    )
-    return base + app_link_section
+    return GPT_INSTRUCTIONS
 
 PREFERRED_PROMPTS = [
     {"title": "判断待ち一覧", "text": "私が判断すべき提出済みの申請を一覧で教えてください"},
@@ -435,9 +431,12 @@ def print_manual_followups() -> None:
     print("\n手動確認が必要です。")
     print("1. Copilot Studio UI で認証を Microsoft Entra ID ユーザー認証に設定してください。")
     print("2. ナレッジに Dataverse の ds_application, ds_message, ds_applicationresource, ds_decision, ds_decisionoption を追加してください。")
-    print("3. Teams チャネルを利用可能にし、Bot manifest の botChannelRegistrationAppId を .env の COPILOT_TEAMS_APP_ID に設定してください。")
-    print("4. 必要なら DECISIONFLOW_APP_BASE_URL を設定し、python scripts/deploy_notification_flows.py を再実行してください。")
-    print("5. 判断確定用の専用 Adaptive Card Topic と Power Automate ツールを確認してください。")
+    print("3. Teams チャネルを利用可能にし、Bot manifest の botChannelRegistrationAppId を控えてください。")
+    print("4. 通知メールのリンクを使う場合は、ソリューション環境変数 ds_DecisionFlowAppBaseUrl / ds_CopilotTeamsAppId をインポート先環境で設定してください。")
+    print("5. 申請詳細リンク用に Get_ApplicationDetailUrl ツールフローをデプロイし、Copilot Studio UI でエージェントツールとして登録してください。")
+    print("   - python -m scripts.deploy_application_link_flow")
+    print("   - Copilot Studio UI: Agents > DecisionFlow Assistant > Tools > Add a tool > 既存フローから Get_ApplicationDetailUrl を選択")
+    print("6. 判断確定用の専用 Adaptive Card Topic と Power Automate ツールを確認してください。")
     for step in decision_confirmation_topic_setup_steps():
         print(f"   - {step}")
 
