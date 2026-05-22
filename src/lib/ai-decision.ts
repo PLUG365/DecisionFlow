@@ -23,6 +23,11 @@ function toStringArray(value: unknown): string[] {
       if (Boolean(item) && typeof item === "object") {
         const record = item as Record<string, unknown>;
         if (typeof record.item === "string") return record.item;
+        if (typeof record.detail === "string") {
+          return typeof record.category === "string" && record.category.trim()
+            ? `${record.category}: ${record.detail}`
+            : record.detail;
+        }
       }
       return null;
     })

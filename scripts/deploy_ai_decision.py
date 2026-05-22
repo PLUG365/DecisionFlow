@@ -274,7 +274,7 @@ def build_ai_decision_flow_clientdata(connection_refs: dict[str, str], model_id:
                 "item": {
                     f"{prefix}_aiapplicationsummary": f"@coalesce({ai_output('applicationSummary')}, {ai_output('recommendation/applicationSummary')})",
                     f"{prefix}_aiconversationsummary": f"@coalesce({ai_output('conversationSummary')}, {ai_output('recommendation/conversationSummary')})",
-                    f"{prefix}_aidecisionoptiontext": f"@coalesce({ai_output('recommendedOption')}, {ai_output('recommendation/recommendedOption')}, {ai_output('recommendedDecision')}, {ai_output('recommendation/recommendedDecision')})",
+                    f"{prefix}_aidecisionoptiontext": f"@coalesce({ai_output('recommendedOption')}, {ai_output('recommendation/recommendedOption')}, {ai_output('recommendedDecision')}, {ai_output('recommendation/recommendedDecision')}, {ai_output('suggestedDecision')}, {ai_output('recommendation/suggestedDecision')})",
                     f"{prefix}_aidecisioncomment": f"@coalesce({ai_output('comment')}, {ai_output('recommendation/comment')}, {ai_output('recommendationReason')}, {ai_output('recommendation/recommendationReason')})",
                     f"{prefix}_aidecisionbasis": "@outputs('Build_basis_json')",
                     f"{prefix}_aidecisionupdatedat": "@utcNow()",

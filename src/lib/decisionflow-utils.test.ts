@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applicantSelectableStageValues,
   canDecideApplication,
+  canEditMasterData,
   canRefreshAiDecisionFromDecisionTab,
   canEditApplication,
   canReturnApplicationToDraft,
@@ -17,6 +18,7 @@ import {
   isIgnorableParticipantRevokeFailure,
   filterRowsForCurrentUser,
   isApplicantSelectableStage,
+  shouldShowMasterManagementNavigation,
   shouldRequireCategoryForSubmission,
   validateCategoryRegulationInput,
   validateApplicationInput,
@@ -24,6 +26,18 @@ import {
   validateParticipantInput,
   validateResourceInput,
 } from "./decisionflow-utils";
+
+describe("master management access", () => {
+  it("shows master management navigation to every user", () => {
+    expect(shouldShowMasterManagementNavigation()).toBe(true);
+  });
+
+  it("allows only admin or decider to edit master data", () => {
+    expect(canEditMasterData({ isAdmin: true, isDecider: false })).toBe(true);
+    expect(canEditMasterData({ isAdmin: false, isDecider: true })).toBe(true);
+    expect(canEditMasterData({ isAdmin: false, isDecider: false })).toBe(false);
+  });
+});
 
 describe("validateResourceInput", () => {
   it("requires URL when resource type is Link", () => {

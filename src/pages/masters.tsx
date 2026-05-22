@@ -1,4 +1,3 @@
-import { Navigate } from "react-router-dom";
 import {
   InlineEditTable,
   type EditableColumn,
@@ -13,7 +12,10 @@ import {
   useIsDecider,
   useUpdateCategory,
 } from "@/hooks/use-decisionflow";
-import { validateCategoryRegulationInput } from "@/lib/decisionflow-utils";
+import {
+  canEditMasterData,
+  validateCategoryRegulationInput,
+} from "@/lib/decisionflow-utils";
 import { isFixedDecisionOptionName } from "@/lib/decision-options";
 import { toast } from "sonner";
 
@@ -29,7 +31,7 @@ export default function MastersPage() {
   const deleteCategory = useDeleteCategory();
 
   if (isAdminLoading || isDeciderLoading) return <div />;
-  if (!isAdmin && !isDecider) return <Navigate to="/dashboard" replace />;
+  const canEditMasters = canEditMasterData({ isAdmin, isDecider });
 
   const categoryRows: MasterRow[] = categories.map((item) => ({
     id: item.ds_categoryid,
@@ -47,24 +49,34 @@ export default function MastersPage() {
   }));
 
   const categoryColumns: EditableColumn<MasterRow>[] = [
-    { key: "name", label: "名前", editable: true, type: "text" },
-    { key: "description", label: "説明", editable: true, type: "textarea" },
+    { key: "name", label: "名前", editable: canEditMasters, type: "text" },
+    {
+      key: "description",
+      label: "説明",
+      editable: canEditMasters,
+      type: "textarea",
+    },
     {
       key: "template",
       label: "推奨フォーマット",
-      editable: true,
+      editable: canEditMasters,
       type: "textarea",
     },
     {
       key: "regulationText",
       label: "レギュレーション",
-      editable: true,
+      editable: canEditMasters,
       type: "textarea",
       render: (value) =>
         String(value ?? "").trim() ||
         "このカテゴリにはレギュレーションが未設定です。",
     },
-    { key: "sortOrder", label: "並び順", editable: true, type: "number" },
+    {
+      key: "sortOrder",
+      label: "並び順",
+      editable: canEditMasters,
+      type: "number",
+    },
   ];
   const optionColumns: EditableColumn<MasterRow>[] = [
     {
@@ -156,7 +168,9 @@ export default function MastersPage() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight">マスタ管理</h2>
         <p className="text-sm text-muted-foreground">
-          カテゴリを保守します。判断選択肢はフローとチャットで利用する固定値として参照のみ表示します。
+          {canEditMasters
+            ? "カテゴリを保守します。判断選択肢はフローとチャットで利用する固定値として参照のみ表示します。"
+            : "カテゴリとレギュレーションを参照できます。編集は判断者または管理者ロールで有効になります。"}
         </p>
       </div>
       <Tabs defaultValue="categories">
@@ -169,9 +183,14 @@ export default function MastersPage() {
             data={categoryRows}
             columns={categoryColumns}
             title="カテゴリ"
-            onSave={handleSaveCategory}
-            onAdd={handleAddCategory}
-            onDelete={handleDeleteCategory}
+            description={
+              canEditMasters
+                ? "カテゴリ別レギュレーションは申請者の提出前確認と判断者向けAI判断に利用します。"
+                : "現在のロールでは参照専用です。"
+            }
+            onSave={canEditMasters ? handleSaveCategory : undefined}
+            onAdd={canEditMasters ? handleAddCategory : undefined}
+            onDelete={canEditMasters ? handleDeleteCategory : undefined}
             addButtonLabel="カテゴリを追加"
           />
         </TabsContent>
