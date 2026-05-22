@@ -37,8 +37,8 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
     def test_gpt_instructions_do_not_embed_environment_specific_app_url(self):
         yaml_text = agent.build_gpt_yaml("")
 
-        self.assertNotIn("申請詳細リンク", yaml_text)
         self.assertNotIn("apps.powerapps.com/play", yaml_text)
+        self.assertNotIn("?deepLink=%2Fapplications%2F", yaml_text)
 
     def test_gpt_instructions_have_no_curly_brace_placeholders(self):
         """Copilot Studio は `{name}` を式ノードとして解釈し ContentValidationError になる。"""
@@ -58,6 +58,25 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         self.assertIn("承認」「却下」「差し戻し", instructions)
         self.assertNotIn("条件付き承認", instructions)
         self.assertNotIn("否認", instructions)
+
+    def test_gpt_instructions_delegate_application_detail_url_to_tool(self):
+        instructions = agent.build_gpt_instructions()
+
+        self.assertIn("Get_ApplicationDetailUrl", instructions)
+        self.assertIn("applicationId", instructions)
+        self.assertIn("applicationUrl", instructions)
+        self.assertNotIn("apps.powerapps.com/play", instructions)
+
+    def test_manual_followups_mention_application_link_flow_deployment(self):
+        import io
+        from contextlib import redirect_stdout
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            agent.print_manual_followups()
+        output = buffer.getvalue()
+        self.assertIn("Get_ApplicationDetailUrl", output)
+        self.assertIn("deploy_application_link_flow", output)
 
     def test_deep_merge_preserves_existing_config(self):
         merged = agent.deep_merge(

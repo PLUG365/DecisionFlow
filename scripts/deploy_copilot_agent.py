@@ -75,6 +75,11 @@ GPT_INSTRUCTIONS = f"""\
 - 判断コメントドラフトは、そのまま Code Apps の判断コメント欄に貼り付けられる文章にする。
 - 根拠は箇条書きで、リスク、前提条件、追加確認事項を分けて提示する。
 - 最後に「最終判断は Code Apps の判断タブで確定してください」と案内する。
+
+## 申請詳細リンク
+- 申請を案内する際は、その申請の applicationId を Get_ApplicationDetailUrl ツールに渡し、戻り値の applicationUrl をユーザーに提示する。URLを推測したり固定値を埋め込んだりしない。
+- Get_ApplicationDetailUrl が空文字列を返した場合は、URL を提示せず「Code Apps の申請詳細画面で確認してください」と案内する。
+- 判断確定、申請編集、関係者追加など Code Apps への誘導時は、可能ならこのツールで取得した URL をリンクとして添える。
 """
 
 
@@ -428,7 +433,10 @@ def print_manual_followups() -> None:
     print("2. ナレッジに Dataverse の ds_application, ds_message, ds_applicationresource, ds_decision, ds_decisionoption を追加してください。")
     print("3. Teams チャネルを利用可能にし、Bot manifest の botChannelRegistrationAppId を控えてください。")
     print("4. 通知メールのリンクを使う場合は、ソリューション環境変数 ds_DecisionFlowAppBaseUrl / ds_CopilotTeamsAppId をインポート先環境で設定してください。")
-    print("5. 判断確定用の専用 Adaptive Card Topic と Power Automate ツールを確認してください。")
+    print("5. 申請詳細リンク用に Get_ApplicationDetailUrl ツールフローをデプロイし、Copilot Studio UI でエージェントツールとして登録してください。")
+    print("   - python -m scripts.deploy_application_link_flow")
+    print("   - Copilot Studio UI: Agents > DecisionFlow Assistant > Tools > Add a tool > 既存フローから Get_ApplicationDetailUrl を選択")
+    print("6. 判断確定用の専用 Adaptive Card Topic と Power Automate ツールを確認してください。")
     for step in decision_confirmation_topic_setup_steps():
         print(f"   - {step}")
 

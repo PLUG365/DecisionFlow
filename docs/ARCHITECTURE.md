@@ -416,10 +416,10 @@ Power Apps V2 のインスタントフローのため、関係者削除を実行
 
 通知メール内の環境依存リンクは、フロー定義に固定値として埋め込まない。通知フローは以下のソリューション環境変数を実行時に読み取る。
 
-| 環境変数スキーマ名          | 用途                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------ |
-| `ds_DecisionFlowAppBaseUrl` | Outlook メールの「申請を開く」リンクの Code Apps URL ベース                                |
-| `ds_CopilotTeamsAppId`      | Outlook メールの「申請について相談する」Teams チャットリンクの botChannelRegistrationAppId |
+| 環境変数スキーマ名          | 用途                                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `ds_DecisionFlowAppBaseUrl` | Outlook メールの「申請を開く」リンクの Code Apps URL ベース／Copilot Studio エージェントの `Get_ApplicationDetailUrl` 解決元    |
+| `ds_CopilotTeamsAppId`      | Outlook メールの「申請について相談する」Teams チャットリンクの botChannelRegistrationAppId                                      |
 
 ソリューションインポート先では、この 2 つを対象環境の値に設定する。チャット起動プロンプトには Code Apps URL を含めず、申請タイトルだけを渡す。
 
@@ -501,6 +501,7 @@ Phase 2.5 実装前に、対象環境で以下の接続を Power Automate UI か
 
 - **ナレッジ**: Dataverse `ds_application` / `ds_message` / `ds_applicationresource` / `ds_decision` / `ds_decisionoption`
 - **判断確定ツール**: Generative Orchestration は維持し、判断確定カードの表示・submit 受信だけ専用 Adaptive Card Topic で扱う。Power Automate agent flow は `issue_decision_card` と `confirm_decision` を提供する。
+- **申請詳細リンクツール**: Power Automate agent flow `Get_ApplicationDetailUrl` を `Skills` トリガーで提供する。エージェントは申請を案内するときにこのツールを呼び出し、戻り値の `applicationUrl` をユーザーに提示する。ツールは `ds_DecisionFlowAppBaseUrl` を Dataverse の `environmentvariabledefinitions` / `environmentvariablevalues` から実行時解決し、`?deepLink=%2Fapplications%2F{applicationId}` を付加する。環境変数未設定時は空文字列を返し、エージェントは Code Apps の申請詳細画面で確認するよう案内する。Instructions に固定 URL は埋め込まない。
 - **カード責務**: Adaptive Card JSON は Copilot Studio 側に保持し、schema 1.5 と `Action.Submit` のみを使う。Power Automate はカード表示 JSON を所有しない。
 - **正本イベント**: Copilot Studio のカード処理は `ds_decision` を作成し、`ds_application` を直接更新しない。案件ステージ・通知は `Decision_OnCreated` に委譲する。
 - **通知連携**: `Application_OnSubmitted` / `Application_StalledReminder` の Outlook メールに、Teams エージェント会話へのディープリンクを追加可能。リンク設定はソリューション環境変数 `ds_DecisionFlowAppBaseUrl` / `ds_CopilotTeamsAppId` から実行時に読み取る。
