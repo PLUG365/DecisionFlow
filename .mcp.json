@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "pac-cli": {
+      "type": "stdio",
+      "command": "dnx",
+      "args": [
+        "Microsoft.PowerApps.CLI.Tool",
+        "--yes",
+        "copilot",
+        "mcp",
+        "--run"
+      ]
+    }
+  }
+}

@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest run",
+    "test:ai-tooling": "node --test tests/ai-tooling.node.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

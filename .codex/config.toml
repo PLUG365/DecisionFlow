@@ -1,0 +1,3 @@
+[mcp_servers.pac-cli]
+command = "dnx"
+args = ["Microsoft.PowerApps.CLI.Tool", "--yes", "copilot", "mcp", "--run"]
