@@ -1,3 +1,7 @@
 [mcp_servers.pac-cli]
 command = "dnx"
 args = ["Microsoft.PowerApps.CLI.Tool", "--yes", "copilot", "mcp", "--run"]
+
+[mcp_servers.canvas-authoring]
+command = "dnx"
+args = ["Microsoft.PowerApps.CanvasAuthoring.McpServer", "--yes", "--prerelease", "--source", "https://api.nuget.org/v3/index.json"]
