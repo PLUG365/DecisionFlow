@@ -2,19 +2,24 @@ import { describe, expect, it } from "vitest";
 
 import {
   applicantSelectableStageValues,
+  buildLatestDecisionOptionNameLookup,
   canDecideApplication,
   canEditMasterData,
   canRefreshAiDecisionFromDecisionTab,
   canEditApplication,
   canReturnApplicationToDraft,
+  DEFAULT_APPLICATION_BODY_PLACEHOLDER,
   getAiCheckWaitState,
   getAiResultDialogConfig,
+  getApplicationBodyPlaceholder,
   getApplicationDecisionDetailPath,
   getDecisionNextApplicationStage,
   getDeciderQueueApplications,
+  getDeciderQueueColumnKey,
   getParticipantDeleteWaitState,
   getSelectedCategoryRegulationInfo,
   getSelectedCategoryRegulationText,
+  isApplicationReturnedForRevision,
   isIgnorableParticipantRevokeFailure,
   filterRowsForCurrentUser,
   isApplicantSelectableStage,
@@ -26,6 +31,7 @@ import {
   validateParticipantInput,
   validateResourceInput,
 } from "./decisionflow-utils";
+import { ApplicationStage } from "@/types/decisionflow";
 
 describe("master management access", () => {
   it("shows master management navigation to every user", () => {
@@ -355,6 +361,120 @@ describe("validateApplicationInput", () => {
   });
 });
 
+describe("returned-for-revision detection", () => {
+  it("treats a draft whose latest decision is 差し戻し as returned", () => {
+    expect(
+      isApplicationReturnedForRevision(ApplicationStage.Draft, "差し戻し"),
+    ).toBe(true);
+  });
+
+  it("does not treat a draft that was never decided as returned", () => {
+    expect(
+      isApplicationReturnedForRevision(ApplicationStage.Draft, undefined),
+    ).toBe(false);
+    expect(isApplicationReturnedForRevision(ApplicationStage.Draft, "")).toBe(
+      false,
+    );
+    expect(isApplicationReturnedForRevision(ApplicationStage.Draft, "  ")).toBe(
+      false,
+    );
+  });
+
+  it("does not treat a draft whose latest decision is not 差し戻し as returned", () => {
+    expect(
+      isApplicationReturnedForRevision(ApplicationStage.Draft, "承認"),
+    ).toBe(false);
+    expect(
+      isApplicationReturnedForRevision(ApplicationStage.Draft, "却下"),
+    ).toBe(false);
+  });
+
+  it("does not treat submitted or decided applications as returned", () => {
+    expect(
+      isApplicationReturnedForRevision(ApplicationStage.Submitted, "差し戻し"),
+    ).toBe(false);
+    expect(
+      isApplicationReturnedForRevision(ApplicationStage.Decided, "差し戻し"),
+    ).toBe(false);
+  });
+});
+
+describe("latest decision option lookup", () => {
+  const decisionOptions = [
+    { ds_decisionoptionid: "option-approve", ds_name: "承認" },
+    { ds_decisionoptionid: "option-return", ds_name: "差し戻し" },
+  ];
+
+  it("returns the first decision listed for each application", () => {
+    const lookup = buildLatestDecisionOptionNameLookup(
+      [
+        {
+          _ds_applicationid_value: "app-1",
+          _ds_decisionoptionid_value: "option-return",
+        },
+        {
+          _ds_applicationid_value: "app-1",
+          _ds_decisionoptionid_value: "option-approve",
+        },
+      ],
+      decisionOptions,
+    );
+
+    expect(lookup("app-1")).toBe("差し戻し");
+  });
+
+  it("matches application ids case-insensitively via normalizeGuid", () => {
+    const lookup = buildLatestDecisionOptionNameLookup(
+      [
+        {
+          _ds_applicationid_value: "APP-1",
+          _ds_decisionoptionid_value: "option-approve",
+        },
+      ],
+      decisionOptions,
+    );
+
+    expect(lookup("app-1")).toBe("承認");
+  });
+
+  it("returns undefined for applications without a decision", () => {
+    const lookup = buildLatestDecisionOptionNameLookup([], decisionOptions);
+
+    expect(lookup("app-1")).toBe(undefined);
+    expect(lookup(undefined)).toBe(undefined);
+  });
+});
+
+describe("decider queue column assignment", () => {
+  it("puts submitted applications in the submitted column", () => {
+    expect(
+      getDeciderQueueColumnKey(ApplicationStage.Submitted, undefined),
+    ).toBe("submitted");
+  });
+
+  it("puts decided applications in the decided column", () => {
+    expect(getDeciderQueueColumnKey(ApplicationStage.Decided, "承認")).toBe(
+      "decided",
+    );
+    expect(getDeciderQueueColumnKey(ApplicationStage.Decided, "差し戻し")).toBe(
+      "decided",
+    );
+  });
+
+  it("keeps returned applications visible instead of dropping them", () => {
+    expect(getDeciderQueueColumnKey(ApplicationStage.Draft, "差し戻し")).toBe(
+      "returned",
+    );
+  });
+
+  it("excludes drafts that were never decided", () => {
+    expect(getDeciderQueueColumnKey(ApplicationStage.Draft, undefined)).toBe(
+      null,
+    );
+    expect(getDeciderQueueColumnKey(ApplicationStage.Draft, "")).toBe(null);
+  });
+});
+
 describe("category regulation helpers", () => {
   const categories = [
     {
@@ -381,6 +501,50 @@ describe("category regulation helpers", () => {
         categoryName: "顧客案件",
         regulationText: "契約条件と収益影響を確認する。",
       },
+    );
+  });
+
+  it("uses the selected category recommended format as the body placeholder", () => {
+    const withTemplate = [
+      {
+        ds_categoryid: "category-1",
+        ds_template: "背景 / 顧客影響 / 判断してほしいこと / 期限 / 関連資料",
+      },
+    ];
+
+    expect(getApplicationBodyPlaceholder(withTemplate, "CATEGORY-1")).toBe(
+      "背景 / 顧客影響 / 判断してほしいこと / 期限 / 関連資料",
+    );
+  });
+
+  it("falls back to the default body placeholder when no category is selected", () => {
+    expect(getApplicationBodyPlaceholder(categories, "")).toBe(
+      DEFAULT_APPLICATION_BODY_PLACEHOLDER,
+    );
+    expect(getApplicationBodyPlaceholder(categories, null)).toBe(
+      DEFAULT_APPLICATION_BODY_PLACEHOLDER,
+    );
+  });
+
+  it("falls back to the default body placeholder when the category has no recommended format", () => {
+    expect(
+      getApplicationBodyPlaceholder(
+        [{ ds_categoryid: "category-1", ds_template: "   " }],
+        "category-1",
+      ),
+    ).toBe(DEFAULT_APPLICATION_BODY_PLACEHOLDER);
+
+    expect(
+      getApplicationBodyPlaceholder(
+        [{ ds_categoryid: "category-1" }],
+        "category-1",
+      ),
+    ).toBe(DEFAULT_APPLICATION_BODY_PLACEHOLDER);
+  });
+
+  it("falls back to the default body placeholder when the category is not found", () => {
+    expect(getApplicationBodyPlaceholder(categories, "missing-category")).toBe(
+      DEFAULT_APPLICATION_BODY_PLACEHOLDER,
     );
   });
 

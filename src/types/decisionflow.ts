@@ -138,6 +138,12 @@ export type Decision = {
   ds_name: string;
   ds_rationale?: string;
   ds_decidedat?: string;
+  /**
+   * 判断確定時点の AI 推奨のスナップショット。
+   * `ds_application.ds_aidecisionoptiontext` は AI 判断を再生成するたび上書きされるため、
+   * 後から「AI 推奨と実判断が一致したか」を遡って測れない。空 = その時点で AI 推奨なし。
+   */
+  ds_aisuggestionatdecision?: string;
   _ds_applicationid_value?: string;
   _ds_deciderid_value?: string;
   _ds_decisionoptionid_value?: string;

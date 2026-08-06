@@ -15,28 +15,51 @@ import {
   ApplicationStage,
   stageMeta,
   type Application,
-  type ApplicationStageValue,
 } from "@/types/decisionflow";
 import {
+  buildLatestDecisionOptionNameLookup,
   getDeciderQueueApplications,
-  normalizeApplicationStage,
-  normalizeGuid,
+  getDeciderQueueColumnKey,
+  type DeciderQueueColumnKey,
 } from "@/lib/decisionflow-utils";
 
-const columns: { stage: ApplicationStageValue; color: string }[] = [
-  { stage: ApplicationStage.Submitted, color: "border-t-sky-500" },
-  { stage: ApplicationStage.Decided, color: "border-t-emerald-500" },
+const columns: {
+  key: DeciderQueueColumnKey;
+  label: string;
+  color: string;
+  emptyMessage: string;
+}[] = [
+  {
+    key: "submitted",
+    label: stageMeta[ApplicationStage.Submitted].label,
+    color: "border-t-sky-500",
+    emptyMessage: "判断待ちの申請はありません。",
+  },
+  {
+    key: "returned",
+    label: "差し戻し中",
+    color: "border-t-amber-500",
+    emptyMessage: "差し戻し中の申請はありません。",
+  },
+  {
+    key: "decided",
+    label: stageMeta[ApplicationStage.Decided].label,
+    color: "border-t-emerald-500",
+    emptyMessage: "判断済みの申請はまだありません。",
+  },
 ];
 
 function QueueColumn({
-  stage,
+  label,
   count,
   color,
+  emptyMessage,
   children,
 }: {
-  stage: ApplicationStageValue;
+  label: string;
   count: number;
   color: string;
+  emptyMessage: string;
   children: React.ReactNode;
 }) {
   return (
@@ -44,11 +67,17 @@ function QueueColumn({
       className={`flex min-h-[240px] min-w-0 flex-col rounded-lg border-t-4 bg-muted/30 ${color}`}
     >
       <div className="flex items-center justify-between px-3 py-3">
-        <h3 className="text-sm font-semibold">{stageMeta[stage].label}</h3>
+        <h3 className="text-sm font-semibold">{label}</h3>
         <Badge variant="secondary">{count}</Badge>
       </div>
       <div className="min-w-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden px-2 pb-2">
-        {children}
+        {count === 0 ? (
+          <p className="px-2 py-8 text-center text-xs text-muted-foreground">
+            {emptyMessage}
+          </p>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );
@@ -130,38 +159,25 @@ export default function QueuePage() {
       ),
     [users],
   );
-  const decisionOptionMap = useMemo(
-    () =>
-      new Map(
-        decisionOptions.map((option) => [
-          option.ds_decisionoptionid,
-          option.ds_name,
-        ]),
-      ),
-    [decisionOptions],
+  const getLatestDecisionOptionName = useMemo(
+    () => buildLatestDecisionOptionNameLookup(decisions, decisionOptions),
+    [decisions, decisionOptions],
   );
-  const latestDecisionByApplication = useMemo(() => {
-    const map = new Map<string, string>();
-    decisions.forEach((decision) => {
-      const applicationId = normalizeGuid(decision._ds_applicationid_value);
-      if (applicationId && !map.has(applicationId)) {
-        map.set(applicationId, decision._ds_decisionoptionid_value ?? "");
-      }
-    });
-    return map;
-  }, [decisions]);
 
   const grouped = useMemo(() => {
-    const map = new Map<ApplicationStageValue, Application[]>();
-    columns.forEach((column) => map.set(column.stage, []));
+    const map = new Map<DeciderQueueColumnKey, Application[]>();
+    columns.forEach((column) => map.set(column.key, []));
     getDeciderQueueApplications(applications, systemUserId).forEach(
       (application) => {
-        const stage = normalizeApplicationStage(application.ds_stage);
-        map.get(stage)?.push(application);
+        const columnKey = getDeciderQueueColumnKey(
+          application.ds_stage,
+          getLatestDecisionOptionName(application.ds_applicationid),
+        );
+        if (columnKey) map.get(columnKey)?.push(application);
       },
     );
     return map;
-  }, [applications, systemUserId]);
+  }, [applications, systemUserId, getLatestDecisionOptionName]);
 
   return (
     <div className="space-y-4">
@@ -171,15 +187,16 @@ export default function QueuePage() {
           自分が判断者に設定されている申請をステージ別に確認します。
         </p>
       </div>
-      <div className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-3">
         {columns.map((column) => {
-          const items = grouped.get(column.stage) ?? [];
+          const items = grouped.get(column.key) ?? [];
           return (
             <QueueColumn
-              key={column.stage}
-              stage={column.stage}
+              key={column.key}
+              label={column.label}
               color={column.color}
               count={items.length}
+              emptyMessage={column.emptyMessage}
             >
               {items.map((application) => (
                 <QueueCard
@@ -196,10 +213,8 @@ export default function QueuePage() {
                       ? (userMap.get(application._ds_deciderid_value) ?? "")
                       : ""
                   }
-                  decisionOptionName={decisionOptionMap.get(
-                    latestDecisionByApplication.get(
-                      normalizeGuid(application.ds_applicationid) ?? "",
-                    ) ?? "",
+                  decisionOptionName={getLatestDecisionOptionName(
+                    application.ds_applicationid,
                   )}
                   onClick={() =>
                     navigate(`/applications/${application.ds_applicationid}`)

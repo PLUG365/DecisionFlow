@@ -206,6 +206,10 @@ TABLES = [
         "columns": [
             {"logical": f"{PREFIX}_rationale", "type": "Memo", "display": "判断理由", "maxLength": 20000},
             {"logical": f"{PREFIX}_decidedat", "type": "DateTime", "display": "判断日時", "format": "DateAndTime"},
+            # 判断確定時点の AI 推奨のスナップショット。ds_application.ds_aidecisionoptiontext は
+            # AI 判断を再生成するたび上書きされるため、後から「AI 推奨と実判断が一致したか」を
+            # 遡って測ることができない。判断のたびにここへ控える。空 = その時点で AI 推奨なし。
+            {"logical": f"{PREFIX}_aisuggestionatdecision", "type": "String", "display": "判断時のAI推奨", "maxLength": 200},
         ],
     },
     {

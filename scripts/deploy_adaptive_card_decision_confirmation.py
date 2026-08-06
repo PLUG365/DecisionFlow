@@ -347,6 +347,7 @@ def build_confirm_decision_clientdata(connection_refs: dict[str, str] | None = N
                 f"{PREFIX}_name": "@concat('判断 - ', triggerBody()?['applicationId'])",
                 f"{PREFIX}_rationale": "@triggerBody()?['rationale']",
                 f"{PREFIX}_decidedat": decided_at,
+                f"{PREFIX}_aisuggestionatdecision": f"@outputs('Get_application')?['body/{PREFIX}_aidecisionoptiontext']",
                 f"{PREFIX}_applicationid@odata.bind": "@concat('/ds_applications(', triggerBody()?['applicationId'], ')')",
                 f"{PREFIX}_deciderid@odata.bind": "@concat('/systemusers(', first(outputs('List_current_user')?['body/value'])?['systemuserid'], ')')",
                 f"{PREFIX}_decisionoptionid@odata.bind": "@concat('/ds_decisionoptions(', first(outputs('Get_decision_option')?['body/value'])?['ds_decisionoptionid'], ')')",
@@ -417,7 +418,8 @@ def build_confirm_decision_clientdata(connection_refs: dict[str, str] | None = N
         "Get_application": _get_record_action(
             f"{PREFIX}_applications",
             "@triggerBody()?['applicationId']",
-            f"{PREFIX}_stage,{PREFIX}_submittedat,_{PREFIX}_deciderid_value",
+            # ds_aidecisionoptiontext は判断確定時に ds_decision へスナップショットするために取得する。
+            f"{PREFIX}_stage,{PREFIX}_submittedat,_{PREFIX}_deciderid_value,{PREFIX}_aidecisionoptiontext",
             {"Validate_decision_option_found": ["Succeeded"]},
         ),
         "Validate_submitted_application": {

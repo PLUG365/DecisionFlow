@@ -40,6 +40,8 @@ PROMPT_SEGMENTS = [
 - 申請概要は3〜5文で、判断者が論点を素早く把握できる粒度にする。
 - 会話概要は会話履歴がある場合だけ論点、追加確認、合意事項を要約する。会話履歴がない場合は「提出時点では会話履歴はありません。」と返す。
 - 類似案件が少ない、または確度が低い場合はその旨を similarCases または risks に明記する。
+- 過去の判断理由（ds_rationale）は要約・敷衍・言い換えをせず、原文のまま引用する。
+- 過去の判断理由が空、または判断根拠として不十分な場合は「理由の記録なし」と明記する。申請本文から推測した理由を書いてはならない。
 - カテゴリ別レギュレーションが入力されている場合は、充足状況、懸念、追加確認事項を comment または risks に含める。
 - カテゴリ別レギュレーションが未設定の場合は、その旨を comment または risks に明記し、通常のAI判断を継続する。
 - 出力は指定 JSON スキーマに厳密に従う。
@@ -242,16 +244,19 @@ def build_ai_decision_flow_clientdata(connection_refs: dict[str, str], model_id:
         "List_messages": _openapi_action("ListRecords", {"entityName": f"{prefix}_messages", "$filter": f"_{prefix}_applicationid_value eq @{{triggerBody()?['text']}}", "$select": f"{prefix}_body,createdon", "$orderby": "createdon asc"}, {"List_category_regulation": ["Succeeded"]}),
         "List_resources": _openapi_action("ListRecords", {"entityName": f"{prefix}_applicationresources", "$filter": f"_{prefix}_applicationid_value eq @{{triggerBody()?['text']}}", "$select": f"{prefix}_name,{prefix}_url,{prefix}_description"}, {"List_messages": ["Succeeded"]}),
         "List_decision_options": _openapi_action("ListRecords", {"entityName": f"{prefix}_decisionoptions", "$select": f"{prefix}_name,{prefix}_description", "$orderby": f"{prefix}_sortorder asc"}, {"List_resources": ["Succeeded"]}),
-        "List_similar_applications": _openapi_action("ListRecords", {"entityName": f"{prefix}_applications", "$filter": f"{prefix}_applicationid ne @{{triggerBody()?['text']}} and {prefix}_stage eq 100000004 and _{prefix}_categoryid_value eq @{{coalesce(outputs('Get_application')?['body/_{prefix}_categoryid_value'], '00000000-0000-0000-0000-000000000000')}}", "$select": f"{prefix}_applicationid,{prefix}_name,{prefix}_aiapplicationsummary,{prefix}_aidecisionoptiontext,{prefix}_aidecisioncomment,{prefix}_aidecisionupdatedat", "$top": 30, "$orderby": f"{prefix}_aidecisionupdatedat desc"}, {"List_decision_options": ["Succeeded"]}),
-        "List_recent_decided_applications": _openapi_action("ListRecords", {"entityName": f"{prefix}_applications", "$filter": f"{prefix}_applicationid ne @{{triggerBody()?['text']}} and {prefix}_stage eq 100000004", "$select": f"{prefix}_applicationid,{prefix}_name,{prefix}_aiapplicationsummary,{prefix}_aidecisionoptiontext,{prefix}_aidecisioncomment,{prefix}_aidecisionupdatedat", "$top": 10, "$orderby": f"{prefix}_aidecisionupdatedat desc"}, {"List_similar_applications": ["Succeeded"]}),
+        # 同一カテゴリの過去申請。AI 生成列ではなく申請本文そのものを渡す
+        # （AI 列は「AI が過去に出した推奨」であって人が下した判断ではない）。
+        "List_similar_applications": _openapi_action("ListRecords", {"entityName": f"{prefix}_applications", "$filter": f"{prefix}_applicationid ne @{{triggerBody()?['text']}} and {prefix}_stage eq 100000004 and _{prefix}_categoryid_value eq @{{coalesce(outputs('Get_application')?['body/_{prefix}_categoryid_value'], '00000000-0000-0000-0000-000000000000')}}", "$select": f"{prefix}_applicationid,{prefix}_name,{prefix}_body", "$top": 30, "$orderby": "modifiedon desc"}, {"List_decision_options": ["Succeeded"]}),
+        # 実際に人が下した判断。判断結果名と理由は ds_decision にしかない。
+        "List_recent_decisions": _openapi_action("ListRecords", {"entityName": f"{prefix}_decisions", "$filter": f"_{prefix}_applicationid_value ne @{{triggerBody()?['text']}}", "$select": f"{prefix}_decisionid,{prefix}_rationale,{prefix}_decidedat,_{prefix}_applicationid_value", "$expand": f"{prefix}_applicationid($select={prefix}_name,_{prefix}_categoryid_value),{prefix}_decisionoptionid($select={prefix}_name)", "$top": 20, "$orderby": f"{prefix}_decidedat desc"}, {"List_similar_applications": ["Succeeded"]}),
         "Build_prompt_inputs": {
             "type": "Compose",
-            "runAfter": {"List_recent_decided_applications": ["Succeeded"]},
+            "runAfter": {"List_recent_decisions": ["Succeeded"]},
             "inputs": {
                 "application": f"@{{concat('利用文脈: ', if(equals(outputs('Get_application')?['body/{prefix}_stage'], 100000001), '判断者向け判断支援', '申請者向け提出前確認'), '\\nタイトル: ', outputs('Get_application')?['body/{prefix}_name'], '\\n本文: ', coalesce(outputs('Get_application')?['body/{prefix}_body'], ''), '\\n希望期限: ', coalesce(outputs('Get_application')?['body/{prefix}_duedate'], '未設定'))}}",
                 "resources": "@string(outputs('List_resources')?['body/value'])",
                 "conversation": "@if(empty(outputs('List_messages')?['body/value']), '提出時点では会話履歴はありません。', string(outputs('List_messages')?['body/value']))",
-                "similarCases": "@concat('同一カテゴリ候補: ', if(empty(outputs('List_similar_applications')?['body/value']), 'なし', string(outputs('List_similar_applications')?['body/value'])), '\n補助候補（直近判断済み）: ', if(empty(outputs('List_recent_decided_applications')?['body/value']), 'なし', string(outputs('List_recent_decided_applications')?['body/value'])))",
+                "similarCases": "@concat('同一カテゴリの過去申請: ', if(empty(outputs('List_similar_applications')?['body/value']), 'なし', string(outputs('List_similar_applications')?['body/value'])), '\n過去の判断（判断結果と理由。ds_decisionoptionid.ds_name が判断結果、ds_rationale が判断者の理由）: ', if(empty(outputs('List_recent_decisions')?['body/value']), 'なし', string(outputs('List_recent_decisions')?['body/value'])))",
                 "decisionOptions": "@string(outputs('List_decision_options')?['body/value'])",
                 "categoryRegulation": f"@if(or(empty(outputs('List_category_regulation')?['body/value']), empty(first(outputs('List_category_regulation')?['body/value'])?['{prefix}_regulationtext'])), 'カテゴリ固有のレギュレーションは未設定です。通常のAI判断を継続してください。', concat('カテゴリ別レギュレーション: ', first(outputs('List_category_regulation')?['body/value'])?['{prefix}_regulationtext']))",
             },

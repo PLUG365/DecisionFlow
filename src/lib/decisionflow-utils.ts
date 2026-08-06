@@ -9,6 +9,9 @@ export const EMPTY_CATEGORY_REGULATION_MESSAGE =
 
 export const CATEGORY_REGULATION_MAX_LENGTH = 50000;
 
+export const DEFAULT_APPLICATION_BODY_PLACEHOLDER =
+  "背景、判断してほしいこと、選択肢、懸念点を記入";
+
 export type ResourceInput = {
   title?: string | null;
   url?: string | null;
@@ -186,6 +189,20 @@ export function getSelectedCategoryRegulationInfo(
     regulationText:
       category.ds_regulationtext?.trim() || EMPTY_CATEGORY_REGULATION_MESSAGE,
   };
+}
+
+export function getApplicationBodyPlaceholder(
+  categories: Pick<Category, "ds_categoryid" | "ds_template">[],
+  categoryId: string | null | undefined,
+): string {
+  const selectedCategoryId = normalizeGuid(categoryId);
+  if (!selectedCategoryId) return DEFAULT_APPLICATION_BODY_PLACEHOLDER;
+
+  const category = categories.find(
+    (item) => normalizeGuid(item.ds_categoryid) === selectedCategoryId,
+  );
+  const template = category?.ds_template?.trim();
+  return template || DEFAULT_APPLICATION_BODY_PLACEHOLDER;
 }
 
 export function getAiCheckWaitState(isPending: boolean): OperationWaitState {
@@ -379,6 +396,81 @@ export function getDecisionNextApplicationStage(
   return decisionOptionName?.trim() === "差し戻し"
     ? ApplicationStage.Draft
     : ApplicationStage.Decided;
+}
+
+export const RETURNED_APPLICATION_BADGE = {
+  label: "差し戻し",
+  className: "border-amber-300 bg-amber-50 text-amber-700",
+} as const;
+
+/**
+ * 差し戻された申請は `ds_stage` が Draft へ戻るため、一度も提出していない下書きと
+ * 見分けがつかなくなる。直近の判断が「差し戻し」かどうかで区別する。
+ */
+export function isApplicationReturnedForRevision(
+  stage: number | null | undefined,
+  latestDecisionOptionName: string | null | undefined,
+): boolean {
+  if (normalizeApplicationStage(stage) !== ApplicationStage.Draft) return false;
+  if (!latestDecisionOptionName?.trim()) return false;
+  return (
+    getDecisionNextApplicationStage(latestDecisionOptionName) ===
+    ApplicationStage.Draft
+  );
+}
+
+/**
+ * 申請IDから「直近の判断結果の名前」を引く関数を作る。
+ * `decisions` は新しい順に並んでいる前提（各申請で最初に現れたものを採用する）。
+ */
+export function buildLatestDecisionOptionNameLookup(
+  decisions: {
+    _ds_applicationid_value?: string | null;
+    _ds_decisionoptionid_value?: string | null;
+  }[],
+  decisionOptions: { ds_decisionoptionid: string; ds_name: string }[],
+): (applicationId: string | null | undefined) => string | undefined {
+  const optionNameById = new Map(
+    decisionOptions.map((option) => [
+      option.ds_decisionoptionid,
+      option.ds_name,
+    ]),
+  );
+  const latestOptionIdByApplication = new Map<string, string>();
+
+  decisions.forEach((decision) => {
+    const applicationId = normalizeGuid(decision._ds_applicationid_value);
+    if (applicationId && !latestOptionIdByApplication.has(applicationId)) {
+      latestOptionIdByApplication.set(
+        applicationId,
+        decision._ds_decisionoptionid_value ?? "",
+      );
+    }
+  });
+
+  return (applicationId) =>
+    optionNameById.get(
+      latestOptionIdByApplication.get(normalizeGuid(applicationId) ?? "") ?? "",
+    );
+}
+
+export type DeciderQueueColumnKey = "submitted" | "returned" | "decided";
+
+/**
+ * 判断キューの列振り分け。差し戻された申請は Draft へ戻るため、以前は列が無く
+ * 黙って捨てられていた。未提出の下書きは判断者の担当ではないので null を返して
+ * 明示的に除外する。
+ */
+export function getDeciderQueueColumnKey(
+  stage: number | null | undefined,
+  latestDecisionOptionName: string | null | undefined,
+): DeciderQueueColumnKey | null {
+  const normalizedStage = normalizeApplicationStage(stage);
+  if (normalizedStage === ApplicationStage.Submitted) return "submitted";
+  if (normalizedStage === ApplicationStage.Decided) return "decided";
+  return isApplicationReturnedForRevision(stage, latestDecisionOptionName)
+    ? "returned"
+    : null;
 }
 
 export function getParticipantDeleteWaitState(

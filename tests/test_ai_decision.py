@@ -25,6 +25,29 @@ class AiDecisionDataverseMetadataTests(unittest.TestCase):
         self.assertEqual(columns["ds_regulationtext"]["display"], "レギュレーション")
         self.assertGreaterEqual(columns["ds_regulationtext"]["maxLength"], 50000)
 
+    def test_decision_table_snapshots_ai_suggestion(self):
+        decision_table = next(
+            table
+            for table in setup_dataverse.TABLES
+            if table["logical"] == "ds_decision"
+        )
+        columns = {column["logical"]: column for column in decision_table["columns"]}
+
+        # ds_application.ds_aidecisionoptiontext は AI 再生成で上書きされるため、
+        # 判断時点の推奨を ds_decision 側へ控えないと採否率を後から測れない。
+        self.assertEqual(columns["ds_aisuggestionatdecision"]["type"], "String")
+        self.assertEqual(columns["ds_aisuggestionatdecision"]["display"], "判断時のAI推奨")
+
+    def test_prompt_forbids_inventing_past_decision_reasons(self):
+        constraints = "".join(
+            segment["text"]
+            for segment in ai_decision.PROMPT_SEGMENTS
+            if segment["type"] == "literal"
+        )
+
+        self.assertIn("原文のまま引用", constraints)
+        self.assertIn("推測した理由を書いてはならない", constraints)
+
     def test_application_table_defines_ai_decision_columns(self):
         application_table = next(
             table
@@ -113,19 +136,28 @@ class AiDecisionPromptDefinitionTests(unittest.TestCase):
         self.assertEqual(category_regulation["inputs"]["parameters"]["entityName"], "ds_categories")
         self.assertIn("ds_regulationtext", category_regulation["inputs"]["parameters"]["$select"])
 
+        # 類似案件には申請本文そのものを渡す。AI 生成列は「AI が過去に出した推奨」
+        # であって人が下した判断ではないため、類似案件の根拠にしてはいけない。
         similar = definition["actions"]["List_similar_applications"]
         self.assertEqual(similar["inputs"]["parameters"]["$top"], 30)
         self.assertIn("_ds_categoryid_value", similar["inputs"]["parameters"]["$filter"])
-        self.assertNotIn("ds_body", similar["inputs"]["parameters"]["$select"])
-        self.assertIn("ds_aiapplicationsummary", similar["inputs"]["parameters"]["$select"])
+        self.assertIn("ds_body", similar["inputs"]["parameters"]["$select"])
+        self.assertNotIn("ds_aiapplicationsummary", similar["inputs"]["parameters"]["$select"])
+        self.assertNotIn("ds_aidecisionoptiontext", similar["inputs"]["parameters"]["$select"])
 
-        recent = definition["actions"]["List_recent_decided_applications"]
-        self.assertEqual(recent["inputs"]["parameters"]["$top"], 10)
-        self.assertNotIn("ds_body", recent["inputs"]["parameters"]["$select"])
+        # 実際の判断結果と理由は ds_decision にしかないので、そこから取得する。
+        recent = definition["actions"]["List_recent_decisions"]
+        self.assertEqual(recent["inputs"]["parameters"]["entityName"], "ds_decisions")
+        self.assertIn("ds_rationale", recent["inputs"]["parameters"]["$select"])
+        self.assertIn("ds_decidedat", recent["inputs"]["parameters"]["$select"])
+        self.assertIn("ds_decisionoptionid(", recent["inputs"]["parameters"]["$expand"])
+        self.assertIn("ds_applicationid(", recent["inputs"]["parameters"]["$expand"])
+        self.assertNotIn("List_recent_decided_applications", definition["actions"])
 
         prompt_inputs = definition["actions"]["Build_prompt_inputs"]
-        self.assertIn("同一カテゴリ候補", prompt_inputs["inputs"]["similarCases"])
-        self.assertIn("補助候補", prompt_inputs["inputs"]["similarCases"])
+        self.assertIn("同一カテゴリの過去申請", prompt_inputs["inputs"]["similarCases"])
+        self.assertIn("過去の判断", prompt_inputs["inputs"]["similarCases"])
+        self.assertIn("ds_rationale", prompt_inputs["inputs"]["similarCases"])
         self.assertIn("categoryRegulation", prompt_inputs["inputs"])
         self.assertIn("レギュレーション", prompt_inputs["inputs"]["categoryRegulation"])
         self.assertIn("利用文脈", prompt_inputs["inputs"]["application"])

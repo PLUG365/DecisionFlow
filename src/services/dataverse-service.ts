@@ -649,6 +649,7 @@ export const DataverseService = {
           ds_name: decision.ds_name,
           ds_rationale: decision.ds_rationale,
           ds_decidedat: decision.ds_decidedat ?? new Date().toISOString(),
+          ds_aisuggestionatdecision: decision.ds_aisuggestionatdecision,
           "ds_applicationid@odata.bind": bind(
             "ds_applications",
             decision._ds_applicationid_value,

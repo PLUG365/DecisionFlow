@@ -17,12 +17,14 @@ import { ArrowRight } from "lucide-react";
 
 import { ListTable, type TableColumn } from "@/components/list-table";
 import { LoadingSkeletonGrid } from "@/components/loading-skeleton";
-import { Badge } from "@/components/ui/badge";
+import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   useApplications,
   useCategories,
+  useDecisionOptions,
+  useDecisions,
   useSystemUsers,
 } from "@/hooks/use-decisionflow";
 import {
@@ -31,7 +33,10 @@ import {
   type Application,
   type ApplicationStageValue,
 } from "@/types/decisionflow";
-import { normalizeApplicationStage } from "@/lib/decisionflow-utils";
+import {
+  buildLatestDecisionOptionNameLookup,
+  normalizeApplicationStage,
+} from "@/lib/decisionflow-utils";
 
 type ApplicationRow = Application & Record<string, unknown>;
 
@@ -48,19 +53,12 @@ const chartTooltipTextStyle = {
   color: "rgba(255, 255, 255, 0.96)",
 } satisfies CSSProperties;
 
-function StageBadge({ stage }: { stage?: number }) {
-  const meta = stageMeta[normalizeApplicationStage(stage)];
-  return (
-    <Badge variant="outline" className={meta.className}>
-      {meta.label}
-    </Badge>
-  );
-}
-
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { data: applications = [], isLoading } = useApplications();
   const { data: categories = [] } = useCategories();
+  const { data: decisions = [] } = useDecisions();
+  const { data: decisionOptions = [] } = useDecisionOptions();
   const { data: users = [] } = useSystemUsers();
 
   const categoryMap = useMemo(
@@ -76,6 +74,11 @@ export default function DashboardPage() {
         ]),
       ),
     [users],
+  );
+
+  const getLatestDecisionOptionName = useMemo(
+    () => buildLatestDecisionOptionNameLookup(decisions, decisionOptions),
+    [decisions, decisionOptions],
   );
 
   const stageCounts = useMemo(() => {
@@ -136,7 +139,14 @@ export default function DashboardPage() {
     {
       key: "ds_stage",
       label: "ステージ",
-      render: (item) => <StageBadge stage={item.ds_stage} />,
+      render: (item) => (
+        <StageBadge
+          stage={item.ds_stage}
+          latestDecisionOptionName={getLatestDecisionOptionName(
+            item.ds_applicationid,
+          )}
+        />
+      ),
     },
     {
       key: "_ds_categoryid_value",
@@ -168,7 +178,7 @@ export default function DashboardPage() {
             ダッシュボード
           </h2>
           <p className="text-sm text-muted-foreground">
-            判断待ち、停滞、カテゴリ別傾向をまとめて確認します。
+            判断待ち、期限超過、カテゴリ別傾向をまとめて確認します。
           </p>
         </div>
         <Button onClick={() => navigate("/applications")}>
@@ -218,7 +228,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={categoryChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
+                <XAxis dataKey="name" interval={0} tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} />
                 <Tooltip
                   contentStyle={chartTooltipContentStyle}
@@ -244,7 +254,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={deciderChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
+                <XAxis dataKey="name" interval={0} tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} />
                 <Tooltip
                   contentStyle={chartTooltipContentStyle}
@@ -277,11 +287,11 @@ export default function DashboardPage() {
         <ListTable
           data={stalledApplications as ApplicationRow[]}
           columns={columns}
-          title="停滞している申請"
-          description="希望期限を過ぎている未確定申請"
+          title="期限超過の申請"
+          description="希望期限を過ぎた未確定の申請（下書き・提出済みを含む）"
           searchKeys={["ds_name"]}
           itemsPerPage={5}
-          emptyMessage="停滞中の申請はありません"
+          emptyMessage="期限超過の申請はありません"
           onRowClick={(row) =>
             navigate(`/applications/${row.ds_applicationid}`)
           }

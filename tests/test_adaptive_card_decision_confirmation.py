@@ -263,6 +263,18 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         self.assertIn("ds_rationale", decision_item)
         self.assertIn("ds_applicationid@odata.bind", decision_item)
         self.assertIn("ds_decisionoptionid@odata.bind", decision_item)
+        # Adaptive Card 経由の判断も AI 推奨を控える。Code Apps 側だけに入れると
+        # 判断経路によって採否記録に穴が空く。
+        self.assertIn("ds_aisuggestionatdecision", decision_item)
+        self.assertIn(
+            "ds_aidecisionoptiontext",
+            decision_item["ds_aisuggestionatdecision"],
+        )
+        get_application = find_action(actions, "Get_application")
+        self.assertIn(
+            "ds_aidecisionoptiontext",
+            get_application["inputs"]["parameters"]["$select"],
+        )
 
         consume_card = find_action(actions, "Consume_decisioncard")
         self.assertEqual(consume_card["inputs"]["host"]["operationId"], "UpdateRecord")

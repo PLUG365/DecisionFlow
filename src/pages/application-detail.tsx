@@ -11,6 +11,7 @@ import {
 
 import { FormModal, FormSection } from "@/components/form-modal";
 import { OperationWaitOverlay } from "@/components/operation-wait-overlay";
+import { StageBadge } from "@/components/stage-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,7 +48,6 @@ import {
 import {
   MessageKind,
   participantRoleLabels,
-  stageMeta,
   type Participant,
 } from "@/types/decisionflow";
 import {
@@ -55,6 +55,7 @@ import {
   canRefreshAiDecisionFromDecisionTab,
   getAiCheckWaitState,
   getDecisionNextApplicationStage,
+  isApplicationReturnedForRevision,
   getParticipantDeleteWaitState,
   normalizeApplicationStage,
   normalizeGuid,
@@ -206,6 +207,10 @@ export default function ApplicationDetailPage() {
   const latestDecisionOptionName = latestDecision?._ds_decisionoptionid_value
     ? decisionOptionMap.get(latestDecision._ds_decisionoptionid_value)
     : undefined;
+  const isReturnedForRevision = isApplicationReturnedForRevision(
+    application.ds_stage,
+    latestDecisionOptionName,
+  );
   const deciderName = application._ds_deciderid_value
     ? userMap.get(application._ds_deciderid_value)
     : "";
@@ -282,6 +287,10 @@ export default function ApplicationDetailPage() {
     createDecision.mutate({
       ds_name: `${application.ds_name} - 判断`,
       ds_rationale: rationale.trim(),
+      // 判断時点の AI 推奨を控える。application 側は再生成で上書きされるため、
+      // ここで残さないと「AI 推奨と実判断が一致したか」を後から測れない。
+      ds_aisuggestionatdecision:
+        application.ds_aidecisionoptiontext?.trim() || undefined,
       _ds_applicationid_value: id,
       _ds_deciderid_value: application._ds_deciderid_value,
       _ds_decisionoptionid_value: decisionOptionId,
@@ -365,9 +374,10 @@ export default function ApplicationDetailPage() {
           </h2>
           <div className="flex flex-wrap gap-2">
             {stage && (
-              <Badge variant="outline" className={stageMeta[stage].className}>
-                {stageMeta[stage].label}
-              </Badge>
+              <StageBadge
+                stage={application.ds_stage}
+                latestDecisionOptionName={latestDecisionOptionName}
+              />
             )}
             {application._ds_categoryid_value && (
               <Badge variant="secondary">{selectedCategory?.ds_name}</Badge>
@@ -395,6 +405,34 @@ export default function ApplicationDetailPage() {
         </TabsList>
 
         <TabsContent value="summary" className="space-y-4">
+          {isReturnedForRevision && (
+            <Card className="border-amber-500/60">
+              <CardHeader>
+                <CardTitle className="text-base">
+                  この申請は差し戻されています
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">差し戻しの理由</span>
+                  <p className="whitespace-pre-wrap leading-6">
+                    {latestDecision?.ds_rationale?.trim() ||
+                      "理由が記録されていません。"}
+                  </p>
+                </div>
+                {latestDecision?.ds_decidedat && (
+                  <p className="text-muted-foreground">
+                    {new Date(latestDecision.ds_decidedat).toLocaleString(
+                      "ja-JP",
+                    )}
+                  </p>
+                )}
+                <p className="text-muted-foreground">
+                  内容を修正して再提出してください。
+                </p>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">申請内容</CardTitle>
@@ -501,13 +539,27 @@ export default function ApplicationDetailPage() {
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                   <div className="space-y-2">
                     <Label>メンション先（任意）</Label>
-                    <Combobox
-                      options={mentionTargetOptions}
-                      value={mentionTargetUserId}
-                      onValueChange={setMentionTargetUserId}
-                      placeholder="通知したいユーザーを選択"
-                      searchPlaceholder="ユーザーを検索"
-                    />
+                    {mentionTargetOptions.length === 0 ? (
+                      <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                        この申請にはまだ自分以外の関係者がいません。
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="h-auto p-0 pl-1 text-xs"
+                          onClick={() => setSearchParams({ tab: "people" })}
+                        >
+                          関係者タブで追加する
+                        </Button>
+                      </div>
+                    ) : (
+                      <Combobox
+                        options={mentionTargetOptions}
+                        value={mentionTargetUserId}
+                        onValueChange={setMentionTargetUserId}
+                        placeholder="通知したいユーザーを選択"
+                        searchPlaceholder="ユーザーを検索"
+                      />
+                    )}
                   </div>
                   <Button
                     onClick={handleCreateMessage}
@@ -608,8 +660,9 @@ export default function ApplicationDetailPage() {
         </TabsContent>
 
         <TabsContent value="decision" className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="space-y-4">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            {/* AI判断は縦に長いので、判断パネル側を追従させて常に手が届くようにする */}
+            <div className="space-y-4 lg:sticky lg:top-4">
               {latestDecision && (
                 <Card>
                   <CardHeader>

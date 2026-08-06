@@ -8,6 +8,7 @@ import { OperationWaitOverlay } from "@/components/operation-wait-overlay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { StageBadge } from "@/components/stage-badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
@@ -43,10 +44,11 @@ import {
   filterRowsForCurrentUser,
   getAiCheckWaitState,
   getAiResultDialogConfig,
+  getApplicationBodyPlaceholder,
   getApplicationDecisionDetailPath,
   getSelectedCategoryRegulationInfo,
+  buildLatestDecisionOptionNameLookup,
   normalizeApplicationStage,
-  normalizeGuid,
   shouldRequireCategoryForSubmission,
   validateApplicationInput,
 } from "@/lib/decisionflow-utils";
@@ -123,51 +125,32 @@ export default function ApplicationsPage() {
     [applications, systemUserId],
   );
 
-  const decisionOptionMap = useMemo(
-    () =>
-      new Map(
-        decisionOptions.map((option) => [
-          option.ds_decisionoptionid,
-          option.ds_name,
-        ]),
-      ),
-    [decisionOptions],
+  const getLatestDecisionOptionName = useMemo(
+    () => buildLatestDecisionOptionNameLookup(decisions, decisionOptions),
+    [decisions, decisionOptions],
   );
-  const latestDecisionByApplication = useMemo(() => {
-    const map = new Map<string, string>();
-    decisions.forEach((decision) => {
-      const applicationId = normalizeGuid(decision._ds_applicationid_value);
-      if (applicationId && !map.has(applicationId)) {
-        map.set(applicationId, decision._ds_decisionoptionid_value ?? "");
-      }
-    });
-    return map;
-  }, [decisions]);
 
   const columns: TableColumn<ApplicationRow>[] = [
     { key: "ds_name", label: "タイトル", sortable: true },
     {
       key: "ds_stage",
       label: "ステージ",
-      render: (item) => {
-        const stage = normalizeApplicationStage(item.ds_stage);
-        return (
-          <Badge variant="outline" className={stageMeta[stage].className}>
-            {stageMeta[stage].label}
-          </Badge>
-        );
-      },
+      render: (item) => (
+        <StageBadge
+          stage={item.ds_stage}
+          latestDecisionOptionName={getLatestDecisionOptionName(
+            item.ds_applicationid,
+          )}
+        />
+      ),
     },
     {
       key: "decisionResult",
       label: "判断結果",
       render: (item) => {
-        const decisionOptionId = latestDecisionByApplication.get(
-          normalizeGuid(item.ds_applicationid) ?? "",
+        const decisionOptionName = getLatestDecisionOptionName(
+          item.ds_applicationid,
         );
-        const decisionOptionName = decisionOptionId
-          ? decisionOptionMap.get(decisionOptionId)
-          : undefined;
         return decisionOptionName ? (
           <Badge variant="outline">{decisionOptionName}</Badge>
         ) : (
@@ -276,6 +259,10 @@ export default function ApplicationsPage() {
     label: category.ds_name,
   }));
   const selectedCategoryRegulationInfo = getSelectedCategoryRegulationInfo(
+    categories,
+    formCategoryId,
+  );
+  const applicationBodyPlaceholder = getApplicationBodyPlaceholder(
     categories,
     formCategoryId,
   );
@@ -602,7 +589,7 @@ export default function ApplicationsPage() {
                 value={formBody}
                 onChange={(event) => setFormBody(event.target.value)}
                 rows={7}
-                placeholder="背景、判断してほしいこと、選択肢、懸念点を記入"
+                placeholder={applicationBodyPlaceholder}
               />
             </div>
           </FormSection>
