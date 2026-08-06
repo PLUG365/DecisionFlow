@@ -28,7 +28,7 @@ type CreateDecisionInput = Omit<Decision, "ds_decisionid"> & {
   nextApplicationStage?: ApplicationStageValue;
 };
 
-const queryKeys = {
+export const queryKeys = {
   all: ["decisionflow"] as const,
   data: ["decisionflow", "data"] as const,
   currentUser: ["decisionflow", "currentUser"] as const,

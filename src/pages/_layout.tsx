@@ -1,20 +1,32 @@
 ﻿import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { CopilotPanel } from "@/components/copilot-panel";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Sidebar } from "@/components/sidebar";
 import {
   SidebarProvider,
   useSidebarContext,
 } from "@/components/sidebar-layout";
-import { Menu } from "lucide-react";
+import { queryKeys } from "@/hooks/use-decisionflow";
+import { Bot, Menu } from "lucide-react";
 
 type LayoutProps = { showHeader?: boolean };
 
 function LayoutContent({ showHeader = true }: LayoutProps) {
   const [isMobileView, setIsMobileView] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const queryClient = useQueryClient();
   const { isCollapsed, toggleSidebar, toggleMobile, isMobileOpen } =
     useSidebarContext();
+
+  // エージェントは自前のツールで Dataverse を更新するため、パネルを閉じたら
+  // キャッシュを捨てて取り直す。アプリ側は画面操作を実装しない。
+  const closeAssistant = () => {
+    setIsAssistantOpen(false);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.all });
+  };
 
   useEffect(() => {
     const updateIsMobile = () => setIsMobileView(window.innerWidth < 768);
@@ -64,8 +76,23 @@ function LayoutContent({ showHeader = true }: LayoutProps) {
               </div>
             </div>
 
-            {/* 右側: テーマ切替 */}
+            {/* 右側: アシスタントとテーマ切替 */}
             <div className="flex items-center gap-3">
+              <Button
+                variant={isAssistantOpen ? "secondary" : "ghost"}
+                size="icon"
+                onClick={() =>
+                  isAssistantOpen ? closeAssistant() : setIsAssistantOpen(true)
+                }
+                className="flex h-10 w-10 items-center justify-center"
+                aria-label={
+                  isAssistantOpen
+                    ? "アシスタントを閉じる"
+                    : "アシスタントを開く"
+                }
+              >
+                <Bot className="h-5 w-5" />
+              </Button>
               <ModeToggle />
             </div>
           </div>
@@ -81,12 +108,16 @@ function LayoutContent({ showHeader = true }: LayoutProps) {
           className={`flex-1 flex flex-col transition-all duration-300 relative z-0 min-w-0 ${isCollapsed ? "md:ml-16" : "md:ml-64"}`}
         >
           <main className="flex-1 flex flex-col overflow-visible min-w-0">
-            <div className="flex-1 p-6 max-w-full min-w-0">
+            <div
+              className={`flex-1 p-6 max-w-full min-w-0 transition-all duration-300 ${isAssistantOpen ? "lg:mr-[400px]" : ""}`}
+            >
               <Outlet />
             </div>
           </main>
         </div>
       </div>
+
+      <CopilotPanel open={isAssistantOpen} onClose={closeAssistant} />
     </div>
   );
 }
