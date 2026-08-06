@@ -1,9 +1,51 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Bot, RotateCcw, Send, X } from "lucide-react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useCopilotChat } from "@/hooks/use-copilot-chat";
+import { getCopilotScreenContext } from "@/lib/copilot-context";
+
+/** エージェントの応答は Markdown（見出し・表・リスト）で返るため整形して描画する。 */
+const markdownComponents: Components = {
+  h1: (props) => <h3 className="mt-3 text-sm font-semibold" {...props} />,
+  h2: (props) => <h3 className="mt-3 text-sm font-semibold" {...props} />,
+  h3: (props) => <h4 className="mt-3 text-sm font-semibold" {...props} />,
+  p: (props) => <p className="leading-6" {...props} />,
+  ul: (props) => <ul className="list-disc space-y-1 pl-5" {...props} />,
+  ol: (props) => <ol className="list-decimal space-y-1 pl-5" {...props} />,
+  strong: (props) => <strong className="font-semibold" {...props} />,
+  hr: () => <hr className="my-3 border-border" />,
+  a: (props) => (
+    <a
+      className="text-primary underline underline-offset-2"
+      target="_blank"
+      rel="noreferrer noopener"
+      {...props}
+    />
+  ),
+  code: (props) => (
+    <code className="rounded bg-muted px-1 py-0.5 text-xs" {...props} />
+  ),
+  pre: (props) => (
+    <pre
+      className="overflow-x-auto rounded bg-muted p-2 text-xs"
+      {...props}
+    />
+  ),
+  table: (props) => (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-xs" {...props} />
+    </div>
+  ),
+  th: (props) => (
+    <th className="border border-border px-2 py-1 text-left font-semibold" {...props} />
+  ),
+  td: (props) => <td className="border border-border px-2 py-1" {...props} />,
+};
 
 /**
  * DecisionFlow Assistant の右サイドパネル。
@@ -20,6 +62,11 @@ export function CopilotPanel({
   const { messages, isSending, error, send, reset } = useCopilotChat();
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const { pathname } = useLocation();
+  const screenContext = useMemo(
+    () => getCopilotScreenContext(pathname),
+    [pathname],
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -30,7 +77,7 @@ export function CopilotPanel({
   const handleSend = () => {
     const text = draft;
     setDraft("");
-    void send(text);
+    void send(text, screenContext);
   };
 
   return (
@@ -81,9 +128,20 @@ export function CopilotPanel({
                 : "mr-6 rounded-lg border border-border px-3 py-2"
             }
           >
-            <p className="whitespace-pre-wrap text-sm leading-6">
-              {message.text}
-            </p>
+            {message.role === "user" ? (
+              <p className="whitespace-pre-wrap text-sm leading-6">
+                {message.text}
+              </p>
+            ) : (
+              <div className="space-y-2 text-sm">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={markdownComponents}
+                >
+                  {message.text}
+                </ReactMarkdown>
+              </div>
+            )}
           </div>
         ))}
         {isSending && (

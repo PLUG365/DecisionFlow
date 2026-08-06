@@ -2,6 +2,10 @@ import { useCallback, useRef, useState } from "react";
 
 import { MicrosoftCopilotStudioService } from "@/generated/services/MicrosoftCopilotStudioService";
 import {
+  buildCopilotMessageWithContext,
+  type CopilotScreenContext,
+} from "@/lib/copilot-context";
+import {
   buildCopilotRequestBody,
   parseCopilotResponse,
 } from "@/lib/copilot-response";
@@ -32,12 +36,13 @@ export function useCopilotChat() {
   const [error, setError] = useState<string | null>(null);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, context?: CopilotScreenContext) => {
       const message = text.trim();
       if (!message || isSending) return;
 
       setError(null);
       setIsSending(true);
+      // 画面には利用者が書いた文だけを残し、文脈は送信時にだけ付ける。
       setMessages((prev) => [
         ...prev,
         { id: newMessageId(), role: "user", text: message },
@@ -46,7 +51,11 @@ export function useCopilotChat() {
       try {
         const result = await MicrosoftCopilotStudioService.ExecuteCopilotAsyncV2(
           DECISIONFLOW_AGENT_SCHEMA_NAME,
-          buildCopilotRequestBody({ message }),
+          buildCopilotRequestBody({
+            message: context
+              ? buildCopilotMessageWithContext(message, context)
+              : message,
+          }),
           conversationIdRef.current,
         );
 
