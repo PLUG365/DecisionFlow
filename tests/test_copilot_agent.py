@@ -67,6 +67,24 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         self.assertIn("applicationUrl", instructions)
         self.assertNotIn("apps.powerapps.com/play", instructions)
 
+    def test_gpt_instructions_forbid_fabricating_the_actor(self):
+        # agent flow は接続参照の identity で動くため、実行者はトリガー引数が決める。
+        # モデルが actorUpn を作文できると他人として書き込めてしまう。
+        instructions = agent.build_gpt_instructions()
+
+        self.assertIn("actorUpn", instructions)
+        self.assertIn("自分で組み立ててはならない", instructions)
+        self.assertIn("認証済みユーザー", instructions)
+
+    def test_gpt_instructions_state_what_the_agent_cannot_do(self):
+        # docs/AGENT_WRITE_BOUNDARY.md の禁止対象を、エージェント自身にも伝える。
+        instructions = agent.build_gpt_instructions()
+
+        self.assertIn("できないこと", instructions)
+        for forbidden in ("関係者の追加", "マスタ", "セキュリティロール"):
+            self.assertIn(forbidden, instructions)
+        self.assertIn("できるふりをしない", instructions)
+
     def test_manual_followups_mention_application_link_flow_deployment(self):
         import io
         from contextlib import redirect_stdout

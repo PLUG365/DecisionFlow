@@ -1,0 +1,91 @@
+# DecisionFlow Assistant: 申請の会話へ投稿する専用 Topic
+#
+# Copilot Studio の「トピック」→「コードビュー」にこの内容を貼って作成する。
+# flowId は post_application_message の Workflow ID に置き換えること。
+#
+# ■ なぜ専用 Topic が必要か
+# 生成オーケストレーションに post_application_message を直接呼ばせると、
+# ツール入力（actorUpn / actorAadObjectId）を**モデルが埋める**。つまり
+# 実行者を作文できてしまう。agent flow は接続参照の identity で動くため、
+# その作文がそのまま「誰の操作か」になる。
+#
+# この Topic は SetVariable で System.User.* を束縛してからフローを呼ぶ。
+# 実行者はモデルが触れない経路で決まる。詳細は docs/AGENT_WRITE_BOUNDARY.md。
+
+kind: AdaptiveDialog
+modelDescription: 「この申請にコメントして」「会話に投稿して」「関係者に共有して」
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent: {}
+  actions:
+    - kind: ConditionGroup
+      id: validateApplicationContext
+      conditions:
+        - id: missingApplicationContext
+          condition: =IsBlank(Topic.applicationId)
+          actions:
+            - kind: SendActivity
+              id: sendMissingApplicationContext
+              activity: 投稿先の申請を特定できませんでした。申請の詳細画面または申請リンクから、もう一度お試しください。
+
+            - kind: EndConversation
+              id: endMissingApplicationContext
+
+    - kind: ConditionGroup
+      id: validateMessageBody
+      conditions:
+        - id: missingMessageBody
+          condition: =IsBlank(Topic.messageBody)
+          actions:
+            - kind: SendActivity
+              id: sendMissingMessageBody
+              activity: 投稿する内容を教えてください。
+
+            - kind: EndConversation
+              id: endMissingMessageBody
+
+    # 実行者は必ず認証済みユーザー変数から取る。
+    # ここをモデルの出力や会話本文から埋めてはならない。
+    - kind: SetVariable
+      id: setActorUpn
+      variable: Topic.actorUpn
+      value: =System.User.PrincipalName
+
+    - kind: SetVariable
+      id: setActorAadObjectId
+      variable: Topic.actorAadObjectId
+      value: =System.User.Id
+
+    - kind: InvokeFlowAction
+      id: invokePostApplicationMessage
+      input:
+        binding:
+          applicationId: =Topic.applicationId
+          body: =Topic.messageBody
+          actorAadObjectId: =Topic.actorAadObjectId
+          actorUpn: =Topic.actorUpn
+
+      output:
+        binding:
+          status: Topic.postStatus
+          messageId: Topic.postedMessageId
+          message: Topic.postMessage
+
+      # post_application_message の Workflow ID に置き換える
+      flowId: 3dfc08d1-7e92-f111-b8db-7c1e524a54ce
+
+    - kind: ConditionGroup
+      id: handlePostResult
+      conditions:
+        - id: postSucceeded
+          condition: =Topic.postStatus = "succeeded"
+          actions:
+            - kind: SendActivity
+              id: sendPostSucceeded
+              activity: 会話に投稿しました。アプリの会話タブで確認できます。
+
+      elseActions:
+        - kind: SendActivity
+          id: sendPostFailed
+          activity: ="投稿できませんでした。" & Topic.postMessage
