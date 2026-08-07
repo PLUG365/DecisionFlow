@@ -5,6 +5,11 @@
 Power Platform、Dataverse、Power Automate、Code Apps、Solution に関わる作業の前に、
 [`docs/AI_DEVELOPMENT_TOOLING.md`](docs/AI_DEVELOPMENT_TOOLING.md) を読む。
 
+DecisionFlow Assistant に書き込み系のツールを追加・変更する前に、
+[`docs/AGENT_WRITE_BOUNDARY.md`](docs/AGENT_WRITE_BOUNDARY.md) を読む。許可・禁止・不変条件を
+固定した表であり、**表を変更せずにツールを追加してはならない**。特に、実行者の識別子は
+Copilot Studio の認証済みユーザー変数からのみ渡す（会話本文やモデルの推論から組み立てない）。
+
 - FlowStudio はこのリポジトリの開発・設定・依存関係に含めない。
 - AI 開発は「探索・試作」と「採用・運用」の二レーンで行う。探索・試作では、開発環境の
   新規かつ一時的な資産を MCP / AI スキルで作成・編集・検証してよい。採用・運用に昇格する
