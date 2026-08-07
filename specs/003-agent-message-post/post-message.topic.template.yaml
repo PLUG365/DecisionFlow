@@ -1,7 +1,15 @@
 # DecisionFlow Assistant: 申請の会話へ投稿する専用 Topic
 #
-# Copilot Studio の「トピック」→「コードビュー」にこの内容を貼って作成する。
-# flowId は post_application_message の Workflow ID に置き換えること。
+# 前提（手作業）:
+#   1. scripts/deploy_agent_message_flow.py で post_application_message を
+#      デプロイ済みであること。
+#   2. Copilot Studio UI で post_application_message を**ツールとして登録済み**で
+#      あること。agent flow をデプロイしただけでは自動登録されない。
+#      （issue_decision_card / confirm_decision / Get_ApplicationDetailUrl と同じ工程）
+#
+# このファイルの使い方:
+#   Copilot Studio の「トピック」→「コードビュー」にこの内容を貼って作成する。
+#   flowId は post_application_message の Workflow ID に置き換えること。
 #
 # ■ なぜ専用 Topic が必要か
 # 生成オーケストレーションに post_application_message を直接呼ばせると、
