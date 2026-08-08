@@ -33,10 +33,14 @@ beginDialog:
             - kind: EndConversation
               id: endMissingMessageBody
 
+    - kind: SendActivity
+      id: sendPostPreview
+      activity: ="次の内容で申請の会話へ投稿します。" & Char(10) & Char(10) & Topic.messageBody
+
     - kind: Question
       id: confirmPost
       variable: init:Topic.postConfirmed
-      prompt: ="次の内容で申請の会話へ投稿します。よろしいですか。" & Char(10) & Char(10) & Topic.messageBody
+      prompt: 上の内容で投稿してよろしいですか。
       entity: BooleanPrebuiltEntity
       alwaysPrompt: true
       interruptionPolicy:
