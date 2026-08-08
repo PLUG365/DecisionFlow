@@ -70,7 +70,25 @@ agent flow は**接続参照の identity** で実行される。エンドユー�
 | --- | --- | --- |
 | 判断確定の6段ゲート | `tests/test_adaptive_card_decision_confirmation.py` | 判断者以外・未提出・理由なし・カード再利用の各拒否 |
 | 会話投稿の関係者チェック | フロー定義のテストで assert | 関係者でないユーザーからの投稿が拒否される |
-| 実行者の出どころ | — | Copilot Studio のトピックで `System.User.*` を渡していること（目視） |
+| 実行者の出どころ | `tests/test_copilot_agent.py` | Copilot Studio UI の下書きチャットで、投稿が実行者名義になること |
 | パネルを閉じたら反映 | — | エージェントが書き込んだ内容がパネルを閉じた後の画面に出る |
 
-**実行者の出どころは自動テストで守れない。** Copilot Studio のトピック定義は Dataverse 側にあり、リポジトリの正本ではないため、ツール追加のたびに人が確認する。
+**実行者の出どころは、トピック YAML の2点をテストで固定している。**
+
+- `SetVariable` が `System.User.PrincipalName` / `System.User.Id` から束縛していること
+- `inputType` に `actorUpn` / `actorAadObjectId` が**無い**こと
+
+2つ目が重要。`inputType` に置くと生成オーケストレーションが埋めてしまい、モデルが実行者を作文できる。
+
+守れる理由は、Copilot Studio の定義が Dataverse 側だけでなく
+`copilot/DecisionFlowAssistant/` の YAML として Git にあるため。
+ただしテストが見るのは**ローカルの YAML**であり、クラウドの下書きではない。
+UI で直接編集された場合は検知できないので、ツールやトピックを増やしたら
+`pac copilot pull` で取り込んでから差分を見る。
+
+| トピック | ファイル |
+| --- | --- |
+| 判断確定 | `copilot/DecisionFlowAssistant/topics/zdI.mcs.yml` |
+| 会話へ投稿 | `copilot/DecisionFlowAssistant/topics/postApplicationMessage.mcs.yml` |
+
+YAML にコメントは書けない（push / pull で CLI が再生成して消える）。設計意図はこの文書が持つ。

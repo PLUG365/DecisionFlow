@@ -230,11 +230,46 @@ Copilot Studio は bot 作成だけ UI 操作が必須です。次の順で行�
 
 1. Copilot Studio UI でソリューション `DecisionSupport` に `DecisionFlow Assistant` を手動作成する
 2. エージェント URL から `botId` を取得し、`.env` の `BOT_ID` に設定する
-3. 以下を実行して Instructions、推奨プロンプト、アイコン、チャネル設定を反映する
+3. エージェント定義（Instructions、推奨プロンプト、トピック、アクション、チャネル、AI設定）を YAML から反映する
+
+```powershell
+pac copilot push --project-dir copilot/DecisionFlowAssistant
+```
+
+4. アイコンと Teams マニフェストの説明文を反映する（YAML が持たない部分）
 
 ```powershell
 py scripts/deploy_copilot_agent.py
 ```
+
+### エージェント定義の正本は `copilot/DecisionFlowAssistant/`
+
+Copilot Studio 側の定義は `pac copilot clone` で取り込んだ YAML が正本です。
+
+| 操作 | コマンド |
+| --- | --- |
+| クラウド → ローカル | `pac copilot pull --project-dir copilot/DecisionFlowAssistant` |
+| ローカル → クラウド（下書き） | `pac copilot push --project-dir copilot/DecisionFlowAssistant` |
+| 下書きを公開 | `pac copilot publish` |
+
+`push` が書き換えるのは**下書き**だけです。Teams などのチャネルに出るのは `publish` の後です。
+
+守ること:
+
+- **UI で編集したら先に `pull` する。** push はローカルを正として上書きするため、
+  pull していない UI 変更は消えます。
+- **YAML にコメントを書かない。** push / pull の往復で CLI が再生成するため残りません。
+  設計意図は `docs/` 側に書きます。
+- **`.mcs/` はコミットしない。** clone が生成する `.mcs/.gitignore`（`*`）が除外します。
+  `conn.json` に Dataverse エンドポイントと環境 ID が入るためです。
+- **`workflows/` は読み取り用と考える。** agent flow の正本は `scripts/deploy_*.py` です。
+  フローを変えたら `pull` で同期します。
+- **`pac` は 2.10.1 以降が必要**（`copilot clone` / `pull` / `push` は 2.6.4 に無い）。
+  PATH 上に standalone 版が同居している場合は `C:\Users\<user>\.dotnet\tools\pac.exe` を明示します。
+
+トピックを新規に作る場合は、既存の `topics/*.mcs.yml` を写して作ってください。
+`inputType.properties` の宣言を落とすと、生成オーケストレーションが Topic 変数を
+埋められず、条件分岐が常に「情報が取れなかった」側に落ちます。
 
 次に Copilot Studio UI で以下を手動実施します。
 
