@@ -131,19 +131,60 @@ WHERE schemaname LIKE 'ds_DecisionFlowAssistant%'
 
 **これでなりすましの経路は塞がったと言える。** 呼び出せるコンポーネントが無い以上、生成オーケストレーションはフローを直接呼べない。実行者はトピックの `SetVariable` 経由でしか入らない。
 
-**ただし「機能として動く」はまだ言えない。** 未確認なのは次の2つで、どちらもチャットを1往復しないと分からない。
+### 実機確認の結果（2026-08-09、下書きチャット）
 
-1. **トピックが起動するか**（ルーティング）。ツール登録を外したことで入口は `modelDescription` だけになった
-2. **`AdaptiveCardPrompt` → `Action.Submit` → 2 本目の `InvokeFlowAction` が成立するか**。`zdI.mcs.yml` は TaskDialog コンポーネントを参照しておらず（`data.action: "confirm_decision"` は出力バインドが受け取る payload であって呼び出し先の指定ではない）成立するはずだが、実測していない
+Draft の申請を対象にした。`Validate_submitted_application` が弾くので `ds_decision` は作られず通知メールも飛ばない。**それでもフローは実行されるので、トリガー入力は観測できる。**
 
-確認は**2つに分ける**。壊れ方が違うため、まとめて合否にしない。
+**確認2: 実行者の束縛は成立している。** `confirm_decision` の実行履歴（run `08584154018934607825762989810CU01`、`ChannelId:pva-studio`）のトリガー payload:
 
-| # | 見るもの | 何が分かるか | 落ちたときの意味 |
-| --- | --- | --- | --- |
-| 1 | 下書きチャットで判断確定を頼み、**カードが出る**／完了メッセージがトピックの固定文（`判断を確定しました。案件ステージと通知は Decision_OnCreated で反映されます。`）である | トピックに到達したか | **経路の問題**。ツール登録を外した結果、`modelDescription` だけが入口になった。下の懸念を参照 |
-| 2 | `confirm_decision` の実行履歴で、トリガー入力に `actorAadObjectId` が入っている | 実行者が束縛されているか | 上の `botcomponent` 確認でツール登録が無いことは分かっているので、ここが落ちるならトピック自身の束縛の問題 |
+```json
+{
+  "actorAadObjectId": "43691e79-13b4-4b4a-be2c-d5707a8d9cf7",
+  "actorUpn": "minoru@minoru365.com",
+  "applicationId": "a14587cd-5046-f111-bec6-7c1e525c11fc",
+  "cardInstanceId": "6a0933d6-1d5c-4035-94a5-1624ac5707e2",
+  "decisionOption": "承認"
+}
+```
 
-**テストに使える申請が無い。** 2026-08-09 時点で `ds_application` 8件は Decided 6件 / Draft 2件で、**Submitted が1件も無い**。`Validate_submitted_application` に弾かれるため、確認の前に申請を1件提出する必要がある。提出すると `Application_OnSubmitted` がメールを送る。
+`actorAadObjectId` は認証済みユーザーの Entra Object Id と一致する。`System.User.Id` からの束縛が働いている。
+
+**カード経路も成立している。** `AdaptiveCardPrompt` → `Action.Submit` → 2 本目の `InvokeFlowAction` → status 分岐 → 固定文（`対象案件が無効、または提出済みではありません。`＝`sendInvalidTarget`）まで通った。**ツール登録なしで動く。** 着手前の最大の未知が消えた。
+
+**確認1: ルーティングは言い方に依存する。** これは落ちた。
+
+| 入力 | 結果 |
+| --- | --- |
+| 「〇〇」の申請を判断したい | ❌ ナレッジ検索が先に走り、トピックに来ない |
+| 判断を確定 | ✅ トピック起動。`applicationId` は会話文脈から補完される |
+| 申請ID &lt;GUID&gt; を承認したい | ✅ トピック起動 |
+
+Instructions に `## 判断の確定` を足し、`最終判断は Code Apps の判断タブで確定してください` を削除した（2026-08-09、push 済み）。効果はあり、応答の文面は「判断確定まで支援できます」に変わった。**ただしナレッジ検索が先に走る経路は残っている。** 申請を特定する意図の発話は、トピックより先にナレッジ検索へ吸われることがある。
+
+次の手は `zdI` に Trigger phrases（`判断を確定` / `この申請を承認` / `この申請を却下` / `この申請を差し戻し`）を足すこと。`intent: {}` のままで `modelDescription` だけに頼っている状態。**未実施。**
+
+### 見つかった欠陥: `issue_decision_card` に検証が無い
+
+実機確認の副産物。`scripts/deploy_adaptive_card_decision_confirmation.py` の `build_issue_decision_card_clientdata` を読むと、アクションは次の5つだけで、**検証が1つも無い**。
+
+1. `Compose_cardInstanceId`
+2. `List_prior_issued_decisioncards`
+3. `Supersede_prior_issued_decisioncards`
+4. `Create_decisioncard`
+5. `Return_card_context`
+
+`ds_application` が Submitted かどうかも、実行者が判断者かどうかも見ていない。実測でも、**Draft の申請に対してカードが発行された**（`ds_decisioncard` a38ee74d、2026-08-09T01:00:41、Issued）。
+
+この文書と `DEPLOY_SETUP.md` は「`ds_application` が `Submitted` かつ実行者が割り当て判断者であることを確認し」と書いていた。**誤り。** 影響は2つ。
+
+- **6段ゲートの6段目は、それ自体はゲートではない。** 「発行済みカードの存在」は誰でも作れる。ツール登録を外す判断の根拠にした推論が、実装レベルで裏付けられた形になる
+- **他人の未使用カードを Superseded にできる。** 正規の判断者が持っているカードを無効化する嫌がらせが成立する。判断そのものは `confirm_decision` の6段で守られるので、なりすましではなく妨害
+
+**未対応。** `issue_decision_card` にも Submitted と判断者の検証を入れるかは別タスク。入れないなら、この2文書の記述を実装に合わせるだけでなく、6段ゲートの説明も書き直す必要がある。
+
+### 後片付け
+
+上のテストで `ds_decisioncard` a38ee74d が Issued のまま残っている（Draft 申請 a14587cd に紐づく）。次に同じ実行者がカードを発行すれば Superseded になるので害はないが、テストの痕跡である。
 
 **懸念: Instructions がトピックと逆を向いている。**
 
@@ -169,7 +210,8 @@ WHERE schemaname LIKE 'ds_DecisionFlowAssistant%'
 | 対象 | 自動テスト | 実機確認 |
 | --- | --- | --- |
 | 判断確定の6段ゲート | `tests/test_adaptive_card_decision_confirmation.py` | 判断者以外・未提出・理由なし・カード再利用の各拒否 |
-| 判断確定の実行者の出どころ | 同上（`zdI.mcs.yml` の束縛と、action YAML 2 本が存在しないこと） | **未実施。** 判断確定を 1 回通し、`confirm_decision` の実行履歴で `actorAadObjectId` を確認する |
+| 判断確定の実行者の出どころ | 同上（`zdI.mcs.yml` の束縛と、action YAML 2 本が存在しないこと） | **2026-08-09 実施済み。** `confirm_decision` のトリガー payload に `actorAadObjectId` が入っていることを確認 |
+| 判断確定トピックのルーティング | — | **不十分。** 「〇〇の申請を判断したい」ではナレッジ検索に吸われる。Trigger phrases 未設定 |
 | 会話投稿の関係者チェック | フロー定義のテストで assert | 関係者でないユーザーからの投稿が拒否される |
 | 実行者の出どころ | `tests/test_copilot_agent.py` | 投稿後にフロー実行履歴のトリガー payload を見て、`actorAadObjectId` が入っていること |
 | パネルを閉じたら反映 | — | エージェントが書き込んだ内容がパネルを閉じた後の画面に出る |
