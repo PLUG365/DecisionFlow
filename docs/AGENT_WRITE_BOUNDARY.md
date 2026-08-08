@@ -175,12 +175,68 @@ Instructions に `## 判断の確定` を足し、`最終判断は Code Apps の
 
 `ds_application` が Submitted かどうかも、実行者が判断者かどうかも見ていない。実測でも、**Draft の申請に対してカードが発行された**（`ds_decisioncard` a38ee74d、2026-08-09T01:00:41、Issued）。
 
-この文書と `DEPLOY_SETUP.md` は「`ds_application` が `Submitted` かつ実行者が割り当て判断者であることを確認し」と書いていた。**誤り。** 影響は2つ。
+この文書と `DEPLOY_SETUP.md` は「`ds_application` が `Submitted` かつ実行者が割り当て判断者であることを確認し」と書いていた。**誤り。**
 
-- **6段ゲートの6段目は、それ自体はゲートではない。** 「発行済みカードの存在」は誰でも作れる。ツール登録を外す判断の根拠にした推論が、実装レベルで裏付けられた形になる
-- **他人の未使用カードを Superseded にできる。** 正規の判断者が持っているカードを無効化する嫌がらせが成立する。判断そのものは `confirm_decision` の6段で守られるので、なりすましではなく妨害
+**影響の範囲（確定）**
 
-**未対応。** `issue_decision_card` にも Submitted と判断者の検証を入れるかは別タスク。入れないなら、この2文書の記述を実装に合わせるだけでなく、6段ゲートの説明も書き直す必要がある。
+- **6段ゲートの6段目は、それ自体はゲートではない。** 「発行済みカードの存在」は実行者自身がいつでも作れる。ツール登録を外す判断の根拠にした推論が、実装レベルで裏付けられた形になる
+- **なりすましは成立しない。** 判断の確定は `confirm_decision` の6段（実行者解決・Submitted・判断者一致）が守る。カードを持っていても、判断者でなければ確定できない
+- **他人のカードへの妨害も成立しない。** `_actor_card_filter` は `ds_actoraadobjectid` / `ds_actorupn` で絞るため、`Supersede_prior_issued_decisioncards` が触るのは**実行者自身のカードだけ**
+- 実害は「Submitted でない申請・判断者でない実行者にも `ds_decisioncard` 行が作られる」こと。ゴミ行と、文書が実装より強い保証を約束している状態
+
+## 設計: `issue_decision_card` に検証を入れる（2026-08-09 固定）
+
+認可に触る変更のため、実装前にここで範囲を固定する。**この表を変えずに実装を広げない。**
+
+### 許可する状態と操作 / 拒否する状態と操作
+
+| # | 状態 | カード発行 | 返す status |
+| --- | --- | --- | --- |
+| 1 | 実行者が systemuser として解決できない | 拒否 | `forbidden` |
+| 2 | 申請が取得できない | 拒否 | `invalid_target` |
+| 3 | 申請が `Submitted`（100000001）でない | 拒否 | `invalid_target` |
+| 4 | 実行者が当該申請の判断者でない | 拒否 | `forbidden` |
+| 5 | 1〜4 をすべて満たす | 許可（自分の未使用カードを Superseded にして新規発行） | `issued` |
+
+判定順は 1 → 2 → 3 → 4。`confirm_decision` と同じ順序・同じ式・同じ失敗メッセージを使う。**2本のフローで判定が食い違わないことを優先する。**
+
+### 評価時点
+
+- すべて `Create_decisioncard` の**前**。Dataverse の読み取りはコミット前の1回だけ
+- 発行後に申請の状態が変わっても再検証しない。**確定時に `confirm_decision` が同じ4条件を再評価する**のが本来の防御線であり、この変更はその手前に同じ判定を重ねるもの（多層防御）
+- トランザクションは無い。`Supersede` → `Create` の順で、`Create` が失敗すると自分の旧カードだけ Superseded になり手持ちゼロになる。**この性質は変更しない**（再発行すれば回復する。現状の挙動と同じ）
+
+### 守る不変条件
+
+1. Submitted でない申請にカードは発行されない
+2. 判断者以外にカードは発行されない
+3. 他人のカードは Superseded にされない（フィルタは実行者単位・**現状維持**）
+4. 拒否されたとき、`ds_decisioncard` に行が増えない
+5. `confirm_decision` の6段は変更しない。ここを弱めない
+6. 拒否された場合、**トピックは Adaptive Card を表示しない**
+
+### 6 が必要な理由
+
+現在トピックは `issue_decision_card` の結果を見ていない（`output.binding` は `applicationId` / `cardInstanceId` のみ）。検証を足しただけでは、拒否されても `cardInstanceId` が空のままカードが表示され、利用者は入力してから `confirm_decision` に弾かれる。**フロー側だけ直すと、体験は今より悪くなる。** トピックに `status` を渡して分岐させるところまでが1つの変更。
+
+### 担保
+
+| 条件 | 自動テスト | 人間が実機で確認 |
+| --- | --- | --- |
+| 1〜4 の検証が正しい順序で存在する | フロー定義を読んで assert | — |
+| 拒否時に行が増えない | `Create_decisioncard` の `runAfter` が最終検証の Succeeded であること | — |
+| トピックが status で分岐する | `zdI.mcs.yml` を読んで assert | — |
+| 実際に拒否される | — | **Draft の申請でカードが出ないこと**（今回出てしまった経路） |
+| 正常系が壊れていない | — | Submitted の申請で発行 → 確定が通ること |
+
+### 変更する範囲 / 変更しない範囲
+
+| 変更する | 変更しない |
+| --- | --- |
+| `scripts/deploy_adaptive_card_decision_confirmation.py` の `build_issue_decision_card_clientdata` | `confirm_decision` の6段 |
+| `copilot/DecisionFlowAssistant/topics/zdI.mcs.yml`（issue の status で分岐） | `ds_decisioncard` のスキーマ |
+| `tests/test_adaptive_card_decision_confirmation.py` | Code Apps 側の `createDecision` |
+| この文書と `DEPLOY_SETUP.md` の記述 | 他のフロー、セキュリティロール |
 
 ### 後片付け
 
