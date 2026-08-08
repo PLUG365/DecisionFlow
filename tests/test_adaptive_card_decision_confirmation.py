@@ -9,7 +9,8 @@ from scripts import setup_security_roles
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_PATH = ROOT / "tests" / "fixtures" / "adaptive_card_decision_confirmation.json"
-TOPIC_TEMPLATE_PATH = ROOT / "specs" / "001-confirm-adaptive-card" / "decision-confirmation.topic.template.yaml"
+COPILOT_DIR = ROOT / "copilot" / "DecisionFlowAssistant"
+DECISION_TOPIC_PATH = COPILOT_DIR / "topics" / "zdI.mcs.yml"
 
 
 def table_by_logical(logical_name: str) -> dict:
@@ -75,9 +76,16 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         self.assertEqual({choice["value"] for choice in choice_set["choices"]}, {"承認", "却下", "差し戻し"})
         self.assertNotIn("approvalDecisionOption", body_json)
 
-    def test_topic_template_guards_empty_adaptive_card_outputs_before_confirm_flow(self):
-        self.assertTrue(TOPIC_TEMPLATE_PATH.exists(), "topic template is missing")
-        topic_yaml = TOPIC_TEMPLATE_PATH.read_text(encoding="utf-8")
+    def test_decision_topic_guards_empty_adaptive_card_outputs_before_confirm_flow(self):
+        """検査対象は push される topics/zdI.mcs.yml。
+
+        以前は specs/ 配下のテンプレートを読んでいたが、正本が YAML へ移った時点で
+        テンプレートはデプロイされない写しになっていた。実際に両者は
+        `=Or(IsBlank(a), IsBlank(b))` と `=IsBlank(a) || IsBlank(b)` に分岐しており、
+        テストは緑のまま「もう使われていないファイル」を守っていた。
+        """
+        self.assertTrue(DECISION_TOPIC_PATH.exists(), "decision topic YAML is missing")
+        topic_yaml = DECISION_TOPIC_PATH.read_text(encoding="utf-8")
 
         self.assertNotIn("id: askApplicationId", topic_yaml)
         self.assertIn("id: validateApplicationContext", topic_yaml)
@@ -86,12 +94,51 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         self.assertIn("applicationId:", topic_yaml)
         self.assertIn('actionSubmitId: "confirmDecisionSubmitId"', topic_yaml)
         self.assertIn("id: validateAdaptiveCardOutput", topic_yaml)
-        self.assertIn("=Or(IsBlank(Topic.decisionOption), IsBlank(Topic.rationale))", topic_yaml)
+        self.assertIn("=IsBlank(Topic.decisionOption) || IsBlank(Topic.rationale)", topic_yaml)
         self.assertLess(
             topic_yaml.index("id: validateAdaptiveCardOutput"),
             topic_yaml.index("flowId: f8502159-9153-f111-a824-3833c5de99c8"),
         )
         self.assertIn("decisionOption: =Topic.decisionOption", topic_yaml)
+
+    def test_decision_topic_binds_the_actor_from_authenticated_user_variables(self):
+        # actorUpn / actorAadObjectId がモデルの出力から埋まると、他人の名前で
+        # 判断が確定される。Validate_actor_is_decider は渡された実行者を見るだけなので、
+        # 作文された実行者がそのまま判断者として通る。
+        topic_yaml = DECISION_TOPIC_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("variable: Topic.actorUpn", topic_yaml)
+        self.assertIn("value: =System.User.PrincipalName", topic_yaml)
+        self.assertIn("variable: Topic.actorAadObjectId", topic_yaml)
+        self.assertIn("value: =System.User.Id", topic_yaml)
+
+        inputs = topic_yaml.split("inputType:", 1)[1]
+        self.assertNotIn("actorUpn", inputs)
+        self.assertNotIn("actorAadObjectId", inputs)
+
+    def test_decision_flows_are_not_registered_as_agent_tools(self):
+        """ツール登録があると、生成オーケストレーションがトピックを迂回して直接呼ぶ。
+
+        2026-08-08 に post_application_message で実測済み。判断確定はさらに悪く、
+        issue_decision_card も登録されていると「作文した実行者でカードを発行し、
+        同じ実行者で確定する」で6段目（Validate_current_issued_card）も通る。
+        2本とも外して初めてトピックが唯一の入口になる。
+        """
+        for flow_name in ("issue_decision_card", "confirm_decision"):
+            action_yaml = COPILOT_DIR / "actions" / f"{flow_name}.mcs.yml"
+            self.assertFalse(
+                action_yaml.exists(),
+                f"{flow_name} をツール登録すると、判断確定トピックの実行者束縛が迂回される。",
+            )
+
+    def test_decision_topic_invokes_both_flows_by_flow_id(self):
+        # ツール登録を外しても InvokeFlowAction は flowId 直指定で動く。
+        topic_yaml = DECISION_TOPIC_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("flowId: c37ed747-9153-f111-a824-3833c5de99c8", topic_yaml)  # issue_decision_card
+        self.assertIn("flowId: f8502159-9153-f111-a824-3833c5de99c8", topic_yaml)  # confirm_decision
+        self.assertIn("actorAadObjectId: =Topic.actorAadObjectId", topic_yaml)
+        self.assertIn("actorUpn: =Topic.actorUpn", topic_yaml)
 
     def test_ds_decisioncard_table_schema_is_declared(self):
         table = table_by_logical("ds_decisioncard")

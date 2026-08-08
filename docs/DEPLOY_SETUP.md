@@ -392,33 +392,29 @@ py scripts/deploy_adaptive_card_decision_confirmation.py
 
 入出力契約は [specs/001-confirm-adaptive-card/contracts/adaptive-card-decision-confirmation.md](../specs/001-confirm-adaptive-card/contracts/adaptive-card-decision-confirmation.md) を参照してください。
 
-### 12-2. Copilot Studio エージェントに 2 つのフローを「ツール」として追加する
+### 12-2. この 2 本はツールとして登録しない
 
-`DecisionFlow Assistant` を開き、左メニュー **ツール** → **+ ツールを追加** → **Power Automate フローを追加** から以下 2 本を追加します。
+**`issue_decision_card` と `confirm_decision` を「ツール」に追加してはいけません。**
 
-- `issue_decision_card`
-- `confirm_decision`
+ツール登録すると、生成オーケストレーションが「判断確定」トピックを経由せずフローを直接呼べるようになります。その経路ではトリガー引数の実行者をモデルが埋めるため、**他人の名前で判断を確定できます**。2 本とも登録されていると、作文した実行者でカードを発行し同じ実行者で確定する連鎖が成立し、`Validate_actor_is_decider` も `Validate_current_issued_card` も通過します。
 
-ここで追加することで、後段のトピックからフローを呼び出せるようになります。
+トピックから呼ぶのにツール登録は不要です。`InvokeFlowAction` に `flowId` を直接書けば動きます（2026-08-08 に会話投稿フローで実測）。
 
-### 12-3. 「判断確定」トピックを新規作成して YAML を貼り付ける
+既にツール登録されている場合は、`copilot/DecisionFlowAssistant/actions/` の該当 YAML を削除して push すると、クラウド側の登録も消えます。詳細は [docs/AGENT_WRITE_BOUNDARY.md](AGENT_WRITE_BOUNDARY.md)。
 
-1. `DecisionFlow Assistant` の左メニュー **トピック** → **+ 新しいトピック** → **空のトピックから作成** を選択
-2. トピック名: `判断確定`
-3. トピック画面右上の `…` メニュー → **コードエディタを開く**
-4. [specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml](../specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml) の全文をコピーして、エディタの内容を**全置換**
-5. **保存** ← この時点では `flowId` がプレースホルダ (`00000000-...`) のままなので、2 つの「Power Automate フローを呼び出す」ノードでエラー表示が出ますが、想定通りです
+### 12-3. トピックを push する
 
-### 12-4. UI で 2 つのフロー接続を修正する
+「判断確定」トピックの正本は [copilot/DecisionFlowAssistant/topics/zdI.mcs.yml](../copilot/DecisionFlowAssistant/topics/zdI.mcs.yml) です。ポータルのコードエディタへ貼る手順は不要になりました。
 
-コードエディタを閉じてビジュアルエディタに戻ります。エラーになっている 2 つの **「Power Automate フローを呼び出す」** ノードを順番にクリックして、右側プロパティパネルから対応するフローを選択し直します。
+```powershell
+& "$env:USERPROFILE\.dotnet\tools\pac.exe" copilot pull --project-dir copilot/DecisionFlowAssistant
+git diff
+& "$env:USERPROFILE\.dotnet\tools\pac.exe" copilot push --project-dir copilot/DecisionFlowAssistant
+```
 
-- 1 つ目のノード（`issue_decision_card` 呼び出し用）→ プロパティパネルで **`issue_decision_card`** を選択
-- 2 つ目のノード（`confirm_decision` 呼び出し用）→ プロパティパネルで **`confirm_decision`** を選択
+`pull` を先に実行して差分を確認してください。push はローカルを正としてクラウドの下書きを上書きするため、ポータル側の変更があると消えます。
 
-選択すると Copilot Studio が内部的に `flowId` を実 GUID に置換し、エラーが消えます。入出力のバインドは YAML 上で既に正しい変数名に揃えてあるので、再マッピング不要のはずです（もし入力欄に「未設定」が出たら、Topic 変数を選択し直す）。
-
-最後にエージェント全体を **公開** します。
+`flowId` は YAML に実 GUID で入っているので、UI でフローを選び直す作業はありません。最後にエージェント全体を **公開** します。
 
 ### 12-5. 動作確認
 

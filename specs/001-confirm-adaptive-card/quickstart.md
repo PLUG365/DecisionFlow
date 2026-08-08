@@ -144,15 +144,13 @@ Copilot Studio UI でフローを新規作成しない。既存フローをツ�
 
 このフローでも `ds_application` は更新しない。`ds_decision` 作成後のステージ変更・通知・判断結果共有は、デプロイ済みの `Decision_OnCreated` が担当する。
 
-##### 2-3. Copilot Studio に 2 本をツールとして追加する
+##### 2-3. この 2 本はツールとして追加しない
 
-1. Copilot Studio の `DecisionFlow Assistant` に戻る
-1. `ツール` を開く
-1. `ツールの追加` から既存の Power Automate フローを選ぶ
-1. `issue_decision_card` と `confirm_decision` を追加する
-1. それぞれの入力説明を、上記の入力表に合わせて設定する
-1. Topic 内では、カード表示前に `issue_decision_card`、submit 後に `confirm_decision` を呼ぶ
-1. 保存後、エージェントを公開する
+**`issue_decision_card` と `confirm_decision` をエージェントの「ツール」に登録してはならない。**
+
+ツール登録すると、生成オーケストレーションが Topic を経由せずフローを直接呼べるようになる。その経路ではトリガー引数の `actorUpn` / `actorAadObjectId` をモデルが埋めるため、実行者を作文できる。2 本とも登録されていると「作文した実行者でカードを発行し、同じ実行者で確定する」が成立し、`Validate_actor_is_decider` も `Validate_current_issued_card` も通過してしまう。
+
+Topic からの呼び出しにツール登録は不要で、`InvokeFlowAction` に `flowId` を直接書けば動く。実測と根拠は [docs/AGENT_WRITE_BOUNDARY.md](../../docs/AGENT_WRITE_BOUNDARY.md)。
 
 #### 3. 専用 Topic を作成する
 
@@ -160,35 +158,17 @@ Copilot Studio UI でフローを新規作成しない。既存フローをツ�
 
 ここで作る Topic は、申請検索や AI 判断生成を担う汎用 Topic ではない。**カードを表示して submit を受け取り、作成済み agent flow 2 本を順番に呼ぶだけの薄い Topic** として作る。
 
-##### 3-1. Topic を YAML で作る
+##### 3-1. Topic は YAML を push する
 
-この Topic は YAML を正として作る。UI でノードを個別に積み上げると、Adaptive Card の submit 変数が record として扱われず、`Identifier not recognized` が出やすい。まずコードビューへ YAML を貼り、ツール呼び出しノードだけ Copilot Studio が生成した YAML に差し替える。
+正本は [copilot/DecisionFlowAssistant/topics/zdI.mcs.yml](../../copilot/DecisionFlowAssistant/topics/zdI.mcs.yml) で、Git 管理されている。ポータルのコードビューへ貼る手順は不要になった。
 
-テンプレート: [decision-confirmation.topic.template.yaml](decision-confirmation.topic.template.yaml)
+```powershell
+& "$env:USERPROFILE\.dotnet\tools\pac.exe" copilot push --project-dir copilot/DecisionFlowAssistant
+```
 
-YAML 内の `#` で始まる行はコメントなので、貼り付け時に削除しなくてよい。コメントを外して有効化する行もない。差し替えが必要なのは、以下の 3 ノードだけ。
+以前はここに `decision-confirmation.topic.template.yaml` というテンプレートを置き、コードビューへ貼ってツール呼び出しノードを UI で差し替える手順だった。正本が YAML へ移ったあともテンプレートが残っていたため、2 つの写しが別々に育っていた（空欄チェックの式が `=Or(IsBlank(a), IsBlank(b))` と `=IsBlank(a) || IsBlank(b)` に分岐していた）。テンプレートは削除済み。
 
-| 差し替え対象ノード ID         | 差し替える内容                                  |
-| ----------------------------- | ----------------------------------------------- |
-| `callIssueDecisionCard`       | `issue_decision_card` ツール呼び出しノード YAML |
-| `askDecisionWithAdaptiveCard` | `Ask with Adaptive Card` ノード YAML            |
-| `callConfirmDecision`         | `confirm_decision` ツール呼び出しノード YAML    |
-
-この 3 つはコメントを外すのではなく、該当する `- kind: ...` ノード全体を、Copilot Studio が生成した実ノード YAML で置き換える。
-
-手順:
-
-1. Copilot Studio で `DecisionFlow Assistant` を開く
-1. `ツール` で `issue_decision_card` と `confirm_decision` が追加済みであることを確認する
-1. 左メニューの `Topics` を開き、`+ Add a topic` を選ぶ
-1. `From blank` / `空白から作成` を選ぶ
-1. Topic 名を `Decision confirmation adaptive card` にする
-1. コードビューを開く
-1. [decision-confirmation.topic.template.yaml](decision-confirmation.topic.template.yaml) の内容を貼り付ける
-1. YAML 内の `callIssueDecisionCard` ノードを、Copilot Studio が生成した `issue_decision_card` ツール呼び出しノード YAML に差し替える
-1. YAML 内の `askDecisionWithAdaptiveCard` ノードを、`Ask with Adaptive Card` ノードが生成した YAML に差し替える
-1. YAML 内の `callConfirmDecision` ノードを、Copilot Studio が生成した `confirm_decision` ツール呼び出しノード YAML に差し替える
-1. 保存してデザイナーに戻り、赤い検証エラーがないことを確認する
+UI で編集した場合は、push の前に必ず `pac copilot pull` して差分を見る。push はローカルを正としてクラウドの下書きを上書きする。
 
 Trigger phrases を併用する場合は以下を追加する。
 
@@ -206,7 +186,7 @@ Trigger phrases:
 
 判断確定 Topic は、利用者に `ds_applicationid` を直接入力させない。生成オーケストレーションが会話中の Dataverse 申請情報、または Code Apps 申請詳細リンクから `applicationId` を埋めてから Topic を実行する。
 
-YAML テンプレートでは `applicationId` を Topic input として宣言し、`Topic.applicationId` を後続の `issue_decision_card` / `confirm_decision` に渡す。`Topic.applicationId` が空の場合はカード発行前に停止し、申請詳細画面または申請リンクから再実行するよう案内する。
+トピック YAML では `applicationId` を Topic input として宣言し、`Topic.applicationId` を後続の `issue_decision_card` / `confirm_decision` に渡す。`Topic.applicationId` が空の場合はカード発行前に停止し、申請詳細画面または申請リンクから再実行するよう案内する。
 
 Copilot Studio の Topic 詳細で `applicationId` input を確認し、生成オーケストレーションの入力設定は「Dynamically fill with the best option」にする。これにより、Dataverse 申請レコードや申請リンクが会話コンテキストにある場合は自動で値が入る。
 

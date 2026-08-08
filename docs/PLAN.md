@@ -126,7 +126,7 @@
 ### Phase 5 手動操作メモ
 
 - 手順書: [specs/001-confirm-adaptive-card/quickstart.md](../specs/001-confirm-adaptive-card/quickstart.md)
-- Copilot Studio UI で作成済みの `issue_decision_card` / `confirm_decision` Power Automate agent flow をツールとして追加し、専用 Topic は [specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml](../specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml) をコードビューに貼って作成する
+- `issue_decision_card` / `confirm_decision` は**ツールとして登録しない**（登録すると生成オーケストレーションが専用 Topic を迂回し、実行者をモデルが作文できる）。専用 Topic は [copilot/DecisionFlowAssistant/topics/zdI.mcs.yml](../copilot/DecisionFlowAssistant/topics/zdI.mcs.yml) が正本で、`pac copilot push` で反映する
 - Adaptive Card JSON は Topic 側で保持し、schema 1.5 + `Action.Submit` を使う
 - Teams 実機確認と T061 完了反映は完了済み
 

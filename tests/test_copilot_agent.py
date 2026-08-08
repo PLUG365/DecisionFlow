@@ -173,6 +173,9 @@ class CopilotAgentScriptTests(unittest.TestCase):
         self.assertIn("confirm_decision", joined)
         self.assertIn("pac copilot push", joined)
         self.assertIn("manual", joined.lower())
+        # 手順書がツール登録を指示していると、塞いだ穴が次のセットアップで開き直る。
+        self.assertIn("Do NOT register", joined)
+        self.assertIn("bypassing the Topic", joined)
 
 
 if __name__ == "__main__":

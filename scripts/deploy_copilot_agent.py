@@ -256,12 +256,13 @@ def decision_confirmation_topic_setup_steps() -> list[str]:
     return [
         "Keep the agent in Generative Orchestration mode; use a dedicated Adaptive Card Topic only as the card display and submit surface.",
         "Create or verify a dedicated Adaptive Card Topic for decision confirmation.",
-        "Call the issue_decision_card Power Automate tool flow before rendering the card to create ds_decisioncard and return cardInstanceId.",
+        "Call the issue_decision_card flow before rendering the card to create ds_decisioncard and return cardInstanceId.",
         "Render the Copilot Studio-owned Adaptive Card with schema 1.5 and Action.Submit only.",
         "Capture decisionOption, rationale, applicationId, cardInstanceId, and actor context from submit.",
-        "Call the confirm_decision Power Automate tool flow after submit; the flow must create ds_decision and never patch ds_application directly.",
+        "Call the confirm_decision flow after submit; the flow must create ds_decision and never patch ds_application directly.",
         "The Topic itself lives in copilot/DecisionFlowAssistant/topics/ as YAML; edit it there and run pac copilot push. Do not hand-edit botcomponents rows.",
-        "Registering a flow as an agent tool is still manual UI work; pushing the Topic does not create the tool entry.",
+        "Do NOT register issue_decision_card or confirm_decision as agent tools. InvokeFlowAction runs them from the Topic by flowId alone. A tool entry lets generative orchestration call the flow directly, bypassing the Topic, and the model then fills actorUpn / actorAadObjectId.",
+        "Publishing is the only manual UI step left; everything else is pushed from YAML.",
     ]
 
 

@@ -4,7 +4,7 @@ DecisionFlow Assistant が Dataverse へ書き込む範囲を固定する。**�
 
 - 対象: Copilot Studio エージェント `ds_DecisionFlowAssistant` と、そのツールとして登録された Power Automate agent flow
 - 適用: Teams 単独利用と Code Apps 右サイドパネルの**両方**（経路で防御を変えない）
-- 最終更新: 2026-08-07
+- 最終更新: 2026-08-08
 
 ## 前提: 実行者の身元はトリガー引数で渡る
 
@@ -96,13 +96,38 @@ agent flow は**接続参照の identity** で実行される。エンドユー�
 
 完了メッセージもトピックの固定文になった。実行者はモデルが触れない経路で決まっている。
 
-**判断確定（`zdI`）は同じ構造のまま残っている。** `confirm_decision` と `issue_decision_card` はツール登録されており、直接呼べる。こちらは Adaptive Card の発行と消費が絡むため、同じ手当てをするかは別途決める。
+### 判断確定（`zdI`）にも同じ手当てをした（2026-08-08・実機未確認）
+
+こちらは会話投稿より**悪い**。理由は、ツール登録されているのが 2 本あることにある。
+
+| 段 | 内容 | 直接呼びで通ってしまう理由 |
+| --- | --- | --- |
+| 4 | `Validate_actor_is_decider` | 実行者は**渡された引数**。判断者の identity を作文すれば一致する |
+| 6 | `Validate_current_issued_card` | `issue_decision_card` も直接呼べるので、**同じ作文した実行者でカードを発行**すれば満たせる |
+
+つまり「カードの発行と消費」は二重判断を防ぐが、**なりすましは防がない**。カードは攻撃者自身が発行できる。会話投稿の穴が「他人の名前でコメントされる」だったのに対し、こちらは**他人の名前で判断が確定する**。より深刻なので、同じ手当てを入れた。
+
+- `actions/confirm_decision.mcs.yml` と `actions/issue_decision_card.mcs.yml` を削除。**2 本とも外さないと意味がない**（片方だけ残すと連鎖の入口が残る）
+- `Get_ApplicationDetailUrl` は読み取り専用なのでツール登録のまま
+- トピック `zdI` は既に `System.User.PrincipalName` / `System.User.Id` から束縛しており、`inputType` は `applicationId` だけ。変更不要
+- `InvokeFlowAction` は `flowId` 直指定で動く（会話投稿で実測済み）
+- 手順書（`docs/DEPLOY_SETUP.md` 12-2〜12-3、`specs/001-confirm-adaptive-card/quickstart.md`）がツール登録を指示していたので、そこも書き換えた。**手順書を直さないと、次のセットアップで穴が開き直る**
+- `specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml` を削除した。正本が YAML へ移ったあとも残っていた写しで、実際に空欄チェックの式が本体と分岐していた（`=Or(IsBlank(a), IsBlank(b))` と `=IsBlank(a) || IsBlank(b)`）。6段ゲートのテストはこの写しを読んでおり、デプロイされないファイルを守ったまま緑だった。テストの参照先を `topics/zdI.mcs.yml` へ移した
+
+**未確認: 実機で 1 回も動かしていない。** 会話投稿と違い、`AdaptiveCardPrompt` → `Action.Submit` → 2 本目の `InvokeFlowAction` の経路がツール登録なしで成立するかは実測していない。`zdI.mcs.yml` は TaskDialog コンポーネントを参照しておらず（`data.action: "confirm_decision"` は出力バインドが受け取る payload であって呼び出し先の指定ではない）成立するはずだが、**YAML が push を通ることは成果物の確認にすぎない**。次の確認が済むまで、この節を「実測確認済み」に格上げしない。
+
+1. ポータルの下書きチャットで判断確定を 1 回通す
+2. `confirm_decision` の実行履歴で、トリガー入力に `actorAadObjectId` が入っていることを見る
+3. 完了メッセージがトピックの固定文（`判断を確定しました。案件ステージと通知は Decision_OnCreated で反映されます。`）であることを見る
+
+**Code Apps パネルは対象外。** パネルは react-markdown で描いており、Adaptive Card をレンダリングできるか未確認。パネル経由の判断確定については、この変更で何かが良くなったとも悪くなったとも言えない。確認するまで、上の主張はポータル / Teams に限定する。
 
 ## 検証
 
 | 対象 | 自動テスト | 実機確認 |
 | --- | --- | --- |
 | 判断確定の6段ゲート | `tests/test_adaptive_card_decision_confirmation.py` | 判断者以外・未提出・理由なし・カード再利用の各拒否 |
+| 判断確定の実行者の出どころ | 同上（`zdI.mcs.yml` の束縛と、action YAML 2 本が存在しないこと） | **未実施。** 判断確定を 1 回通し、`confirm_decision` の実行履歴で `actorAadObjectId` を確認する |
 | 会話投稿の関係者チェック | フロー定義のテストで assert | 関係者でないユーザーからの投稿が拒否される |
 | 実行者の出どころ | `tests/test_copilot_agent.py` | 投稿後にフロー実行履歴のトリガー payload を見て、`actorAadObjectId` が入っていること |
 | パネルを閉じたら反映 | — | エージェントが書き込んだ内容がパネルを閉じた後の画面に出る |
