@@ -223,8 +223,10 @@ def main() -> int:
     )
     print(f"Flow: {POST_MESSAGE_FLOW_NAME} ({workflow_id}) active={active}")
     print()
-    print("=== Copilot Studio 手動作業 ===")
-    print(f"- Copilot Studio UI で {POST_MESSAGE_FLOW_NAME} をツールとして追加してください。")
+    print("=== Copilot Studio 側の反映 ===")
+    print(f"- {POST_MESSAGE_FLOW_NAME} をツールとして追加しないでください。追加すると生成")
+    print("  オーケストレーションが専用トピックを迂回して直接呼び、実行者をモデルが埋めます。")
+    print("- 専用トピック（会話へ投稿）が flowId 直指定で呼びます。ツール登録は不要です。")
     print("- actorAadObjectId には System.User.Id、actorUpn には System.User.PrincipalName を渡すこと。")
     print("- 会話本文やモデルの推論から実行者を組み立ててはいけません（docs/AGENT_WRITE_BOUNDARY.md）。")
     return 0

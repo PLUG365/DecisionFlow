@@ -722,9 +722,14 @@ def main() -> int:
     print("\n=== Step 4: Power Automate ランタイム start ===")
     all_started = start_deployed_flows(environment_id, deployed)
 
-    print("\n=== Step 5: Copilot Studio 手動作業 ===")
-    print("- Copilot Studio UI で issue_decision_card と confirm_decision をツールとして追加してください。")
-    print("- 専用 Topic でカード表示前に issue_decision_card、submit 後に confirm_decision を呼びます。")
+    print("\n=== Step 5: Copilot Studio 側の反映 ===")
+    print("- この 2 本をツールとして追加しないでください。追加すると生成オーケストレーションが")
+    print("  専用トピックを迂回して直接呼び、実行者の識別子をモデルが埋めます。")
+    print("- 専用トピック（判断確定）が flowId 直指定で呼びます。ツール登録は不要です。")
+    print("- トピックは YAML が正本です。**このフローのデプロイ後に** push してください:")
+    print("    pac copilot push --project-dir copilot/DecisionFlowAssistant")
+    print("  逆順にすると issueStatus が常に空になり、判断者本人でもカードが出ません。")
+    print("- 詳細は docs/AGENT_WRITE_BOUNDARY.md。")
     if not all_active:
         print("\n  ⚠️ 一部フローの有効化に失敗しました。Power Automate UI で接続を修復してオンにしてください。")
     if not all_started:
