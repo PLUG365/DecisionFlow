@@ -1,3 +1,4 @@
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -9,81 +10,118 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import deploy_copilot_agent as agent  # noqa: E402
 
 
-class CopilotAgentDefinitionTests(unittest.TestCase):
-    def test_extract_bot_id_accepts_guid_or_copilot_url(self):
-        guid = "11111111-2222-3333-4444-555555555555"
-        self.assertEqual(agent.extract_bot_id(guid), guid)
-        self.assertEqual(agent.extract_bot_id(f"https://copilotstudio.microsoft.com/foo/bots/{guid}/overview"), guid)
-        self.assertIsNone(agent.extract_bot_id("not-a-bot-id"))
+class AgentYamlInstructionsTests(unittest.TestCase):
+    """Instructions の正本は copilot/DecisionFlowAssistant/agent.mcs.yml。
 
-    def test_gpt_yaml_uses_pva_double_newline_format_and_preserves_ai_settings(self):
-        yaml_text = agent.build_gpt_yaml("kind: Old\n\naISettings:\n  model:\n    modelNameHint: Sonnet46\n")
+    以前はここで scripts/deploy_copilot_agent.py の文字列定数を検査していたが、
+    デプロイされるのは YAML のほうなので、テストが「デプロイされないもの」を
+    守っている状態になっていた。実際に push される成果物を読む。
+    """
 
-        self.assertIn("kind: GptComponentMetadata\n\n", yaml_text)
-        self.assertIn("displayName: DecisionFlow Assistant\n\n", yaml_text)
-        self.assertIn("instructions: |-\n", yaml_text)
-        self.assertIn("conversationStarters:\n\n", yaml_text)
-        self.assertIn("aISettings:\n  model:\n    modelNameHint: Sonnet46", yaml_text)
-        self.assertIn("判断待ち一覧", yaml_text)
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.instructions = agent.read_agent_instructions()
 
-    def test_conversation_start_contains_greeting_and_quick_replies(self):
-        yaml_text = agent.build_conversation_start_yaml("id: sendMessage_existing")
+    def test_read_agent_instructions_extracts_the_literal_block(self):
+        extracted = agent.read_agent_instructions(
+            "kind: GptComponentMetadata\n"
+            "instructions: |-\n"
+            "  1行目\n"
+            "  \n"
+            "  2行目\n"
+            "\n"
+            "conversationStarters:\n"
+            "  - title: これは本文ではない\n"
+        )
 
-        self.assertIn("id: sendMessage_existing", yaml_text)
-        self.assertIn("DecisionFlow Assistant", yaml_text)
-        self.assertIn("判断待ちの申請を一覧で教えて", yaml_text)
-        self.assertIn("\n\n", yaml_text)
+        self.assertEqual(extracted, "1行目\n\n2行目")
 
-    def test_gpt_instructions_do_not_embed_environment_specific_app_url(self):
-        yaml_text = agent.build_gpt_yaml("")
+    def test_instructions_do_not_embed_environment_specific_app_url(self):
+        self.assertNotIn("apps.powerapps.com/play", self.instructions)
+        self.assertNotIn("?deepLink=%2Fapplications%2F", self.instructions)
 
-        self.assertNotIn("apps.powerapps.com/play", yaml_text)
-        self.assertNotIn("?deepLink=%2Fapplications%2F", yaml_text)
-
-    def test_gpt_instructions_have_no_curly_brace_placeholders(self):
+    def test_instructions_have_no_curly_brace_placeholders(self):
         """Copilot Studio は `{name}` を式ノードとして解釈し ContentValidationError になる。"""
-        instructions = agent.build_gpt_instructions()
+        placeholders = re.findall(r"\{[A-Za-z_][A-Za-z0-9_.]*\}", self.instructions)
 
-        import re
-        placeholders = re.findall(r"\{[A-Za-z_][A-Za-z0-9_.]*\}", instructions)
         self.assertEqual(
             placeholders,
             [],
             f"Curly-brace placeholders {placeholders} would be parsed as Power Fx expressions by Copilot Studio.",
         )
 
-    def test_gpt_instructions_use_fixed_decision_options(self):
-        instructions = agent.build_gpt_instructions()
+    def test_instructions_use_fixed_decision_options(self):
+        self.assertIn("承認」「却下」「差し戻し", self.instructions)
+        self.assertNotIn("条件付き承認", self.instructions)
+        self.assertNotIn("否認", self.instructions)
 
-        self.assertIn("承認」「却下」「差し戻し", instructions)
-        self.assertNotIn("条件付き承認", instructions)
-        self.assertNotIn("否認", instructions)
+    def test_instructions_delegate_application_detail_url_to_tool(self):
+        self.assertIn("Get_ApplicationDetailUrl", self.instructions)
+        self.assertIn("applicationId", self.instructions)
+        self.assertIn("applicationUrl", self.instructions)
 
-    def test_gpt_instructions_delegate_application_detail_url_to_tool(self):
-        instructions = agent.build_gpt_instructions()
-
-        self.assertIn("Get_ApplicationDetailUrl", instructions)
-        self.assertIn("applicationId", instructions)
-        self.assertIn("applicationUrl", instructions)
-        self.assertNotIn("apps.powerapps.com/play", instructions)
-
-    def test_gpt_instructions_forbid_fabricating_the_actor(self):
+    def test_instructions_forbid_fabricating_the_actor(self):
         # agent flow は接続参照の identity で動くため、実行者はトリガー引数が決める。
         # モデルが actorUpn を作文できると他人として書き込めてしまう。
-        instructions = agent.build_gpt_instructions()
+        self.assertIn("actorUpn", self.instructions)
+        self.assertIn("自分で組み立ててはならない", self.instructions)
+        self.assertIn("認証済みユーザー", self.instructions)
 
-        self.assertIn("actorUpn", instructions)
-        self.assertIn("自分で組み立ててはならない", instructions)
-        self.assertIn("認証済みユーザー", instructions)
-
-    def test_gpt_instructions_state_what_the_agent_cannot_do(self):
+    def test_instructions_state_what_the_agent_cannot_do(self):
         # docs/AGENT_WRITE_BOUNDARY.md の禁止対象を、エージェント自身にも伝える。
-        instructions = agent.build_gpt_instructions()
-
-        self.assertIn("できないこと", instructions)
+        self.assertIn("できないこと", self.instructions)
         for forbidden in ("関係者の追加", "マスタ", "セキュリティロール"):
-            self.assertIn(forbidden, instructions)
-        self.assertIn("できるふりをしない", instructions)
+            self.assertIn(forbidden, self.instructions)
+        self.assertIn("できるふりをしない", self.instructions)
+
+
+class AgentYamlTopicTests(unittest.TestCase):
+    """会話投稿トピックの実行者束縛が、push される YAML に入っていることを守る。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.topic = (
+            ROOT / "copilot" / "DecisionFlowAssistant" / "topics" / "postApplicationMessage.mcs.yml"
+        ).read_text(encoding="utf-8")
+
+    def test_actor_is_bound_from_authenticated_user_variables(self):
+        # ここがモデルの出力や会話本文から埋まると、他人として投稿できてしまう。
+        self.assertIn("variable: Topic.actorUpn", self.topic)
+        self.assertIn("value: =System.User.PrincipalName", self.topic)
+        self.assertIn("variable: Topic.actorAadObjectId", self.topic)
+        self.assertIn("value: =System.User.Id", self.topic)
+
+    def test_actor_is_not_declared_as_a_topic_input(self):
+        # inputType に actor を置くと、生成オーケストレーションが埋めてしまう。
+        inputs = self.topic.split("inputType:", 1)[1]
+        self.assertNotIn("actorUpn", inputs)
+        self.assertNotIn("actorAadObjectId", inputs)
+
+    def test_topic_invokes_the_post_application_message_flow(self):
+        self.assertIn("flowId: 3dfc08d1-7e92-f111-b8db-7c1e524a54ce", self.topic)
+        self.assertIn("body: =Topic.messageBody", self.topic)
+
+
+class CopilotAgentScriptTests(unittest.TestCase):
+    def test_extract_bot_id_accepts_guid_or_copilot_url(self):
+        guid = "11111111-2222-3333-4444-555555555555"
+        self.assertEqual(agent.extract_bot_id(guid), guid)
+        self.assertEqual(agent.extract_bot_id(f"https://copilotstudio.microsoft.com/foo/bots/{guid}/overview"), guid)
+        self.assertIsNone(agent.extract_bot_id("not-a-bot-id"))
+
+    def test_script_no_longer_deletes_topics_or_overwrites_yaml_owned_content(self):
+        """YAML 正本を壊す経路をスクリプトに残さない。
+
+        以前の delete_custom_topics はシステムトピック以外を全消しする実装で、
+        判断確定トピックを巻き込んで消していた。
+        """
+        for removed in (
+            "delete_custom_topics",
+            "set_gpt_instructions",
+            "set_conversation_start",
+            "enable_generative_orchestration",
+        ):
+            self.assertFalse(hasattr(agent, removed), f"{removed} は YAML 正本と競合するため削除済みのはず")
 
     def test_manual_followups_mention_application_link_flow_deployment(self):
         import io
@@ -95,16 +133,8 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         output = buffer.getvalue()
         self.assertIn("Get_ApplicationDetailUrl", output)
         self.assertIn("deploy_application_link_flow", output)
-
-    def test_deep_merge_preserves_existing_config(self):
-        merged = agent.deep_merge(
-            {"aISettings": {"model": {"modelNameHint": "Sonnet46"}}, "gPTSettings": {"defaultSchemaName": "abc"}},
-            {"aISettings": {"optInUseLatestModels": False}},
-        )
-
-        self.assertEqual(merged["aISettings"]["model"]["modelNameHint"], "Sonnet46")
-        self.assertFalse(merged["aISettings"]["optInUseLatestModels"])
-        self.assertEqual(merged["gPTSettings"]["defaultSchemaName"], "abc")
+        self.assertIn("post_application_message", output)
+        self.assertIn("deploy_agent_message_flow", output)
 
     def test_decision_confirmation_topic_setup_steps_are_documented(self):
         steps = agent.decision_confirmation_topic_setup_steps()
@@ -116,7 +146,7 @@ class CopilotAgentDefinitionTests(unittest.TestCase):
         self.assertIn("Action.Submit", joined)
         self.assertIn("issue_decision_card", joined)
         self.assertIn("confirm_decision", joined)
-        self.assertIn("botcomponents YAML", joined)
+        self.assertIn("pac copilot push", joined)
         self.assertIn("manual", joined.lower())
 
 

@@ -1,3 +1,22 @@
+"""DecisionFlow Assistant のうち、YAML 正本が持たない設定だけを適用する。
+
+エージェント定義（Instructions・会話の開始・トピック・アクション・チャネル・
+AI設定）の正本は copilot/DecisionFlowAssistant/ 配下の YAML であり、
+反映は `pac copilot push`、取り込みは `pac copilot pull` で行う。
+
+このスクリプトが残っているのは、YAML に含まれない次の2つのためだけ:
+
+- Teams アプリマニフェストの説明文・アクセントカラー・開発者名
+  （bots.applicationmanifestinformation）
+- アイコンの生成と適用（icon.png を YAML 側に持たせる前の経路）
+
+**トピックを削除する処理はここから取り除いた。** 以前の delete_custom_topics は
+「システムトピック以外を全消し」する実装で、UI や YAML で作った 判断確定 /
+post_application_message のトピックを巻き込んで消していた。同じ理由で
+Instructions と会話の開始を上書きする処理も削除した。上書きしたい場合は
+YAML を編集して push すること。
+"""
+
 from __future__ import annotations
 
 import base64
@@ -14,7 +33,9 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from auth_helper import DATAVERSE_URL, api_delete, api_get, api_patch, api_post  # noqa: E402
+from auth_helper import DATAVERSE_URL, api_get, api_patch, api_post  # noqa: E402
+
+AGENT_YAML_PATH = ROOT / "copilot" / "DecisionFlowAssistant" / "agent.mcs.yml"
 
 load_dotenv()
 
@@ -25,7 +46,6 @@ PREFIX = os.environ.get("PUBLISHER_PREFIX", "ds")
 BOT_NAME = "DecisionFlow Assistant"
 BOT_SCHEMA_NAME = f"{PREFIX}_DecisionFlowAssistant"
 
-BOT_DESCRIPTION = "申請概要の確認、関連資料リンク、過去類似案件、判断待ち一覧、判断コメントドラフトを支援するAIアシスタントです。"
 TEAMS_SHORT_DESCRIPTION = "DecisionFlowの判断支援AIアシスタント"
 TEAMS_LONG_DESCRIPTION = (
     "DecisionFlow Assistant は、判断者が申請内容を素早く把握し、的確な判断を行うためのAIアシスタントです。"
@@ -35,102 +55,27 @@ TEAMS_LONG_DESCRIPTION = (
 TEAMS_ACCENT_COLOR = "#1e3a5f"
 TEAMS_DEVELOPER_NAME = "DecisionFlow"
 
-GPT_INSTRUCTIONS = f"""\
-あなたは DecisionFlow Assistant です。DecisionFlow の判断者が、申請内容を素早く把握し、判断コメントを作成できるよう支援します。
 
-## 基本方針
-- 日本語で、簡潔かつ具体的に回答する。
-- 申請タイトル、申請者、判断者、期限、現在ステージなど、確認できた固有情報を明示する。
-- 情報が見つからない場合は、見つからないと正直に伝える。
-- 申請情報が足りない場合は、Code Apps の申請リンクまたは申請タイトルの貼り付けを促す。
-- 自分でできる操作と、Code Apps へ案内する操作を区別する。下の「会話への投稿」と「できないこと」に従う。
+def read_agent_instructions(yaml_text: str | None = None) -> str:
+    """agent.mcs.yml の instructions ブロックを取り出す。
 
-## 参照する Dataverse テーブル
-- {PREFIX}_application: 申請。ステージ、本文、希望期限、AI申請概要、AI会話概要、AI推奨判断、AI判断コメント、AI判断根拠を参照する。
-- {PREFIX}_message: 申請ごとの会話履歴。論点、未解決事項、補足説明を要約する。
-- {PREFIX}_applicationresource: 申請に紐づく関連資料リンクを提示する。
-- {PREFIX}_decision: 過去の判断結果と判断理由を参照する。
-- {PREFIX}_decisionoption: 判断選択肢名を確認する。
-- systemuser: 申請者、判断者、関係者の名前確認に使う。
-
-## 判断待ち一覧
-- ユーザーが「判断待ち」「私が判断すべき申請」「提出済みの申請一覧」と依頼したら、{PREFIX}_application のステージが提出済みの申請を検索する。
-- 表示する申請は、利用者のセキュリティロールと Dataverse の行アクセスで参照できる範囲に限定する。
-- 一覧には、申請タイトル、希望期限、提出日時、申請者、AI推奨判断があれば含める。
-- 件数が多い場合は重要そうなものまたは期限が近いものを優先して表示する。
-
-## 申請概要と関連資料
-- 申請タイトルまたは申請リンクが提示されたら、該当申請を検索し、背景、目的、判断ポイントを要約する。
-- {PREFIX}_applicationresource に関連資料がある場合は、リンク名とURLを一覧で提示する。
-- スレッドがある場合は、主要論点、未解決事項、確認済み事項に分けて要約する。
-
-## 類似案件検索
-- 類似案件を聞かれたら、カテゴリ、申請タイトル、申請本文、AI申請概要、AI判断コメントを手がかりに過去の判断済み申請を探す。
-- 類似案件ごとに、申請タイトル、判断結果、判断理由、今回の申請との共通点と相違点を簡潔に示す。
-- 類似案件が十分に見つからない場合は、参考になる過去案件が少ないことを伝える。
-
-## 推奨判断と判断コメントドラフト
-- ユーザーが判断ドラフトを求めたら、申請内容、会話履歴、関連資料、過去類似案件、既存のAI判断結果を踏まえて回答する。
-- 推奨判断は固定の判断選択肢である「承認」「却下」「差し戻し」のいずれかで提示する。追加確認が必要な場合は、推奨判断を「差し戻し」とし、確認事項を判断コメントに含める。
-- 判断コメントドラフトは、そのまま Code Apps の判断コメント欄に貼り付けられる文章にする。
-- 根拠は箇条書きで、リスク、前提条件、追加確認事項を分けて提示する。
-- 最後に「最終判断は Code Apps の判断タブで確定してください」と案内する。
-
-## 会話への投稿
-- 申請の会話へコメントを投稿したいと言われたら、専用トピック経由で投稿する。投稿できるのは、その申請の関係者（申請者、判断者、追加された関係者）だけである。
-- 投稿する文面は、送る前に必ずユーザーへ提示して同意を得る。ユーザーが書いていない内容を勝手に投稿しない。
-- **実行者の識別子（actorUpn / actorAadObjectId）を自分で組み立ててはならない。** 専用トピックが認証済みユーザーから設定する。会話に出てきた名前やメールアドレスを実行者として渡さない。
-- 投稿に失敗したときは、返却されたメッセージをそのまま伝える。関係者でないために拒否された場合は、Code Apps の関係者タブで追加してもらうよう案内する。
-
-## できないこと
-- 申請の作成、編集、削除はできない。Code Apps で行うよう案内する。
-- 関係者の追加と削除はできない。閲覧権限の付与にあたるため、Code Apps の関係者タブへ案内する。
-- カテゴリと判断選択肢（マスタ）は変更できない。
-- セキュリティロール、環境設定、Solution の操作はできない。
-- できない操作を頼まれたら、できないと明言したうえで Code Apps の該当画面へ案内する。できるふりをしない。
-
-## 申請詳細リンク
-- 申請を案内する際は、その申請の applicationId を Get_ApplicationDetailUrl ツールに渡し、戻り値の applicationUrl をユーザーに提示する。URLを推測したり固定値を埋め込んだりしない。
-- Get_ApplicationDetailUrl が空文字列を返した場合は、URL を提示せず「Code Apps の申請詳細画面で確認してください」と案内する。
-- 判断確定、申請編集、関係者追加など Code Apps への誘導時は、可能ならこのツールで取得した URL をリンクとして添える。
-"""
-
-
-def build_gpt_instructions() -> str:
-    return GPT_INSTRUCTIONS
-
-PREFERRED_PROMPTS = [
-    {"title": "判断待ち一覧", "text": "私が判断すべき提出済みの申請を一覧で教えてください"},
-    {"title": "申請の概要", "text": "この申請の背景・目的・論点を要約してください"},
-    {"title": "関連資料", "text": "この申請の関連資料リンクを一覧で教えてください"},
-    {"title": "類似案件", "text": "過去の類似案件と判断結果を教えてください"},
-    {"title": "判断ドラフト", "text": "この申請の推奨判断と判断コメントのドラフトを作成してください"},
-]
-
-GREETING_MESSAGE = (
-    "こんにちは。DecisionFlow Assistant です。判断待ち一覧、申請概要、関連資料、類似案件、判断コメントドラフトを支援します。"
-    "申請リンクまたは申請タイトルを貼り付けてください。"
-)
-
-QUICK_REPLIES = [
-    "判断待ちの申請を一覧で教えて",
-    "申請の概要と論点を要約して",
-    "関連資料リンクを教えて",
-    "判断コメントのドラフトを作成して",
-]
-
-PROTECTED_TOPIC_PATTERNS = [
-    "ConversationStart",
-    "Escalate",
-    "Fallback",
-    "OnError",
-    "EndofConversation",
-    "MultipleTopicsMatched",
-    "Search",
-    "Signin",
-    "ResetConversation",
-    "StartOver",
-]
+    Instructions の正本は YAML なので、テストも運用もここを読む。
+    PyYAML に依存させたくないので、リテラルブロック（`instructions: |-`）を
+    インデント2で切り出すだけの最小実装にしている。
+    """
+    if yaml_text is None:
+        yaml_text = AGENT_YAML_PATH.read_text(encoding="utf-8")
+    lines = yaml_text.splitlines()
+    for index, line in enumerate(lines):
+        if line.rstrip() != "instructions: |-":
+            continue
+        body: list[str] = []
+        for candidate in lines[index + 1:]:
+            if candidate.strip() and not candidate.startswith("  "):
+                break
+            body.append(candidate[2:] if candidate.startswith("  ") else candidate)
+        return "\n".join(body).strip("\n")
+    raise RuntimeError(f"{AGENT_YAML_PATH} に instructions ブロックが見つかりません。")
 
 
 def extract_bot_id(value: str) -> str | None:
@@ -141,68 +86,6 @@ def extract_bot_id(value: str) -> str | None:
     if re.fullmatch(r"[0-9a-fA-F-]{36}", value):
         return value
     return None
-
-
-def deep_merge(base: dict, override: dict) -> dict:
-    result = dict(base)
-    for key, value in override.items():
-        if isinstance(result.get(key), dict) and isinstance(value, dict):
-            result[key] = deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
-def build_gpt_yaml(existing_data: str = "") -> str:
-    inst_block = "\n".join(f"  {line}" for line in build_gpt_instructions().splitlines())
-    starter_lines: list[str] = []
-    for prompt in PREFERRED_PROMPTS:
-        starter_lines.append(f"  - title: {prompt['title']}")
-        starter_lines.append(f"    text: {prompt['text']}")
-    yaml_text = (
-        "kind: GptComponentMetadata\n\n"
-        f"displayName: {BOT_NAME}\n\n"
-        f"instructions: |-\n{inst_block}\n\n"
-        f"conversationStarters:\n\n{'\n\n'.join(starter_lines)}\n\n"
-    )
-    ai_settings = extract_ai_settings_section(existing_data)
-    if ai_settings:
-        yaml_text = yaml_text.rstrip("\n") + "\n\n" + ai_settings + "\n\n"
-    return yaml_text
-
-
-def extract_ai_settings_section(existing_data: str) -> str:
-    index = existing_data.find("\naISettings:")
-    if index < 0:
-        index = existing_data.find("aISettings:")
-    if index < 0:
-        return ""
-    return existing_data[index:].strip()
-
-
-def build_conversation_start_yaml(existing_data: str = "") -> str:
-    id_match = re.search(r"id:\s+(sendMessage_\w+)", existing_data)
-    send_id = id_match.group(1) if id_match else "sendMessage_decisionflow01"
-    greeting_oneline = GREETING_MESSAGE.replace("\n", " ")
-    lines = [
-        "kind: AdaptiveDialog",
-        "beginDialog:",
-        "  kind: OnConversationStart",
-        "  id: main",
-        "  actions:",
-        "    - kind: SendActivity",
-        f"      id: {send_id}",
-        "      activity:",
-        "        text:",
-        f"          - {greeting_oneline}",
-        "        speak:",
-        f"          - \"{greeting_oneline}\"",
-        "        quickReplies:",
-    ]
-    for reply in QUICK_REPLIES:
-        lines.append("          - kind: MessageBack")
-        lines.append(f"            text: {reply}")
-    return "\n\n".join(lines) + "\n\n"
 
 
 def find_bot() -> str:
@@ -309,89 +192,6 @@ def set_icon(bot_id: str) -> None:
     print("アイコン設定完了")
 
 
-def delete_custom_topics(bot_id: str) -> None:
-    print("\n=== カスタムトピック削除 ===")
-    result = api_get(
-        "botcomponents?"
-        f"$filter=_parentbotid_value eq '{bot_id}' and (componenttype eq 1 or componenttype eq 9)"
-        "&$select=botcomponentid,name,schemaname,componenttype"
-    )
-    deleted = 0
-    for topic in result.get("value", []):
-        schema = topic.get("schemaname", "")
-        if any(pattern in schema for pattern in PROTECTED_TOPIC_PATTERNS) or ".action." in schema:
-            continue
-        api_delete(f"botcomponents({topic['botcomponentid']})")
-        deleted += 1
-    print(f"削除: {deleted} 件")
-
-
-def enable_generative_orchestration(bot_id: str) -> dict:
-    print("\n=== 生成オーケストレーション有効化 ===")
-    bot = api_get(f"bots({bot_id})?$select=configuration")
-    config = json.loads(bot.get("configuration", "{}") or "{}")
-    overrides = {
-        "$kind": "BotConfiguration",
-        "settings": {"GenerativeActionsEnabled": True},
-        "aISettings": {
-            "$kind": "AISettings",
-            "useModelKnowledge": True,
-            "isFileAnalysisEnabled": True,
-            "isSemanticSearchEnabled": True,
-            "optInUseLatestModels": False,
-        },
-        "recognizer": {"$kind": "GenerativeAIRecognizer"},
-    }
-    merged = deep_merge(config, overrides)
-    api_patch(f"bots({bot_id})", {"configuration": json.dumps(merged)})
-    print("生成オーケストレーション有効化完了")
-    return config
-
-
-def set_gpt_instructions(bot_id: str, saved_config: dict) -> str | None:
-    print("\n=== Instructions 設定 ===")
-    default_schema = saved_config.get("gPTSettings", {}).get("defaultSchemaName", "")
-    result = api_get(
-        "botcomponents?"
-        f"$filter=_parentbotid_value eq '{bot_id}' and componenttype eq 15"
-        "&$select=botcomponentid,name,schemaname,data"
-    )
-    components = result.get("value", [])
-    ui_component = None
-    for component in components:
-        if default_schema and component.get("schemaname") == default_schema:
-            ui_component = component
-            break
-    if ui_component is None and components:
-        ui_component = components[0]
-    for component in components:
-        if ui_component and component["botcomponentid"] == ui_component["botcomponentid"]:
-            continue
-        api_delete(f"botcomponents({component['botcomponentid']})")
-    if not ui_component:
-        raise RuntimeError("GPT コンポーネントが見つかりません。Copilot Studio UI で Bot が完全にロードされているか確認してください。")
-    component_id = ui_component["botcomponentid"]
-    api_patch(f"botcomponents({component_id})", {"data": build_gpt_yaml(ui_component.get("data", ""))})
-    print("Instructions 設定完了")
-    return component_id
-
-
-def set_conversation_start(bot_id: str) -> None:
-    print("\n=== 会話の開始設定 ===")
-    result = api_get(
-        "botcomponents?"
-        f"$filter=_parentbotid_value eq '{bot_id}' and componenttype eq 9 and contains(schemaname,'ConversationStart')"
-        "&$select=botcomponentid,schemaname,data"
-    )
-    topics = result.get("value", [])
-    if not topics:
-        print("ConversationStart が見つかりません。UI で確認してください。")
-        return
-    topic = topics[0]
-    api_patch(f"botcomponents({topic['botcomponentid']})", {"data": build_conversation_start_yaml(topic.get("data", ""))})
-    print("会話の開始設定完了")
-
-
 def publish_bot(bot_id: str) -> None:
     print("\n=== 公開 ===")
     try:
@@ -399,11 +199,6 @@ def publish_bot(bot_id: str) -> None:
         print("公開完了")
     except Exception as exc:
         print(f"公開に失敗しました。Copilot Studio UI で手動公開してください: {exc}")
-
-
-def set_description(component_id: str | None) -> None:
-    if component_id:
-        api_patch(f"botcomponents({component_id})", {"description": BOT_DESCRIPTION})
 
 
 def set_channel_manifest(bot_id: str) -> None:
@@ -449,7 +244,10 @@ def print_manual_followups() -> None:
     print("5. 申請詳細リンク用に Get_ApplicationDetailUrl ツールフローをデプロイし、Copilot Studio UI でエージェントツールとして登録してください。")
     print("   - python -m scripts.deploy_application_link_flow")
     print("   - Copilot Studio UI: Agents > DecisionFlow Assistant > Tools > Add a tool > 既存フローから Get_ApplicationDetailUrl を選択")
-    print("6. 判断確定用の専用 Adaptive Card Topic と Power Automate ツールを確認してください。")
+    print("6. 会話投稿用に post_application_message ツールフローをデプロイし、UI でツール登録してください。")
+    print("   - python -m scripts.deploy_agent_message_flow")
+    print("   - Copilot Studio UI: Agents > DecisionFlow Assistant > Tools > Add a tool > 既存フローから post_application_message を選択")
+    print("7. 判断確定用の専用 Adaptive Card Topic と Power Automate ツールを確認してください。")
     for step in decision_confirmation_topic_setup_steps():
         print(f"   - {step}")
 
@@ -462,7 +260,8 @@ def decision_confirmation_topic_setup_steps() -> list[str]:
         "Render the Copilot Studio-owned Adaptive Card with schema 1.5 and Action.Submit only.",
         "Capture decisionOption, rationale, applicationId, cardInstanceId, and actor context from submit.",
         "Call the confirm_decision Power Automate tool flow after submit; the flow must create ds_decision and never patch ds_application directly.",
-        "If botcomponents YAML deployment is not safe in this environment, use manual Topic and tool setup and record the result in docs/PLAN.md.",
+        "The Topic itself lives in copilot/DecisionFlowAssistant/topics/ as YAML; edit it there and run pac copilot push. Do not hand-edit botcomponents rows.",
+        "Registering a flow as an agent tool is still manual UI work; pushing the Topic does not create the tool entry.",
     ]
 
 
@@ -474,15 +273,18 @@ def main() -> None:
     print(f"Bot: {BOT_NAME}")
     print(f"Solution: {SOLUTION_NAME}")
     print("=" * 72)
+    if not AGENT_YAML_PATH.exists():
+        raise RuntimeError(
+            f"{AGENT_YAML_PATH} が見つかりません。"
+            "エージェント定義の正本は YAML です。pac copilot clone で取得してください。"
+        )
+    print("Instructions・トピック・チャネル・AI設定は YAML 正本が持ちます。")
+    print("  適用: pac copilot push --project-dir copilot/DecisionFlowAssistant")
+    print("  取込: pac copilot pull --project-dir copilot/DecisionFlowAssistant")
+    print("このスクリプトが適用するのは、アイコンと Teams マニフェストだけです。")
     bot_id = find_bot()
     wait_for_provisioning(bot_id)
     set_icon(bot_id)
-    delete_custom_topics(bot_id)
-    saved_config = enable_generative_orchestration(bot_id)
-    component_id = set_gpt_instructions(bot_id, saved_config)
-    set_conversation_start(bot_id)
-    publish_bot(bot_id)
-    set_description(component_id)
     set_channel_manifest(bot_id)
     publish_bot(bot_id)
     print_manual_followups()
