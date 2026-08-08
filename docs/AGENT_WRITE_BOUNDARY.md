@@ -76,11 +76,25 @@ agent flow は**接続参照の identity** で実行される。エンドユー�
 
 つまり `actorUpn` はモデルが埋めていた。値がたまたま正しかっただけで、`System.User.PrincipalName` からの束縛は一度も働いていない。Instructions の禁止文も、トピックの `modelDescription` も、迂回を止めなかった。
 
-**対処（2026-08-08）: `post_application_message` のツール登録を外し、トピックを唯一の入口にした。**
+**対処（2026-08-08）: `post_application_message` のツール登録を外し、トピックを唯一の入口にした。実測で塞がったことを確認済み。**
 
 - `actions/post_application_message.mcs.yml` を削除して `pac copilot push`。ツール登録（`botcomponents` の `.action.` 行）はクラウドからも消える
+- **`InvokeFlowAction` はツール登録が無くても `flowId` 直指定で動く**（着手前の最大の未知だった）
 - ツール登録が消えると Instructions 経由の「投稿前の同意取得」も効かなくなるため、トピック側に `Question`（`BooleanPrebuiltEntity`）で確認ステップを実装した
 - `tests/test_copilot_agent.py` が、この action YAML が**存在しないこと**と確認ステップの存在を固定する。ポータルでツール登録し直して `pull` すると、テストが落ちて気づける
+
+修正後のトリガー payload（`ds_message` 8件目、フロー実行 Succeeded）:
+
+```json
+{
+  "actorAadObjectId": "43691e79-...",   ← 修正前は欠落していた
+  "actorUpn": "minoru@minoru365.com",
+  "applicationId": "05badc87-...",
+  "body": "4回目の確認です"
+}
+```
+
+完了メッセージもトピックの固定文になった。実行者はモデルが触れない経路で決まっている。
 
 **判断確定（`zdI`）は同じ構造のまま残っている。** `confirm_decision` と `issue_decision_card` はツール登録されており、直接呼べる。こちらは Adaptive Card の発行と消費が絡むため、同じ手当てをするかは別途決める。
 
@@ -90,7 +104,7 @@ agent flow は**接続参照の identity** で実行される。エンドユー�
 | --- | --- | --- |
 | 判断確定の6段ゲート | `tests/test_adaptive_card_decision_confirmation.py` | 判断者以外・未提出・理由なし・カード再利用の各拒否 |
 | 会話投稿の関係者チェック | フロー定義のテストで assert | 関係者でないユーザーからの投稿が拒否される |
-| 実行者の出どころ | `tests/test_copilot_agent.py` | Copilot Studio UI の下書きチャットで、投稿が実行者名義になること |
+| 実行者の出どころ | `tests/test_copilot_agent.py` | 投稿後にフロー実行履歴のトリガー payload を見て、`actorAadObjectId` が入っていること |
 | パネルを閉じたら反映 | — | エージェントが書き込んだ内容がパネルを閉じた後の画面に出る |
 
 **実行者の出どころは、トピック YAML の2点をテストで固定している。**

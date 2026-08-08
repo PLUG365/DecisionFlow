@@ -37,7 +37,7 @@ beginDialog:
       id: sendPostPreview
       activity: |-
         次の内容で申請の会話へ投稿します。
-        <br /><br />
+
         {Topic.messageBody}
 
     - kind: Question
@@ -104,7 +104,7 @@ beginDialog:
           id: sendPostFailed
           activity: |-
             会話に投稿できませんでした。
-            <br /><br />
+
             {Coalesce(Topic.postMessage, "詳細を取得できませんでした。")}
 
     - kind: EndConversation

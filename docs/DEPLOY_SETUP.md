@@ -271,6 +271,28 @@ Copilot Studio 側の定義は `pac copilot clone` で取り込んだ YAML が�
 `inputType.properties` の宣言を落とすと、生成オーケストレーションが Topic 変数を
 埋められず、条件分岐が常に「情報が取れなかった」側に落ちます。
 
+### トピック YAML の書き方（2026-08-08 に実機で確定）
+
+| やりたいこと | 書き方 |
+| --- | --- |
+| メッセージに変数を埋める | `activity: "投稿します: {Topic.messageBody}"` |
+| 式を使う | `{Coalesce(Topic.message, "既定文")}` のように **`{}` の中**に書く |
+| 段落を分ける | Markdown の**空行**（アプリのパネル向け） |
+| フローを呼ぶ | `InvokeFlowAction` に `flowId` を直接書く。**ツール登録は不要** |
+
+やってはいけないこと:
+
+- **`activity: ="..." & Topic.x` と書かない。** `=` プレフィックスのスカラー式は
+  評価されず、そのまま文字列として画面に出る。`condition:` は `=` で正しいので紛らわしい
+- **`prompt:` に式を書かない。** `Question` の `prompt` は静的テキストのみ。
+  動的な提示は直前の `SendActivity` に分ける
+- **`<br />` を使わない。** Teams / Web チャット向けの書き方で、アプリのパネルは
+  react-markdown が生 HTML を通さないため、タグがそのまま文字として出る
+
+**書き込み系のフローをツール登録しない。** ツール登録すると、生成
+オーケストレーションが専用トピックを迂回して直接呼び、実行者の識別子を
+モデルが埋める。詳細と実測結果は `docs/AGENT_WRITE_BOUNDARY.md`。
+
 次に Copilot Studio UI で以下を手動実施します。
 
 1. 認証方式を Microsoft Entra ID ユーザー認証へ変更する
