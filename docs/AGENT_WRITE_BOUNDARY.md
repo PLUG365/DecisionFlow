@@ -114,6 +114,8 @@ agent flow は**接続参照の identity** で実行される。エンドユー�
 - 手順書（`docs/DEPLOY_SETUP.md` 12-2〜12-3、`specs/001-confirm-adaptive-card/quickstart.md`）がツール登録を指示していたので、そこも書き換えた。**手順書を直さないと、次のセットアップで穴が開き直る**
 - `specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml` を削除した。正本が YAML へ移ったあとも残っていた写しで、実際に空欄チェックの式が本体と分岐していた（`=Or(IsBlank(a), IsBlank(b))` と `=IsBlank(a) || IsBlank(b)`）。6段ゲートのテストはこの写しを読んでおり、デプロイされないファイルを守ったまま緑だった。テストの参照先を `topics/zdI.mcs.yml` へ移した
 
+**クラウドへの反映は確認済み（2026-08-08）。** `push`（6 changes）のあと `pull` を戻したら 0 changes で、`actions/` に残っているのは読み取り専用の `Get_ApplicationDetailUrl` だけだった。クラウド側にツール登録が残っていれば、pull が 2 本を書き戻す。**ただしこれは成果物の確認**であって、挙動の確認ではない。
+
 **未確認: 実機で 1 回も動かしていない。** 会話投稿と違い、`AdaptiveCardPrompt` → `Action.Submit` → 2 本目の `InvokeFlowAction` の経路がツール登録なしで成立するかは実測していない。`zdI.mcs.yml` は TaskDialog コンポーネントを参照しておらず（`data.action: "confirm_decision"` は出力バインドが受け取る payload であって呼び出し先の指定ではない）成立するはずだが、**YAML が push を通ることは成果物の確認にすぎない**。次の確認が済むまで、この節を「実測確認済み」に格上げしない。
 
 確認は**2つに分ける**。壊れ方が違うため、まとめて合否にしない。
