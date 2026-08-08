@@ -35,7 +35,10 @@ beginDialog:
 
     - kind: SendActivity
       id: sendPostPreview
-      activity: ="次の内容で申請の会話へ投稿します。" & Char(10) & Char(10) & Topic.messageBody
+      activity: |-
+        次の内容で申請の会話へ投稿します。
+        <br /><br />
+        {Topic.messageBody}
 
     - kind: Question
       id: confirmPost
@@ -99,7 +102,10 @@ beginDialog:
       elseActions:
         - kind: SendActivity
           id: sendPostFailed
-          activity: =Coalesce(Topic.postMessage, "会話に投稿できませんでした。")
+          activity: |-
+            会話に投稿できませんでした。
+            <br /><br />
+            {Coalesce(Topic.postMessage, "詳細を取得できませんでした。")}
 
     - kind: EndConversation
       id: endTopic

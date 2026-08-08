@@ -185,7 +185,8 @@ beginDialog:
           elseActions:
             - kind: SendActivity
               id: sendFallbackMessage
-              activity: =Coalesce(Topic.message, "判断確定処理の結果を確認できませんでした。")
+              activity: |-
+                {Coalesce(Topic.message, "判断確定処理の結果を確認できませんでした。")}
 
     - kind: EndConversation
       id: endTopic
