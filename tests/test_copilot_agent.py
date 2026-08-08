@@ -101,6 +101,31 @@ class AgentYamlTopicTests(unittest.TestCase):
         self.assertIn("flowId: 3dfc08d1-7e92-f111-b8db-7c1e524a54ce", self.topic)
         self.assertIn("body: =Topic.messageBody", self.topic)
 
+    def test_the_flow_is_not_registered_as_an_agent_tool(self):
+        """ツール登録があると、生成オーケストレーションがトピックを迂回して直接呼ぶ。
+
+        2026-08-08 に実測で確認済み: ツール登録があった状態では、トピックの
+        SetVariable を通らず actorUpn をモデルが埋めていた。この YAML を
+        置き直すと（ポータルでツール登録し直して pull した場合を含む）、
+        実行者の束縛が再び迂回される。
+        """
+        action_yaml = (
+            ROOT / "copilot" / "DecisionFlowAssistant" / "actions" / "post_application_message.mcs.yml"
+        )
+
+        self.assertFalse(
+            action_yaml.exists(),
+            "post_application_message をツール登録すると、専用トピックの実行者束縛が迂回される。",
+        )
+
+    def test_the_topic_confirms_before_posting(self):
+        # ツール登録を外したことで、Instructions が担っていた投稿前の同意取得が
+        # 効かなくなる。トピック側で取り直す。
+        self.assertIn("kind: Question", self.topic)
+        self.assertIn("BooleanPrebuiltEntity", self.topic)
+        self.assertIn("init:Topic.postConfirmed", self.topic)
+        self.assertIn("=Topic.postConfirmed = false", self.topic)
+
 
 class CopilotAgentScriptTests(unittest.TestCase):
     def test_extract_bot_id_accepts_guid_or_copilot_url(self):

@@ -33,6 +33,28 @@ beginDialog:
             - kind: EndConversation
               id: endMissingMessageBody
 
+    - kind: Question
+      id: confirmPost
+      variable: init:Topic.postConfirmed
+      prompt: ="次の内容で申請の会話へ投稿します。よろしいですか。" & Char(10) & Char(10) & Topic.messageBody
+      entity: BooleanPrebuiltEntity
+      alwaysPrompt: true
+      interruptionPolicy:
+        allowInterruption: false
+
+    - kind: ConditionGroup
+      id: handleConfirmation
+      conditions:
+        - id: postDeclined
+          condition: =Topic.postConfirmed = false
+          actions:
+            - kind: SendActivity
+              id: sendPostDeclined
+              activity: 投稿を取りやめました。文面を変えたい場合は、内容を教えてください。
+
+            - kind: EndConversation
+              id: endPostDeclined
+
     - kind: SetVariable
       id: setActorUpn
       variable: Topic.actorUpn

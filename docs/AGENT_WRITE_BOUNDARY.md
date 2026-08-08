@@ -64,15 +64,25 @@ agent flow は**接続参照の identity** で実行される。エンドユー�
 
 パネルとアプリ画面を同時に開けるようになったことで、この非対称は踏みやすくなった。**両経路の防御を揃えるのは別タスクとする**（本番投入前に判断が必要）。
 
-**トピックを足しても、ツール登録された agent flow は隠れない。** `post_application_message` と `confirm_decision` は agent flow としてツール登録されており（`botcomponents` の `.action.` 行）、生成オーケストレーションはトピックを経由せず直接呼べる。直接呼ばれた場合、ツール入力の `actorUpn` は**モデルが埋める**。
+**トピックを足しても、ツール登録された agent flow は隠れない。**
 
-現状これを止めているのは3つで、いずれも硬い保証ではない:
+2026-08-08 に実測した。`post_application_message` をツール登録したまま「この申請にコメントして」と依頼すると、生成オーケストレーションは**トピックを経由せずツールを直接呼んだ**。判定した根拠は3つ:
 
-1. Instructions が「専用トピック経由で投稿する」「実行者を自分で組み立ててはならない」と指示している（モデルの遵守頼み）
-2. トピックの `modelDescription` のほうが投稿意図に近い（ルーティングの傾向であって保証ではない）
-3. フロー側が「実行者が申請の関係者であること」を検証する（**任意の他人にはなれないが、他の関係者名義にはなれる**）
+| 観察 | トピック経由なら | 実際 |
+| --- | --- | --- |
+| 完了メッセージ | トピックの固定文 | モデルの生成文 |
+| 投稿前の確認 | 無い（即 InvokeFlowAction） | 表形式で確認を求めた |
+| `actorAadObjectId` | 必ず送る | payload に無い |
 
-`inputType` に actor を置かないというテストは、トピック経由で呼ばれた場合だけを守る。**ツール直呼びの経路は守らない。** 硬く塞ぐならツール登録を外してトピックだけ残す形になるが、`InvokeFlowAction` が登録なしの `flowId` で動くかは未確認。判断確定（`zdI`）も同じ構造で、本番投入前に決着させる。
+つまり `actorUpn` はモデルが埋めていた。値がたまたま正しかっただけで、`System.User.PrincipalName` からの束縛は一度も働いていない。Instructions の禁止文も、トピックの `modelDescription` も、迂回を止めなかった。
+
+**対処（2026-08-08）: `post_application_message` のツール登録を外し、トピックを唯一の入口にした。**
+
+- `actions/post_application_message.mcs.yml` を削除して `pac copilot push`。ツール登録（`botcomponents` の `.action.` 行）はクラウドからも消える
+- ツール登録が消えると Instructions 経由の「投稿前の同意取得」も効かなくなるため、トピック側に `Question`（`BooleanPrebuiltEntity`）で確認ステップを実装した
+- `tests/test_copilot_agent.py` が、この action YAML が**存在しないこと**と確認ステップの存在を固定する。ポータルでツール登録し直して `pull` すると、テストが落ちて気づける
+
+**判断確定（`zdI`）は同じ構造のまま残っている。** `confirm_decision` と `issue_decision_card` はツール登録されており、直接呼べる。こちらは Adaptive Card の発行と消費が絡むため、同じ手当てをするかは別途決める。
 
 ## 検証
 
