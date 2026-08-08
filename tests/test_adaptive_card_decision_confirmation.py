@@ -39,6 +39,20 @@ def find_action(actions: dict, name: str) -> dict:
     raise AssertionError(f"Action not found: {name}")
 
 
+def _flatten_topic_steps(steps: list) -> list[dict]:
+    """トピック YAML のアクションを、ConditionGroup の中身まで含めて平らにする。"""
+    flat = []
+    for step in steps or []:
+        if not isinstance(step, dict):
+            continue
+        flat.append(step)
+        for condition in step.get("conditions") or []:
+            flat.extend(_flatten_topic_steps(condition.get("actions")))
+        flat.extend(_flatten_topic_steps(step.get("elseActions")))
+        flat.extend(_flatten_topic_steps(step.get("actions")))
+    return flat
+
+
 def flatten_actions(actions: dict) -> list[dict]:
     flattened = []
     for action in actions.values():
@@ -414,15 +428,59 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         )
         self.assertIn("Return_forbidden_not_decider", decider_gate["else"]["actions"])
 
-        # 拒否は Terminate まで行う。返して終わりにしない。
-        for gate_name, response_name in (
-            ("Validate_user_found", "Return_forbidden_user_not_found"),
-            ("Validate_submitted_application", "Return_invalid_application"),
-            ("Validate_actor_is_decider", "Return_forbidden_not_decider"),
-        ):
+        # 1 の式も固定する。他2つと違って未検証だと、反転しても緑のままになる。
+        self.assertEqual(
+            user_gate["expression"],
+            {"greater": ["@length(outputs('List_current_user')?['body/value'])", 0]},
+        )
+
+        # 検証どうしの順序。runAfter を見ないと「順序」の半分が担保されない。
+        self.assertEqual(actions["Get_application"]["runAfter"], {"Validate_user_found": ["Succeeded"]})
+        self.assertEqual(
+            actions["Validate_submitted_application"]["runAfter"],
+            {"Get_application": ["Succeeded"]},
+        )
+        self.assertEqual(
+            actions["Validate_actor_is_decider"]["runAfter"],
+            {"Validate_submitted_application": ["Succeeded"]},
+        )
+
+    def test_issue_flow_terminates_the_run_on_every_rejection(self):
+        """**不変条件4を実際に担保しているのは Terminate であって runAfter ではない。**
+
+        Power Automate の If は条件が偽でも Succeeded になる。つまり
+        `Get_application` の `runAfter: {Validate_user_found: [Succeeded]}` は、
+        ユーザーが見つからなかった場合にも満たされる。鎖が切れる理由は else 側の
+        Terminate がラン全体を止めるから。
+
+        したがって Stop_after_* の runAfter を ["Failed"] などに書き換えると
+        Terminate が Skipped になり、拒否経路から書き込みへ到達する。ここを
+        固定していないと、不変条件4は無防備になる。
+        """
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        actions = json.loads(deploy.build_issue_decision_card_clientdata())["properties"]["definition"]["actions"]
+
+        expected_status = {
+            ("Validate_user_found", "Return_forbidden_user_not_found"): "forbidden",
+            ("Validate_submitted_application", "Return_invalid_application"): "invalid_target",
+            ("Validate_actor_is_decider", "Return_forbidden_not_decider"): "forbidden",
+        }
+        for (gate_name, response_name), status in expected_status.items():
             else_actions = actions[gate_name]["else"]["actions"]
-            self.assertIn(f"Stop_after_{response_name}", else_actions)
-            self.assertEqual(else_actions[f"Stop_after_{response_name}"]["type"], "Terminate")
+
+            stop = else_actions[f"Stop_after_{response_name}"]
+            self.assertEqual(stop["type"], "Terminate")
+            self.assertEqual(
+                stop["runAfter"],
+                {response_name: ["Succeeded"]},
+                f"{response_name} の成功で止める。Failed 等にすると Terminate が Skipped になる",
+            )
+            self.assertEqual(stop["inputs"], {"runStatus": "Succeeded"})
+
+            # 拒否時に返す status も固定する。成功時だけ固定していると片手落ち。
+            self.assertEqual(else_actions[response_name]["inputs"]["body"]["status"], status)
+            self.assertEqual(else_actions[response_name]["inputs"]["body"]["cardInstanceId"], "")
 
     def test_issue_flow_never_writes_a_card_before_every_validation_passed(self):
         """不変条件4: 拒否されたら ds_decisioncard に行が増えない。
@@ -467,19 +525,55 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
     def test_decision_topic_stops_before_the_card_when_issue_is_rejected(self):
         """トピック側。issueStatus が issued 以外ならカードを出さずに終える。
 
-        変数名は issueStatus。Topic.status は confirm_decision の出力束縛が使っており、
-        同じ名前にすると2本目の呼び出しが1本目の結果を上書きする。
+        文字列の index 比較ではなく YAML をパースして構造で見る。文字列一致だと
+        EndConversation を消しても ConditionGroup ごと壊しても、目印の文字列さえ
+        残っていれば緑になり、不変条件6が黙って壊れる。
         """
-        topic_yaml = DECISION_TOPIC_PATH.read_text(encoding="utf-8")
+        import yaml
 
-        self.assertIn("status: Topic.issueStatus", topic_yaml)
+        topic = yaml.safe_load(DECISION_TOPIC_PATH.read_text(encoding="utf-8"))
+        steps = topic["beginDialog"]["actions"]
 
-        guard_index = topic_yaml.index("Topic.issueStatus <> \"issued\"")
-        card_index = topic_yaml.index("kind: AdaptiveCardPrompt")
-        self.assertLess(guard_index, card_index, "カード表示より前で分岐する")
+        # issue のフロー（c37ed747）の出力が issueStatus に束縛されていること。
+        issue_invoke = next(
+            s for s in steps
+            if s["kind"] == "InvokeFlowAction" and s["flowId"].startswith("c37ed747")
+        )
+        self.assertEqual(issue_invoke["output"]["binding"]["status"], "Topic.issueStatus")
 
-        # 式は = プレフィックスではなく素の文字列か {} で書く（評価されないため）。
-        self.assertNotIn('activity: ="', topic_yaml)
+        # confirm 側は Topic.status のまま。名前が衝突していないこと。
+        confirm_invokes = [
+            s for s in _flatten_topic_steps(steps)
+            if s.get("kind") == "InvokeFlowAction" and str(s.get("flowId", "")).startswith("f8502159")
+        ]
+        self.assertEqual(len(confirm_invokes), 1)
+        self.assertEqual(confirm_invokes[0]["output"]["binding"]["status"], "Topic.status")
+
+        # ガードがカード表示より前にあること。
+        kinds = [s["kind"] for s in steps]
+        guard_index = next(
+            i for i, s in enumerate(steps)
+            if s["kind"] == "ConditionGroup" and s["id"] == "validateIssueResult"
+        )
+        self.assertLess(guard_index, kinds.index("AdaptiveCardPrompt"))
+
+        # ガードが「issued 以外」で会話を終えること。EndConversation まで見る。
+        guard = steps[guard_index]
+        rejected = next(c for c in guard["conditions"] if c["id"] == "issueRejected")
+        self.assertEqual(rejected["condition"], '=Topic.issueStatus <> "issued"')
+        self.assertIn(
+            "EndConversation",
+            [a["kind"] for a in rejected["actions"]],
+            "カードを出さないだけでなく会話を終える必要がある",
+        )
+
+        # 追加した SendActivity が = プレフィックスのスカラー式でないこと。
+        for action in rejected["actions"]:
+            if action["kind"] == "SendActivity":
+                self.assertFalse(
+                    action["activity"].lstrip().startswith("="),
+                    "= プレフィックスのスカラー式は評価されず、そのまま画面に出る",
+                )
 
     def test_issue_flow_supersedes_prior_issued_cards_for_same_application_and_actor(self):
         deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")

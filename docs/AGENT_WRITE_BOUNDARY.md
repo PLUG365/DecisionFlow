@@ -193,14 +193,16 @@ Instructions に `## 判断の確定` を足し、`最終判断は Code Apps の
 | # | 状態 | カード発行 | 返す status |
 | --- | --- | --- | --- |
 | 1 | 実行者が systemuser として解決できない | 拒否 | `forbidden` |
-| 2 | 申請が取得できない | 拒否 | `invalid_target` |
+| 2 | 申請が取得できない（不正・不存在の GUID） | 発行しない | **status を返さない。フローがエラー終了する** |
 | 3 | 申請が `Submitted`（100000001）でない | 拒否 | `invalid_target` |
 | 4 | 実行者が当該申請の判断者でない | 拒否 | `forbidden` |
 | 5 | 1〜4 をすべて満たす | 許可（自分の未使用カードを Superseded にして新規発行） | `issued` |
 
-判定順は 1 → 2 → 3 → 4。**式と失敗メッセージは `confirm_decision` と同じものを使うが、順序は同一にできない。** `confirm_decision` は 実行者 → 判断選択肢 → 申請 → 判断者 の順だが、`issue_decision_card` のトリガーには `decisionOption` が無いため、判断選択肢の段は存在しない。ここを探して迷わないように書いておく。
+判定順は 1 → 2 → 3 → 4。**流用するのは判定式だけで、順序は同一にできない。** 失敗メッセージは流用していない（`issue_decision_card` の応答に `message` フィールドが無く、利用者に見せる文面はトピックが持つため）。 `confirm_decision` は 実行者 → 判断選択肢 → 申請 → 判断者 の順だが、`issue_decision_card` のトリガーには `decisionOption` が無いため、判断選択肢の段は存在しない。ここを探して迷わないように書いておく。
 
-**#2 は既存の穴をそのまま引き継ぐ。** `_get_record_action` は Dataverse の `GetItem` で、存在しない GUID を渡すとアクション自体が失敗する（空を返さない）。`confirm_decision` の `Validate_submitted_application` も `runAfter: {"Get_application": ["Succeeded"]}` しか持たないため、不正な GUID ではフローがエラー終了する。**今回はこの挙動に合わせるだけで、直さない。** 直すなら両方のフローに `Failed` 分岐を足す別タスクになる。
+**#2 は既存の穴をそのまま引き継ぐ。** `_get_record_action` は Dataverse の `GetItem` で、存在しない GUID を渡すとアクション自体が失敗する（空を返さない）。`confirm_decision` の `Validate_submitted_application` も `runAfter: {"Get_application": ["Succeeded"]}` しか持たないため、不正な GUID ではフローがエラー終了する。**今回はこの挙動に合わせるだけで、直さない。** 直すなら両方のフローに `Failed` 分岐を足す別タスクになる。行が増えないことは保たれる（後続が Skipped になるため）。
+
+**判断者が未割当ての申請も同じ形でエラー終了する。** `@toLower(outputs('Get_application')?['body/_ds_deciderid_value'])` は、値が null のとき `toLower` が文字列以外を受け取り `If` が Failed になる。表 #4 は「拒否 / `forbidden`」と書いているが、実際は status が返らない。`confirm_decision` も同一式なので**2本の判定は食い違わない**。`coalesce` を入れて `forbidden` に揃えるのは別タスクとする。
 
 ### 評価時点
 
@@ -249,7 +251,18 @@ Instructions に `## 判断の確定` を足し、`最終判断は Code Apps の
 - レスポンスに `status` を追加（`issued` / `forbidden` / `invalid_target`）
 - `zdI.mcs.yml` に `validateIssueResult` を追加し、`Topic.issueStatus <> "issued"` ならカードを出さずに終える
 
-**まだクラウドへ反映していない。** デプロイと実機確認は下の「担保」に従う。
+### デプロイ順序（間違えると機能が全停止する）
+
+**必ずフローを先にデプロイし、そのあとトピックを push する。**
+
+```powershell
+py scripts/deploy_adaptive_card_decision_confirmation.py
+& "$env:USERPROFILE\.dotnet\tools\pac.exe" copilot push --project-dir copilot/DecisionFlowAssistant
+```
+
+逆順にすると、トピックはまだ `status` を返さない旧フローに束縛することになり、`Topic.issueStatus` が常に Blank になる。`Blank() <> "issued"` は真なので、**提出済みの申請で判断者本人が操作してもカードが出ない**。フェイルクローズではあるが機能は完全に止まる。
+
+`deploy_tool_flow` は既存フローを名前で引いて `workflowid` に PATCH するため、再デプロイしても `flowId` は変わらない。`zdI.mcs.yml` のハードコードは壊れない。
 
 ### 変更する範囲 / 変更しない範囲
 

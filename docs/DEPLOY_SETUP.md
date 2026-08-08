@@ -387,7 +387,7 @@ py scripts/deploy_adaptive_card_decision_confirmation.py
 
 | フロー名              | 役割                                                                                                                                                                        |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `issue_decision_card` | 判断カード発行。実行者が systemuser として解決でき、`ds_application` が `Submitted` で、実行者が割り当て判断者であることを確認したうえで、`ds_decisioncard` を `Issued` で作成し `cardInstanceId` と `status: issued` を返す。拒否時は `forbidden` / `invalid_target` を返し、行を作らない（2026-08-09 に検証を追加。それ以前は無検証だった） |
+| `issue_decision_card` | 判断カード発行。実行者が systemuser として解決でき、`ds_application` が `Submitted` で、実行者が割り当て判断者であることを確認したうえで、`ds_decisioncard` を `Issued` で作成し `cardInstanceId` と `status: issued` を返す。検証に落ちたときは行を作らない。実行者が解決できない・判断者でない場合は `forbidden`、提出済みでない場合は `invalid_target` を返す。**不正または不存在の `applicationId` と、判断者が未割当ての申請では status を返さずフローがエラー終了する**（`confirm_decision` と同じ挙動）。2026-08-09 に検証を追加。それ以前は無検証だった |
 | `confirm_decision`    | Adaptive Card submit を検証し、`ds_decision` を作成して `ds_decisioncard` を `Consumed` に更新。`status: succeeded / already_processed / forbidden / invalid_target` を返す |
 
 入出力契約は [specs/001-confirm-adaptive-card/contracts/adaptive-card-decision-confirmation.md](../specs/001-confirm-adaptive-card/contracts/adaptive-card-decision-confirmation.md) を参照してください。
