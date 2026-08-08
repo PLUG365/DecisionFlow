@@ -1,0 +1,4 @@
+# copilot/ は pac copilot clone/pull/push が書き出すディレクトリ。
+# core.autocrlf による改行変換が入ると、CLI が書いたバイト列と working copy が
+# ずれて pull のたびに無意味な差分が出る。ここは一切変換しない。
+copilot/** -text
