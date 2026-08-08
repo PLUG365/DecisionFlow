@@ -1,5 +1,12 @@
 # DecisionFlow Repository Guidance
 
+## 今どこを進めているか
+
+進行中の作業とその進捗は [`docs/UX_ROADMAP.md`](docs/UX_ROADMAP.md) が持つ。**作業を再開するときは最初にここを読み、終えたら状態を書き戻す。**
+`docs/PLAN.md` は Phase 0〜5 の初期構築計画（実装済み）で、現在の作業対象ではない。
+
+テストの回し方も UX_ROADMAP.md に書いてある（Python は pytest ではなく `PYTHONPATH` + `unittest discover`）。
+
 ## AI 開発ツール
 
 Power Platform、Dataverse、Power Automate、Code Apps、Solution に関わる作業の前に、
