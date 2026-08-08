@@ -114,16 +114,36 @@ agent flow は**接続参照の identity** で実行される。エンドユー�
 - 手順書（`docs/DEPLOY_SETUP.md` 12-2〜12-3、`specs/001-confirm-adaptive-card/quickstart.md`）がツール登録を指示していたので、そこも書き換えた。**手順書を直さないと、次のセットアップで穴が開き直る**
 - `specs/001-confirm-adaptive-card/decision-confirmation.topic.template.yaml` を削除した。正本が YAML へ移ったあとも残っていた写しで、実際に空欄チェックの式が本体と分岐していた（`=Or(IsBlank(a), IsBlank(b))` と `=IsBlank(a) || IsBlank(b)`）。6段ゲートのテストはこの写しを読んでおり、デプロイされないファイルを守ったまま緑だった。テストの参照先を `topics/zdI.mcs.yml` へ移した
 
-**クラウドへの反映は確認済み（2026-08-08）。** `push`（6 changes）のあと `pull` を戻したら 0 changes で、`actions/` に残っているのは読み取り専用の `Get_ApplicationDetailUrl` だけだった。クラウド側にツール登録が残っていれば、pull が 2 本を書き戻す。**ただしこれは成果物の確認**であって、挙動の確認ではない。
+**ツール登録が消えたことは Dataverse で直接確認済み（2026-08-09）。** `botcomponent` を読むと、このエージェントの `.action.` 行は**1件しかない**。
 
-**未確認: 実機で 1 回も動かしていない。** 会話投稿と違い、`AdaptiveCardPrompt` → `Action.Submit` → 2 本目の `InvokeFlowAction` の経路がツール登録なしで成立するかは実測していない。`zdI.mcs.yml` は TaskDialog コンポーネントを参照しておらず（`data.action: "confirm_decision"` は出力バインドが受け取る payload であって呼び出し先の指定ではない）成立するはずだが、**YAML が push を通ることは成果物の確認にすぎない**。次の確認が済むまで、この節を「実測確認済み」に格上げしない。
+```sql
+SELECT name, componenttype, schemaname FROM botcomponent
+WHERE schemaname LIKE 'ds_DecisionFlowAssistant%'
+```
+
+| schemaname | 種別 |
+| --- | --- |
+| `ds_DecisionFlowAssistant.action.Get_ApplicationDetailUrl` | ツール登録（読み取り専用。残す） |
+| `ds_DecisionFlowAssistant.topic.zdI` | 判断確定トピック |
+| `ds_DecisionFlowAssistant.topic.postApplicationMessage` | 会話へ投稿トピック |
+
+`action.confirm_decision` / `action.issue_decision_card` / `action.post_application_message` は**存在しない**。CLI の往復（`push` 6 changes → `pull` 0 changes）とは独立に、データの側で確認できている。
+
+**これでなりすましの経路は塞がったと言える。** 呼び出せるコンポーネントが無い以上、生成オーケストレーションはフローを直接呼べない。実行者はトピックの `SetVariable` 経由でしか入らない。
+
+**ただし「機能として動く」はまだ言えない。** 未確認なのは次の2つで、どちらもチャットを1往復しないと分からない。
+
+1. **トピックが起動するか**（ルーティング）。ツール登録を外したことで入口は `modelDescription` だけになった
+2. **`AdaptiveCardPrompt` → `Action.Submit` → 2 本目の `InvokeFlowAction` が成立するか**。`zdI.mcs.yml` は TaskDialog コンポーネントを参照しておらず（`data.action: "confirm_decision"` は出力バインドが受け取る payload であって呼び出し先の指定ではない）成立するはずだが、実測していない
 
 確認は**2つに分ける**。壊れ方が違うため、まとめて合否にしない。
 
 | # | 見るもの | 何が分かるか | 落ちたときの意味 |
 | --- | --- | --- | --- |
 | 1 | 下書きチャットで判断確定を頼み、**カードが出る**／完了メッセージがトピックの固定文（`判断を確定しました。案件ステージと通知は Decision_OnCreated で反映されます。`）である | トピックに到達したか | **経路の問題**。ツール登録を外した結果、`modelDescription` だけが入口になった。下の懸念を参照 |
-| 2 | `confirm_decision` の実行履歴で、トリガー入力に `actorAadObjectId` が入っている | なりすましが塞がったか | ツール登録が実際には消えていない |
+| 2 | `confirm_decision` の実行履歴で、トリガー入力に `actorAadObjectId` が入っている | 実行者が束縛されているか | 上の `botcomponent` 確認でツール登録が無いことは分かっているので、ここが落ちるならトピック自身の束縛の問題 |
+
+**テストに使える申請が無い。** 2026-08-09 時点で `ds_application` 8件は Decided 6件 / Draft 2件で、**Submitted が1件も無い**。`Validate_submitted_application` に弾かれるため、確認の前に申請を1件提出する必要がある。提出すると `Application_OnSubmitted` がメールを送る。
 
 **懸念: Instructions がトピックと逆を向いている。**
 
