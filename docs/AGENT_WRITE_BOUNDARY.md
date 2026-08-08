@@ -251,6 +251,22 @@ Instructions に `## 判断の確定` を足し、`最終判断は Code Apps の
 - レスポンスに `status` を追加（`issued` / `forbidden` / `invalid_target`）
 - `zdI.mcs.yml` に `validateIssueResult` を追加し、`Topic.issueStatus <> "issued"` ならカードを出さずに終える
 
+### 実機確認の結果（2026-08-09 08:31 JST・下書きチャット）
+
+**拒否側は実測で成立した。** Draft の申請（`a14587cd`）に「申請ID … を承認したい」と依頼した結果:
+
+| 見たもの | 結果 |
+| --- | --- |
+| チャットの応答 | `判断カードを発行できませんでした。提出済みの申請で、あなたが判断者に…` ＝ トピックの `sendIssueRejected`。**Adaptive Card は出ない**（不変条件6） |
+| フロー実行 run `08584153749957364192757551242CU20` | `response.name: Return_invalid_application` / `code: Terminated`。`Validate_submitted_application` で拒否し、Terminate がランを止めた |
+| `ds_decisioncard` | **行が増えていない**（最新は 01:18:27 の修正前テスト分のまま）。不変条件4 |
+
+修正前は同じ入力でカードが表示され、`ds_decisioncard` に行が作られていた。挙動が変わったことを確認済み。
+
+**正常系（提出 → 発行 → 確定）は未確認。** 提出済みの申請が無く、作るには通知メールを伴うため。担保は自動テストのみ。
+
+**公開はしていない。** 反映したのは下書きだけ。
+
 ### デプロイ順序（間違えると機能が全停止する）
 
 **必ずフローを先にデプロイし、そのあとトピックを push する。**
