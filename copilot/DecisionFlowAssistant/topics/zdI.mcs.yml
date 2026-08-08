@@ -42,8 +42,23 @@ beginDialog:
         binding:
           applicationId: Topic.applicationId
           cardInstanceId: Topic.cardInstanceId
+          status: Topic.issueStatus
 
       flowId: c37ed747-9153-f111-a824-3833c5de99c8
+
+    - kind: ConditionGroup
+      id: validateIssueResult
+      conditions:
+        - id: issueRejected
+          condition: =Topic.issueStatus <> "issued"
+          actions:
+            - kind: SendActivity
+              id: sendIssueRejected
+              activity: |-
+                判断カードを発行できませんでした。提出済みの申請で、あなたが判断者に割り当てられている場合のみ判断を確定できます。Code Apps の申請詳細画面で状態を確認してください。
+
+            - kind: EndConversation
+              id: endIssueRejected
 
     - kind: AdaptiveCardPrompt
       id: askDecisionWithAdaptiveCard

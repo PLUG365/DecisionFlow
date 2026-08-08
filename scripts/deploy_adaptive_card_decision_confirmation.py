@@ -221,9 +221,24 @@ def _confirm_response_body(status: str, message: str, decision_record_id: str = 
     }
 
 
-def _return_and_stop(action_name: str, body: dict) -> dict:
+ISSUE_RESPONSE_PROPERTIES = {
+    "applicationId": "applicationId",
+    "cardInstanceId": "cardInstanceId",
+    "status": "status",
+}
+
+
+def _issue_response_body(status: str, card_instance_id: str = "") -> dict:
     return {
-        action_name: _response_action(body, CONFIRM_RESPONSE_PROPERTIES),
+        "applicationId": "@triggerBody()?['applicationId']",
+        "cardInstanceId": card_instance_id,
+        "status": status,
+    }
+
+
+def _return_and_stop(action_name: str, body: dict, response_properties: dict[str, str] | None = None) -> dict:
+    return {
+        action_name: _response_action(body, response_properties or CONFIRM_RESPONSE_PROPERTIES),
         f"Stop_after_{action_name}": _terminate_action({action_name: ["Succeeded"]}),
     }
 
@@ -275,17 +290,76 @@ def build_issue_decision_card_clientdata(connection_refs: dict[str, str] | None 
         },
         ["applicationId", "actorUpn"],
     )
+    # 検証は confirm_decision と同じ式・同じ失敗メッセージを使う。順序だけは
+    # decisionOption が無いぶん短い。設計は docs/AGENT_WRITE_BOUNDARY.md の表。
     actions = {
         "Compose_cardInstanceId": {
             "type": "Compose",
             "runAfter": {},
             "inputs": "@guid()",
         },
+        "List_current_user": _list_records_action(
+            "systemusers",
+            "@if(empty(triggerBody()?['actorAadObjectId']), concat('domainname eq ''', triggerBody()?['actorUpn'], ''''), concat('azureactivedirectoryobjectid eq ', triggerBody()?['actorAadObjectId']))",
+            "systemuserid,domainname,internalemailaddress,azureactivedirectoryobjectid",
+            {"Compose_cardInstanceId": ["Succeeded"]},
+        ),
+        "Validate_user_found": {
+            "type": "If",
+            "runAfter": {"List_current_user": ["Succeeded"]},
+            "expression": {"greater": ["@length(outputs('List_current_user')?['body/value'])", 0]},
+            "actions": {},
+            "else": {
+                "actions": _return_and_stop(
+                    "Return_forbidden_user_not_found",
+                    _issue_response_body("forbidden"),
+                    ISSUE_RESPONSE_PROPERTIES,
+                )
+            },
+        },
+        "Get_application": _get_record_action(
+            f"{PREFIX}_applications",
+            "@triggerBody()?['applicationId']",
+            f"{PREFIX}_stage,_{PREFIX}_deciderid_value",
+            {"Validate_user_found": ["Succeeded"]},
+        ),
+        "Validate_submitted_application": {
+            "type": "If",
+            "runAfter": {"Get_application": ["Succeeded"]},
+            "expression": {"equals": [f"@outputs('Get_application')?['body/{PREFIX}_stage']", 100000001]},
+            "actions": {},
+            "else": {
+                "actions": _return_and_stop(
+                    "Return_invalid_application",
+                    _issue_response_body("invalid_target"),
+                    ISSUE_RESPONSE_PROPERTIES,
+                )
+            },
+        },
+        "Validate_actor_is_decider": {
+            "type": "If",
+            "runAfter": {"Validate_submitted_application": ["Succeeded"]},
+            "expression": {
+                "equals": [
+                    f"@toLower(outputs('Get_application')?['body/_{PREFIX}_deciderid_value'])",
+                    "@toLower(first(outputs('List_current_user')?['body/value'])?['systemuserid'])",
+                ]
+            },
+            "actions": {},
+            "else": {
+                "actions": _return_and_stop(
+                    "Return_forbidden_not_decider",
+                    _issue_response_body("forbidden"),
+                    ISSUE_RESPONSE_PROPERTIES,
+                )
+            },
+        },
+        # ここから書き込み。既存カードの Superseded も書き込みなので検証の後に置く。
         "List_prior_issued_decisioncards": _list_records_action(
             f"{PREFIX}_decisioncards",
             _actor_card_filter(100000000),
             f"{PREFIX}_decisioncardid,{PREFIX}_cardinstanceid,{PREFIX}_status,{PREFIX}_actoraadobjectid,{PREFIX}_actorupn",
-            {"Compose_cardInstanceId": ["Succeeded"]},
+            {"Validate_actor_is_decider": ["Succeeded"]},
         ),
         "Supersede_prior_issued_decisioncards": {
             "type": "Foreach",
@@ -316,11 +390,8 @@ def build_issue_decision_card_clientdata(connection_refs: dict[str, str] | None 
             {"Supersede_prior_issued_decisioncards": ["Succeeded"]},
         ),
         "Return_card_context": _response_action(
-            {
-                "applicationId": "@triggerBody()?['applicationId']",
-                "cardInstanceId": "@outputs('Compose_cardInstanceId')",
-            },
-            {"applicationId": "applicationId", "cardInstanceId": "cardInstanceId"},
+            _issue_response_body("issued", "@outputs('Compose_cardInstanceId')"),
+            ISSUE_RESPONSE_PROPERTIES,
             {"Create_decisioncard": ["Succeeded"]},
         ),
     }

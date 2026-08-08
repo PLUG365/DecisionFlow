@@ -198,7 +198,9 @@ Instructions に `## 判断の確定` を足し、`最終判断は Code Apps の
 | 4 | 実行者が当該申請の判断者でない | 拒否 | `forbidden` |
 | 5 | 1〜4 をすべて満たす | 許可（自分の未使用カードを Superseded にして新規発行） | `issued` |
 
-判定順は 1 → 2 → 3 → 4。`confirm_decision` と同じ順序・同じ式・同じ失敗メッセージを使う。**2本のフローで判定が食い違わないことを優先する。**
+判定順は 1 → 2 → 3 → 4。**式と失敗メッセージは `confirm_decision` と同じものを使うが、順序は同一にできない。** `confirm_decision` は 実行者 → 判断選択肢 → 申請 → 判断者 の順だが、`issue_decision_card` のトリガーには `decisionOption` が無いため、判断選択肢の段は存在しない。ここを探して迷わないように書いておく。
+
+**#2 は既存の穴をそのまま引き継ぐ。** `_get_record_action` は Dataverse の `GetItem` で、存在しない GUID を渡すとアクション自体が失敗する（空を返さない）。`confirm_decision` の `Validate_submitted_application` も `runAfter: {"Get_application": ["Succeeded"]}` しか持たないため、不正な GUID ではフローがエラー終了する。**今回はこの挙動に合わせるだけで、直さない。** 直すなら両方のフローに `Failed` 分岐を足す別タスクになる。
 
 ### 評価時点
 
@@ -217,7 +219,11 @@ Instructions に `## 判断の確定` を足し、`最終判断は Code Apps の
 
 ### 6 が必要な理由
 
-現在トピックは `issue_decision_card` の結果を見ていない（`output.binding` は `applicationId` / `cardInstanceId` のみ）。検証を足しただけでは、拒否されても `cardInstanceId` が空のままカードが表示され、利用者は入力してから `confirm_decision` に弾かれる。**フロー側だけ直すと、体験は今より悪くなる。** トピックに `status` を渡して分岐させるところまでが1つの変更。
+現在トピックは `issue_decision_card` の結果を見ていない（`output.binding` は `applicationId` / `cardInstanceId` のみ）。検証を足しただけでは、拒否されても `cardInstanceId` が空のままカードが表示され、利用者は入力してから `confirm_decision` に弾かれる。**フロー側だけ直すと、体験は今より悪くなる。** トピックに結果を渡して分岐させるところまでが1つの変更。
+
+**変数名は `Topic.issueStatus` にする。`Topic.status` を使わない。** トピックの後段で `confirm_decision` の出力を `status: Topic.status` に束縛しており、同じ名前を使うと2本目の呼び出しが1本目の結果を上書きする。分岐が古い値を読む事故になる。
+
+拒否メッセージは素の文字列か `{}` 補間で書く。`="..." & Topic.x` は評価されない（このセッションで2回踏んだ）。
 
 ### 担保
 
@@ -226,8 +232,24 @@ Instructions に `## 判断の確定` を足し、`最終判断は Code Apps の
 | 1〜4 の検証が正しい順序で存在する | フロー定義を読んで assert | — |
 | 拒否時に行が増えない | `Create_decisioncard` の `runAfter` が最終検証の Succeeded であること | — |
 | トピックが status で分岐する | `zdI.mcs.yml` を読んで assert | — |
-| 実際に拒否される | — | **Draft の申請でカードが出ないこと**（今回出てしまった経路） |
-| 正常系が壊れていない | — | Submitted の申請で発行 → 確定が通ること |
+| 実際に拒否される | — | **Draft の申請でカードが出ないこと**（今回出てしまった経路）。副作用なしで確認できる |
+| 正常系が壊れていない | — | Submitted の申請で発行 → 確定が通ること。**申請の提出が必要で `Application_OnSubmitted` がメールを送る。承認を得てから行う** |
+
+**正常系の実機確認には副作用がある。** 提出済みの申請が1件も無いため、確認するには申請を提出する必要があり、通知メールが飛ぶ。承認が取れないうちは**正常系は未確認のまま出す**ことになる。その場合は「拒否側だけ実測、正常系は自動テストのみ」と明記する。
+
+`deploy_tool_flow` は既存フローを名前で引いて `workflowid` に PATCH するため、**再デプロイしても flowId は変わらない**（確認済み）。`zdI.mcs.yml` にハードコードした `flowId` とテストの assert は壊れない。
+
+### 実装の結果（2026-08-09）
+
+表のとおり実装した。ローカルのゲートは python 105 / vitest 106 / lint すべて緑。
+
+- `issue_decision_card` に `List_current_user` → `Validate_user_found` → `Get_application` → `Validate_submitted_application` → `Validate_actor_is_decider` を追加。式と失敗メッセージは `confirm_decision` から流用
+- 書き込み（`List_prior_issued_decisioncards` / `Supersede` / `Create_decisioncard`）を `Validate_actor_is_decider` の後ろへ移した。**不変条件4はこの `runAfter` の鎖だけで担保される**
+- 拒否は `_return_and_stop` で Response + Terminate。返して終わりにしない
+- レスポンスに `status` を追加（`issued` / `forbidden` / `invalid_target`）
+- `zdI.mcs.yml` に `validateIssueResult` を追加し、`Topic.issueStatus <> "issued"` ならカードを出さずに終える
+
+**まだクラウドへ反映していない。** デプロイと実機確認は下の「担保」に従う。
 
 ### 変更する範囲 / 変更しない範囲
 

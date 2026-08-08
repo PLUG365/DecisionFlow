@@ -368,7 +368,118 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         body_json = json.dumps(response["inputs"]["body"], ensure_ascii=False)
         self.assertIn("cardInstanceId", body_json)
         self.assertIn("applicationId", body_json)
-        self.assertEqual(set(response["inputs"]["schema"]["properties"]), {"applicationId", "cardInstanceId"})
+        # status は 2026-08-09 に追加。トピックが発行の可否で分岐するために要る。
+        self.assertEqual(
+            set(response["inputs"]["schema"]["properties"]),
+            {"applicationId", "cardInstanceId", "status"},
+        )
+
+    def test_issue_flow_validates_actor_and_submitted_application_before_creating_a_card(self):
+        """カード発行にも実行者・Submitted・判断者の検証を要求する。
+
+        2026-08-09 の実機確認で、Draft の申請に対してカードが発行されることが分かった。
+        検証が1つも無く、docs が「Submitted かつ実行者が判断者であることを確認し」と
+        書いていたのは誤りだった。設計は docs/AGENT_WRITE_BOUNDARY.md の表で固定した。
+        """
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        actions = json.loads(deploy.build_issue_decision_card_clientdata())["properties"]["definition"]["actions"]
+
+        # 1. 実行者が systemuser として解決できること
+        self.assertIn("List_current_user", actions)
+        user_gate = actions["Validate_user_found"]
+        self.assertEqual(user_gate["type"], "If")
+        self.assertEqual(user_gate["actions"], {}, "拒否は else 側に置く（confirm_decision と同じ形）")
+        self.assertIn("Return_forbidden_user_not_found", user_gate["else"]["actions"])
+
+        # 2-3. 申請を取得して Submitted であること
+        self.assertEqual(
+            actions["Get_application"]["inputs"]["parameters"]["entityName"],
+            "ds_applications",
+        )
+        submitted_gate = actions["Validate_submitted_application"]
+        self.assertEqual(submitted_gate["expression"], {"equals": ["@outputs('Get_application')?['body/ds_stage']", 100000001]})
+        self.assertIn("Return_invalid_application", submitted_gate["else"]["actions"])
+
+        # 4. 実行者が判断者であること
+        decider_gate = actions["Validate_actor_is_decider"]
+        self.assertEqual(
+            decider_gate["expression"],
+            {
+                "equals": [
+                    "@toLower(outputs('Get_application')?['body/_ds_deciderid_value'])",
+                    "@toLower(first(outputs('List_current_user')?['body/value'])?['systemuserid'])",
+                ]
+            },
+        )
+        self.assertIn("Return_forbidden_not_decider", decider_gate["else"]["actions"])
+
+        # 拒否は Terminate まで行う。返して終わりにしない。
+        for gate_name, response_name in (
+            ("Validate_user_found", "Return_forbidden_user_not_found"),
+            ("Validate_submitted_application", "Return_invalid_application"),
+            ("Validate_actor_is_decider", "Return_forbidden_not_decider"),
+        ):
+            else_actions = actions[gate_name]["else"]["actions"]
+            self.assertIn(f"Stop_after_{response_name}", else_actions)
+            self.assertEqual(else_actions[f"Stop_after_{response_name}"]["type"], "Terminate")
+
+    def test_issue_flow_never_writes_a_card_before_every_validation_passed(self):
+        """不変条件4: 拒否されたら ds_decisioncard に行が増えない。
+
+        これは runAfter の鎖だけで担保される。書き込み系アクションが最後の検証より
+        前に走る形になっていないかを見る。
+        """
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        actions = json.loads(deploy.build_issue_decision_card_clientdata())["properties"]["definition"]["actions"]
+
+        # 既存カードの Superseded も書き込みなので、検証後でなければならない。
+        self.assertEqual(
+            actions["List_prior_issued_decisioncards"]["runAfter"],
+            {"Validate_actor_is_decider": ["Succeeded"]},
+        )
+        self.assertEqual(
+            actions["Supersede_prior_issued_decisioncards"]["runAfter"],
+            {"List_prior_issued_decisioncards": ["Succeeded"]},
+        )
+        self.assertEqual(
+            actions["Create_decisioncard"]["runAfter"],
+            {"Supersede_prior_issued_decisioncards": ["Succeeded"]},
+        )
+
+    def test_issue_flow_returns_status_so_the_topic_can_branch(self):
+        """不変条件6: 拒否されたらトピックはカードを出さない。
+
+        そのためにフローが status を返す必要がある。成功時は issued。
+        """
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        actions = json.loads(deploy.build_issue_decision_card_clientdata())["properties"]["definition"]["actions"]
+
+        response = actions["Return_card_context"]
+        self.assertEqual(
+            set(response["inputs"]["schema"]["properties"]),
+            {"applicationId", "cardInstanceId", "status"},
+        )
+        self.assertEqual(response["inputs"]["body"]["status"], "issued")
+
+    def test_decision_topic_stops_before_the_card_when_issue_is_rejected(self):
+        """トピック側。issueStatus が issued 以外ならカードを出さずに終える。
+
+        変数名は issueStatus。Topic.status は confirm_decision の出力束縛が使っており、
+        同じ名前にすると2本目の呼び出しが1本目の結果を上書きする。
+        """
+        topic_yaml = DECISION_TOPIC_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("status: Topic.issueStatus", topic_yaml)
+
+        guard_index = topic_yaml.index("Topic.issueStatus <> \"issued\"")
+        card_index = topic_yaml.index("kind: AdaptiveCardPrompt")
+        self.assertLess(guard_index, card_index, "カード表示より前で分岐する")
+
+        # 式は = プレフィックスではなく素の文字列か {} で書く（評価されないため）。
+        self.assertNotIn('activity: ="', topic_yaml)
 
     def test_issue_flow_supersedes_prior_issued_cards_for_same_application_and_actor(self):
         deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
