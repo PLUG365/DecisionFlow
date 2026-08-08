@@ -1,0 +1,45 @@
+mcs.metadata:
+  componentName: 会話の開始
+  description: このシステム トピックは、新しい会話の開始を示すアクティビティをエージェントが受信するとトリガーされます。エージェントが会話を開始しないようにする場合は、このトピックを無効にします。
+kind: AdaptiveDialog
+
+beginDialog:
+
+  kind: OnConversationStart
+
+  id: main
+
+  actions:
+
+    - kind: SendActivity
+
+      id: sendMessage_M0LuhV
+
+      activity:
+
+        text:
+
+          - こんにちは。DecisionFlow Assistant です。判断待ち一覧、申請概要、関連資料、類似案件、判断コメントドラフトを支援します。申請リンクまたは申請タイトルを貼り付けてください。
+
+        speak:
+
+          - "こんにちは。DecisionFlow Assistant です。判断待ち一覧、申請概要、関連資料、類似案件、判断コメントドラフトを支援します。申請リンクまたは申請タイトルを貼り付けてください。"
+
+        quickReplies:
+
+          - kind: MessageBack
+
+            text: 判断待ちの申請を一覧で教えて
+
+          - kind: MessageBack
+
+            text: 申請の概要と論点を要約して
+
+          - kind: MessageBack
+
+            text: 関連資料リンクを教えて
+
+          - kind: MessageBack
+
+            text: 判断コメントのドラフトを作成して
+

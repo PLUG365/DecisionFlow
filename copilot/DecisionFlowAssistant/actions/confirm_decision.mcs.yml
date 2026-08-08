@@ -1,0 +1,23 @@
+mcs.metadata:
+  componentName: confirm_decision
+kind: TaskDialog
+outputs:
+  - propertyName: status
+
+  - propertyName: applicationId
+
+  - propertyName: decisionRecordId
+
+  - propertyName: decidedAt
+
+  - propertyName: message
+
+action:
+  kind: InvokeFlowTaskAction
+  flowId: f8502159-9153-f111-a824-3833c5de99c8
+  connectionProperties:
+    $kind: ConnectionProperties
+    diagnostics:
+    mode: Invoker
+
+outputMode: All

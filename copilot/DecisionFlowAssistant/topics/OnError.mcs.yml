@@ -1,0 +1,48 @@
+mcs.metadata:
+  componentName: エラー発生時
+  description: このシステム トピックはエージェントでエラーが発生した場合にトリガーされます。テスト チャット ウィンドウを使用している場合は、エラーの完全な説明が表示されます。
+kind: AdaptiveDialog
+startBehavior: UseLatestPublishedContentAndCancelOtherTopics
+beginDialog:
+  kind: OnError
+  id: main
+  actions:
+    - kind: SetVariable
+      id: setVariable_timestamp
+      variable: init:Topic.CurrentTime
+      value: =Text(Now(), DateTimeFormat.UTC)
+
+    - kind: ConditionGroup
+      id: condition_1
+      conditions:
+        - id: bL4wmY
+          condition: =System.Conversation.InTestMode = true
+          actions:
+            - kind: SendActivity
+              id: sendMessage_XJBYMo
+              activity: |-
+                エラー メッセージ: {System.Error.Message}
+                エラー コード: {System.Error.Code}
+                会話 ID: {System.Conversation.Id}
+                時間 (UTC): {Topic.CurrentTime}
+
+      elseActions:
+        - kind: SendActivity
+          id: sendMessage_dZ0gaF
+          activity:
+            text:
+              - |-
+                エラーが発生しました。
+                エラー コード: {System.Error.Code}
+                会話 ID: {System.Conversation.Id}
+                時間 (UTC): {Topic.CurrentTime}。
+            speak:
+              - エラーが発生しました。もう一度お試しください。
+
+    - kind: LogCustomTelemetryEvent
+      id: 9KwEAn
+      eventName: OnErrorLog
+      properties: "={ErrorMessage: System.Error.Message, ErrorCode: System.Error.Code, TimeUTC: Topic.CurrentTime, ConversationId: System.Conversation.Id}"
+
+    - kind: CancelAllDialogs
+      id: NW7NyY

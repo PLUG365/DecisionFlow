@@ -1,0 +1,22 @@
+mcs.metadata:
+  componentName: フォールバック
+  description: このシステム トピックは、ユーザーの発話が既存のトピックと一致しない場合にトリガーされます。
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnUnknownIntent
+  id: main
+  actions:
+    - kind: ConditionGroup
+      id: conditionGroup_LktzXw
+      conditions:
+        - id: conditionItem_tlGIVo
+          condition: =System.FallbackCount < 3
+          actions:
+            - kind: SendActivity
+              id: sendMessage_QZreqo
+              activity: 申し訳ございません、お問い合わせ内容を理解できません。別の言い方をお試しください。
+
+      elseActions:
+        - kind: BeginDialog
+          id: 5aXj5M
+          dialog: ds_DecisionFlowAssistant.topic.Escalate

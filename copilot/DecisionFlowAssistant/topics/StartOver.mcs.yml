@@ -1,0 +1,37 @@
+mcs.metadata:
+  componentName: 最初からやり直す
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: 最初からやり直す
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - やり直してください
+      - 最初からやり直す
+      - 再開する
+      - 再開
+
+  actions:
+    - kind: Question
+      id: question_zguoVV
+      alwaysPrompt: false
+      variable: init:Topic.Confirm
+      prompt: 会話を本当に再開しますか?
+      entity: BooleanPrebuiltEntity
+
+    - kind: ConditionGroup
+      id: conditionGroup_lvx2zV
+      conditions:
+        - id: conditionItem_sVQtHa
+          condition: =Topic.Confirm = true
+          actions:
+            - kind: BeginDialog
+              id: 0YKYsy
+              dialog: ds_DecisionFlowAssistant.topic.ResetConversation
+
+      elseActions:
+        - kind: SendActivity
+          id: sendMessage_lk2CyQ
+          activity: 承知しました。続けましょう。

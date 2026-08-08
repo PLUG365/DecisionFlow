@@ -1,0 +1,8 @@
+mcs.metadata:
+  componentName: メッセージ, 判断選択肢, 判断, 関連資料, 申請
+  description: "This knowledge source answers questions found in the following Dataverse items: メッセージ, 判断選択肢, 判断, 関連資料, 申請"
+kind: KnowledgeSourceConfiguration
+source:
+  kind: DataverseStructuredSearchSource
+  triggerCondition: true
+  skillConfiguration: __u1j385l7OZGPFtcBsfqI5

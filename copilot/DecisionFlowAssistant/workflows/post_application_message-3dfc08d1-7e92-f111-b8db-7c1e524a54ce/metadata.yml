@@ -1,0 +1,32 @@
+﻿jsonFileName: workflows/post_application_message-3dfc08d1-7e92-f111-b8db-7c1e524a54ce/workflow.json
+workflowId: 3dfc08d1-7e92-f111-b8db-7c1e524a54ce
+name: post_application_message
+type: 1
+description: DecisionFlow Assistant が申請の会話へコメントを投稿する。実行者が申請の関係者である場合のみ許可する。
+subprocess: false
+category: 5
+mode: 0
+scope: 4
+onDemand: false
+triggerOnCreate: false
+triggerOnDelete: false
+asyncAutodelete: false
+syncWorkflowLogOnFailure: false
+stateCode: 1
+statusCode: 2
+runAs: 1
+isTransacted: true
+introducedVersion: 1.0.0.15
+isCustomizable:
+  value: true
+  canBeChanged: true
+  managedPropertyLogicalName: iscustomizableanddeletable
+businessProcessType: 0
+isCustomProcessingStepAllowedForOtherPublishers:
+  value: true
+  canBeChanged: true
+  managedPropertyLogicalName: canbedeleted
+modernFlowType: 0
+primaryEntity: none
+connectionReferences:
+- ds_shared_commondataserviceforapps

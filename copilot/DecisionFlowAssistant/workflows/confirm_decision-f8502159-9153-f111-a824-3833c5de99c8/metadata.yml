@@ -1,0 +1,32 @@
+﻿jsonFileName: workflows/confirm_decision-f8502159-9153-f111-a824-3833c5de99c8/workflow.json
+workflowId: f8502159-9153-f111-a824-3833c5de99c8
+name: confirm_decision
+type: 1
+description: Copilot Studio の Adaptive Card submit を検証し、ds_decision を作成して ds_decisioncard を Consumed に更新する。
+subprocess: false
+category: 5
+mode: 0
+scope: 4
+onDemand: false
+triggerOnCreate: false
+triggerOnDelete: false
+asyncAutodelete: false
+syncWorkflowLogOnFailure: false
+stateCode: 1
+statusCode: 2
+runAs: 1
+isTransacted: true
+introducedVersion: 1.0.0.0
+isCustomizable:
+  value: true
+  canBeChanged: true
+  managedPropertyLogicalName: iscustomizableanddeletable
+businessProcessType: 0
+isCustomProcessingStepAllowedForOtherPublishers:
+  value: true
+  canBeChanged: true
+  managedPropertyLogicalName: canbedeleted
+modernFlowType: 0
+primaryEntity: none
+connectionReferences:
+- ds_shared_commondataserviceforapps

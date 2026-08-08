@@ -1,0 +1,32 @@
+﻿jsonFileName: workflows/Get_ApplicationDetailUrl-8351e89e-7a55-f111-a824-3833c5de99c8/workflow.json
+workflowId: 8351e89e-7a55-f111-a824-3833c5de99c8
+name: Get_ApplicationDetailUrl
+type: 1
+description: Copilot Studio エージェントが申請詳細リンクを案内するときに呼び出すツールフロー。ソリューション環境変数 ds_DecisionFlowAppBaseUrl を実行時に解決し、applicationId を deepLink パラメータとして付加した完全 URL を返す。環境変数が未設定の場合は空文字列を返し、エージェントはリンクなしで誘導する。
+subprocess: false
+category: 5
+mode: 0
+scope: 4
+onDemand: false
+triggerOnCreate: false
+triggerOnDelete: false
+asyncAutodelete: false
+syncWorkflowLogOnFailure: false
+stateCode: 1
+statusCode: 2
+runAs: 1
+isTransacted: true
+introducedVersion: 1.0.0.5
+isCustomizable:
+  value: true
+  canBeChanged: true
+  managedPropertyLogicalName: iscustomizableanddeletable
+businessProcessType: 0
+isCustomProcessingStepAllowedForOtherPublishers:
+  value: true
+  canBeChanged: true
+  managedPropertyLogicalName: canbedeleted
+modernFlowType: 0
+primaryEntity: none
+connectionReferences:
+- ds_shared_commondataserviceforapps

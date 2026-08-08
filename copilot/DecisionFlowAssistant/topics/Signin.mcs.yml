@@ -1,0 +1,22 @@
+mcs.metadata:
+  componentName: "サインイン "
+  description: このシステム トピックは、エージェントがサインインする必要があるか、ユーザーにサインインを求める必要がある場合にトリガーされます
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnSignIn
+  id: main
+  actions:
+    - kind: ConditionGroup
+      id: conditionGroup_ypjGKL
+      conditions:
+        - id: conditionItem_7XYIIR
+          condition: =System.SignInReason = SignInReason.SignInRequired
+          actions:
+            - kind: SendActivity
+              id: sendMessage_1jHUNO
+              activity: こんにちは! サポートを開始する前にサインインが必要です。
+
+    - kind: OAuthInput
+      id: gOjhZA
+      title: ログイン
+      text: 続行するには、ログインしてください

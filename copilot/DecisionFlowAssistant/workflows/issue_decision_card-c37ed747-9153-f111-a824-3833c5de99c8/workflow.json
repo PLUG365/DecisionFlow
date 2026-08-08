@@ -1,0 +1,186 @@
+﻿{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "ds_shared_commondataserviceforapps"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "Skills",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "applicationId": {
+                  "title": "applicationId",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true,
+                  "description": "\u5224\u65AD\u5BFE\u8C61\u306E ds_application ID"
+                },
+                "actorAadObjectId": {
+                  "title": "actorAadObjectId",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true,
+                  "description": "\u5B9F\u884C\u8005\u306E Entra object ID\u3002\u53D6\u5F97\u3067\u304D\u306A\u3044\u5834\u5408\u306F\u7A7A\u3067\u3088\u3044"
+                },
+                "actorUpn": {
+                  "title": "actorUpn",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true,
+                  "description": "\u5B9F\u884C\u8005\u306E UPN \u307E\u305F\u306F\u30E1\u30FC\u30EB\u30A2\u30C9\u30EC\u30B9"
+                }
+              },
+              "required": [
+                "applicationId",
+                "actorUpn"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Compose_cardInstanceId": {
+          "type": "Compose",
+          "runAfter": {},
+          "inputs": "@guid()"
+        },
+        "List_prior_issued_decisioncards": {
+          "type": "OpenApiConnection",
+          "runAfter": {
+            "Compose_cardInstanceId": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            },
+            "parameters": {
+              "entityName": "ds_decisioncards",
+              "$filter": "@if(empty(triggerBody()?[\u0027actorAadObjectId\u0027]), concat(\u0027_ds_applicationid_value eq \u0027, triggerBody()?[\u0027applicationId\u0027], \u0027 and ds_actorupn eq \u0027\u0027\u0027, triggerBody()?[\u0027actorUpn\u0027], \u0027\u0027\u0027 and ds_status eq 100000000\u0027), concat(\u0027_ds_applicationid_value eq \u0027, triggerBody()?[\u0027applicationId\u0027], \u0027 and ds_actoraadobjectid eq \u0027\u0027\u0027, triggerBody()?[\u0027actorAadObjectId\u0027], \u0027\u0027\u0027 and ds_status eq 100000000\u0027))",
+              "$select": "ds_decisioncardid,ds_cardinstanceid,ds_status,ds_actoraadobjectid,ds_actorupn"
+            },
+            "authentication": "@parameters(\u0027$authentication\u0027)"
+          }
+        },
+        "Supersede_prior_issued_decisioncards": {
+          "type": "Foreach",
+          "runAfter": {
+            "List_prior_issued_decisioncards": [
+              "Succeeded"
+            ]
+          },
+          "foreach": "@outputs(\u0027List_prior_issued_decisioncards\u0027)?[\u0027body/value\u0027]",
+          "actions": {
+            "Supersede_prior_issued_decisioncard": {
+              "type": "OpenApiConnection",
+              "runAfter": {},
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "UpdateRecord"
+                },
+                "parameters": {
+                  "entityName": "ds_decisioncards",
+                  "recordId": "@items(\u0027Supersede_prior_issued_decisioncards\u0027)?[\u0027ds_decisioncardid\u0027]",
+                  "item": {
+                    "ds_status": 100000002,
+                    "ds_supersededat": "@utcNow()"
+                  }
+                },
+                "authentication": "@parameters(\u0027$authentication\u0027)"
+              }
+            }
+          }
+        },
+        "Create_decisioncard": {
+          "type": "OpenApiConnection",
+          "runAfter": {
+            "Supersede_prior_issued_decisioncards": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "CreateRecord"
+            },
+            "parameters": {
+              "entityName": "ds_decisioncards",
+              "item": {
+                "ds_name": "@concat(\u0027\u5224\u65AD\u30AB\u30FC\u30C9 - \u0027, triggerBody()?[\u0027applicationId\u0027])",
+                "ds_cardinstanceid": "@outputs(\u0027Compose_cardInstanceId\u0027)",
+                "ds_actoraadobjectid": "@triggerBody()?[\u0027actorAadObjectId\u0027]",
+                "ds_actorupn": "@triggerBody()?[\u0027actorUpn\u0027]",
+                "ds_status": 100000000,
+                "ds_issuedat": "@utcNow()",
+                "ds_applicationid@odata.bind": "@concat(\u0027/ds_applications(\u0027, triggerBody()?[\u0027applicationId\u0027], \u0027)\u0027)"
+              }
+            },
+            "authentication": "@parameters(\u0027$authentication\u0027)"
+          }
+        },
+        "Return_card_context": {
+          "type": "Response",
+          "kind": "Skills",
+          "runAfter": {
+            "Create_decisioncard": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "applicationId": "@triggerBody()?[\u0027applicationId\u0027]",
+              "cardInstanceId": "@outputs(\u0027Compose_cardInstanceId\u0027)"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "applicationId": {
+                  "title": "applicationId",
+                  "type": "string",
+                  "x-ms-dynamically-added": true
+                },
+                "cardInstanceId": {
+                  "title": "cardInstanceId",
+                  "type": "string",
+                  "x-ms-dynamically-added": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

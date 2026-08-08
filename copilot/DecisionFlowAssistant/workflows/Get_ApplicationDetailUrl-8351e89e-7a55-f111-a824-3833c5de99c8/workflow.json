@@ -1,0 +1,136 @@
+﻿{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "ds_shared_commondataserviceforapps"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "Skills",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "applicationId": {
+                  "title": "applicationId",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true,
+                  "description": "\u7533\u8ACB\u8A73\u7D30\u30EA\u30F3\u30AF\u3092\u751F\u6210\u3059\u308B\u5BFE\u8C61 ds_application \u306E GUID\u3002"
+                }
+              },
+              "required": [
+                "applicationId"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "List_DecisionFlow_App_Base_Url_Definition": {
+          "type": "OpenApiConnection",
+          "runAfter": {},
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            },
+            "parameters": {
+              "entityName": "environmentvariabledefinitions",
+              "$filter": "schemaname eq \u0027ds_DecisionFlowAppBaseUrl\u0027",
+              "$select": "environmentvariabledefinitionid,defaultvalue"
+            },
+            "authentication": "@parameters(\u0027$authentication\u0027)"
+          }
+        },
+        "List_DecisionFlow_App_Base_Url_Value": {
+          "type": "OpenApiConnection",
+          "runAfter": {
+            "List_DecisionFlow_App_Base_Url_Definition": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            },
+            "parameters": {
+              "entityName": "environmentvariablevalues",
+              "$filter": "@{concat(\u0027_environmentvariabledefinitionid_value eq \u0027, first(outputs(\u0027List_DecisionFlow_App_Base_Url_Definition\u0027)?[\u0027body/value\u0027])?[\u0027environmentvariabledefinitionid\u0027])}",
+              "$select": "value"
+            },
+            "authentication": "@parameters(\u0027$authentication\u0027)"
+          }
+        },
+        "Get_DecisionFlow_App_Base_Url": {
+          "type": "Compose",
+          "runAfter": {
+            "List_DecisionFlow_App_Base_Url_Value": [
+              "Succeeded"
+            ]
+          },
+          "inputs": "@coalesce(first(outputs(\u0027List_DecisionFlow_App_Base_Url_Value\u0027)?[\u0027body/value\u0027])?[\u0027value\u0027], first(outputs(\u0027List_DecisionFlow_App_Base_Url_Definition\u0027)?[\u0027body/value\u0027])?[\u0027defaultvalue\u0027], \u0027\u0027)"
+        },
+        "Compose_ApplicationUrl": {
+          "type": "Compose",
+          "runAfter": {
+            "Get_DecisionFlow_App_Base_Url": [
+              "Succeeded"
+            ]
+          },
+          "inputs": "@if(equals(outputs(\u0027Get_DecisionFlow_App_Base_Url\u0027),\u0027\u0027),\u0027\u0027,concat(outputs(\u0027Get_DecisionFlow_App_Base_Url\u0027),\u0027?deepLink=%2Fapplications%2F\u0027,triggerBody()?[\u0027applicationId\u0027]))"
+        },
+        "Return_application_url": {
+          "type": "Response",
+          "kind": "Skills",
+          "runAfter": {
+            "Compose_ApplicationUrl": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "applicationUrl": "@outputs(\u0027Compose_ApplicationUrl\u0027)"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "applicationUrl": {
+                  "title": "applicationUrl",
+                  "type": "string",
+                  "x-ms-dynamically-added": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

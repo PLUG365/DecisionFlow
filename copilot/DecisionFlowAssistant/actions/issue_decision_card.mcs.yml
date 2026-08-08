@@ -1,0 +1,17 @@
+mcs.metadata:
+  componentName: issue_decision_card
+kind: TaskDialog
+outputs:
+  - propertyName: applicationId
+
+  - propertyName: cardInstanceId
+
+action:
+  kind: InvokeFlowTaskAction
+  flowId: c37ed747-9153-f111-a824-3833c5de99c8
+  connectionProperties:
+    $kind: ConnectionProperties
+    diagnostics:
+    mode: Invoker
+
+outputMode: All

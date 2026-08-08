@@ -1,0 +1,15 @@
+mcs.metadata:
+  componentName: Get_ApplicationDetailUrl
+kind: TaskDialog
+outputs:
+  - propertyName: applicationUrl
+
+action:
+  kind: InvokeFlowTaskAction
+  flowId: 8351e89e-7a55-f111-a824-3833c5de99c8
+  connectionProperties:
+    $kind: ConnectionProperties
+    diagnostics:
+    mode: Invoker
+
+outputMode: All
