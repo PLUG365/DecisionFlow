@@ -271,6 +271,27 @@ Copilot Studio 側の定義は `pac copilot clone` で取り込んだ YAML が�
 `inputType.properties` の宣言を落とすと、生成オーケストレーションが Topic 変数を
 埋められず、条件分岐が常に「情報が取れなかった」側に落ちます。
 
+### トピックが起動しないときに直す場所（generative orchestration）
+
+このエージェントは `settings.mcs.yml` が `recognizer: GenerativeAIRecognizer` /
+`GenerativeActionsEnabled: true` なので **generative orchestration** で動きます。
+トピックの入口は `modelDescription` であって、**Trigger phrases ではありません**
+（あれは classic orchestration の仕組みです）。効く順は次のとおりです。
+
+| 順 | 直す場所 | 書くこと |
+| --- | --- | --- |
+| 1 | `modelDescription` | 目的、使う場面、**使わない場面**。語句を並べるだけにしない |
+| 2 | `mcs.metadata.componentName` | 他のトピック・ナレッジと紛れない具体的な名前 |
+| 3 | `inputType.properties.*.description` | 値の意味に加え、**どう解決してよいか**（例: タイトルから検索して GUID にしてよい） |
+| 4 | `knowledge/*.mcs.yml` の説明文 | ナレッジが同じ話題を主張していると、トピックが競り負ける |
+
+`intent:` に `triggerQueries` を足すのは**最後の手段**です。トリガーノードが
+`User says a phrase` 側に倒れ、プランナーの候補からトピックごと消える恐れがあります。
+根拠と実測は [UX_ROADMAP.md](UX_ROADMAP.md) の「次の作業」を参照してください。
+
+`workflows/` の写しが古いと、VS Code 拡張が実在するバインドを
+「見つかりません」と赤で出します。トピック側を書き換える前に `pull` してください。
+
 ### トピック YAML の書き方（2026-08-08 に実機で確定）
 
 | やりたいこと | 書き方 |

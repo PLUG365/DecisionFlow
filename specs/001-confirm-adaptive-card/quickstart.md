@@ -170,17 +170,15 @@ Topic からの呼び出しにツール登録は不要で、`InvokeFlowAction` �
 
 UI で編集した場合は、push の前に必ず `pac copilot pull` して差分を見る。push はローカルを正としてクラウドの下書きを上書きする。
 
-Trigger phrases を併用する場合は以下を追加する。
+> **2026-08-09 訂正。** 以下にあった「呼び出しが安定しないなら Trigger phrases も追加する」は誤りだった。
+> Trigger phrases は classic orchestration の仕組みで、この環境（`GenerativeAIRecognizer`）では
+> トピック選択に効かない。`intent:` を埋めるとトリガーノードが `User says a phrase` 側に倒れ、
+> かえってトピックが選ばれなくなる恐れがある。直す場所は `modelDescription` と
+> 入力パラメータの説明。[docs/DEPLOY_SETUP.md](../../docs/DEPLOY_SETUP.md) の
+> 「トピックが起動しないときに直す場所」を参照。
 
-Trigger phrases:
-
-- `判断を確定`
-- `この申請を承認`
-- `この申請を却下`
-- `この申請を差し戻し`
-- `Adaptive Card で判断`
-
-`modelDescription` が生成オーケストレーション向けの説明になる。ただし、テスト画面で呼び出しが安定しない場合は、Trigger phrases も追加する。
+`modelDescription` が生成オーケストレーション向けの説明になる。語句を並べるのではなく、
+目的・使う場面・**使わない場面**を書く。
 
 ##### 3-2. 申請 ID は Topic 入力として受け取る
 

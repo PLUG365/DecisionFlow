@@ -1,7 +1,10 @@
 mcs.metadata:
   componentName: 判断確定
 kind: AdaptiveDialog
-modelDescription: 「判断を確定」「この申請を承認」「この申請を差し戻し」「この申請を却下」
+modelDescription: |-
+  判断者が申請の判断を確定するトピックです。判断カードを発行し、判断選択肢（承認・却下・差し戻し）と判断理由を受け取って Dataverse に判断を記録します。
+  ユーザーが判断を下す意思を示したら、このトピックを使います。例:「〇〇の申請を判断したい」「この申請を判断したい」「承認したい」「却下したい」「差し戻したい」「判断を確定」。申請をタイトルや通称で指していても、GUID を提示していなくても、このトピックを使います。
+  申請内容の要約、関連資料の一覧、類似案件の検索、判断コメントのドラフト作成には使いません。それらは読み取りの依頼なのでナレッジ検索で答えます。
 beginDialog:
   kind: OnRecognizedIntent
   id: main
@@ -210,7 +213,10 @@ inputType:
   properties:
     applicationId:
       displayName: applicationId
-      description: 判断対象の ds_application ID。Dataverse の申請情報または Code Apps 申請詳細リンクから取得した GUID。
+      description: |-
+        判断対象の ds_application レコードの GUID。
+        ユーザーが申請をタイトルや通称で指したときは、ds_application を検索して GUID を解決してから渡します。会話に既に出ている申請があればその GUID を使います。
+        GUID を1件に絞れないときは、どの申請かをユーザーに尋ねます。ユーザーに GUID の入力を求めません。
       type: String
 
 outputType: {}

@@ -127,6 +127,74 @@ class AgentYamlTopicTests(unittest.TestCase):
         self.assertIn("=Topic.postConfirmed = false", self.topic)
 
 
+class AgentYamlDecisionTopicTests(unittest.TestCase):
+    """判断確定トピック（zdI）の YAML の形を守る。
+
+    守るのは YAML の形だけで、**ルーティングが直ったことは守らない**。
+    生成オーケストレーションがこのトピックを選ぶかどうかは、テストパネルで
+    実際に発話して確かめるしかない（docs/UX_ROADMAP.md）。
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.topic = (
+            ROOT / "copilot" / "DecisionFlowAssistant" / "topics" / "zdI.mcs.yml"
+        ).read_text(encoding="utf-8")
+
+    def test_actor_is_bound_from_authenticated_user_variables(self):
+        # ここがモデルの出力から埋まると、他人として判断を確定できてしまう。
+        self.assertIn("variable: Topic.actorUpn", self.topic)
+        self.assertIn("value: =System.User.PrincipalName", self.topic)
+        self.assertIn("variable: Topic.actorAadObjectId", self.topic)
+        self.assertIn("value: =System.User.Id", self.topic)
+
+    def test_actor_is_not_declared_as_a_topic_input(self):
+        inputs = self.topic.split("inputType:", 1)[1]
+        self.assertNotIn("actorUpn", inputs)
+        self.assertNotIn("actorAadObjectId", inputs)
+
+    def test_topic_invokes_both_decision_flows_directly(self):
+        # ツール登録ではなく flowId 直書きで呼ぶ。docs/AGENT_WRITE_BOUNDARY.md。
+        self.assertIn("flowId: c37ed747-9153-f111-a824-3833c5de99c8", self.topic)  # issue_decision_card
+        self.assertIn("flowId: f8502159-9153-f111-a824-3833c5de99c8", self.topic)  # confirm_decision
+
+    def test_the_decision_flows_are_not_registered_as_agent_tools(self):
+        """2本ともツール登録されると、実行者を作文した発行→確定の連鎖が成立する。"""
+        actions_dir = ROOT / "copilot" / "DecisionFlowAssistant" / "actions"
+
+        for flow in ("issue_decision_card", "confirm_decision"):
+            self.assertFalse(
+                (actions_dir / f"{flow}.mcs.yml").exists(),
+                f"{flow} をツール登録すると、専用トピックの実行者束縛が迂回される。",
+            )
+
+    def test_card_issue_failure_stops_before_showing_the_card(self):
+        # issue_decision_card が拒否したのにカードを出すと、確定できない
+        # カードを判断者に見せることになる。
+        self.assertIn("id: validateIssueResult", self.topic)
+        self.assertIn('=Topic.issueStatus <> "issued"', self.topic)
+
+    def test_model_description_states_purpose_not_just_phrases(self):
+        """生成オーケストレーションはトピックを modelDescription で選ぶ。
+
+        trigger phrases で選ぶのは classic orchestration。この環境は
+        settings.mcs.yml が GenerativeAIRecognizer なので、入口は説明文になる。
+        語句を並べただけの説明に戻すと、ナレッジ検索に負ける状態へ逆戻りする。
+        """
+        description = self.topic.split("modelDescription:", 1)[1].split("beginDialog:", 1)[0]
+
+        self.assertIn("使いません", description, "「使わない場面」が無いとナレッジ検索と競合する")
+        self.assertIn("ナレッジ検索", description)
+        self.assertIn("タイトル", description, "タイトルで指された場合を説明していないと入口を外す")
+
+    def test_application_id_input_allows_resolving_from_a_title(self):
+        # 「GUID を渡せ」だけだと、タイトルしか無い発話でプランを組めない。
+        application_id = self.topic.split("applicationId:", 1)[1]
+
+        self.assertIn("検索して GUID を解決", application_id)
+        self.assertIn("GUID の入力を求めません", application_id)
+
+
 class CopilotAgentScriptTests(unittest.TestCase):
     def test_extract_bot_id_accepts_guid_or_copilot_url(self):
         guid = "11111111-2222-3333-4444-555555555555"
