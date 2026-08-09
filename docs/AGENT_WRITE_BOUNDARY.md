@@ -421,11 +421,24 @@ confirm: Get_application → Validate_application_found → Validate_submitted_a
 
 ゲートは python 115（+2）/ vitest 106 / lint / ai-tooling すべて緑。
 
+### 実機確認の結果（2026-08-09 23:05 JST・下書きチャット・デプロイ後）
+
+**塞がった。** テストパネルで、以前 BadGateway を起こしたのと**同じ GUID**（`9bf68d84-f05a-4317-9584-3099a0a64b19` ＝ ナレッジソースの ID）を明示的に渡した。
+
+| | 応答 |
+| --- | --- |
+| 修正前 | `エラー メッセージ: フロー 'issue_decision_card' … 応答コード 'BadGateway' … リクエスト追跡 ID …` |
+| 修正後 | `判断カードを発行できませんでした。提出済みの申請で、あなたが判断者に割り当てられている場合のみ…` |
+
+トピックの `sendIssueRejected` が出ている。つまり `issue_decision_card` が `invalid_target` を返し、`validateIssueResult` が発火した。
+
+**これで「ランタイムが `runAfter` の `Failed` を拾うか」が実証された。** 自動テストでは守れないと書いた部分がここで埋まった。`ds_decisioncard` は1行も増えていない（不変条件4）。
+
 ### まだ確かめていないこと
 
-- **Power Automate ランタイムが 404 で後続へ制御を渡すか。** 定義の形はテストで固定したが、挙動は実機でしか分からない。**渡さなければ BadGateway は直っておらず、それでもゲートは全部緑のままである。** テストは「自分が書いた JSON が自分の書いたとおりか」しか見ていない
-- `@actions('Get_application')?['status']` が期待どおり `Failed` を返すか
-- 一時障害が `invalid_target` に化ける件の実害（設計上は受け入れ済み）
+- 一時障害が `invalid_target` に化ける件の実害（設計上は受け入れ済み。再現手段が無い）
+- `Skipped` / `TimedOut` の経路。実測できたのは 404 の `Failed` のみ
+- **正常系（Submitted の申請でカードが出る）は今回も未確認。** 提出済みの申請が1件も無く、作ると `Application_OnSubmitted` がメールを送るため
 
 ### デプロイ
 

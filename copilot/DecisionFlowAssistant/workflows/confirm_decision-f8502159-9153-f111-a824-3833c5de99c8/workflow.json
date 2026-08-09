@@ -305,10 +305,88 @@
             "authentication": "@parameters(\u0027$authentication\u0027)"
           }
         },
-        "Validate_submitted_application": {
+        "Validate_application_found": {
           "type": "If",
           "runAfter": {
             "Get_application": [
+              "Succeeded",
+              "Failed",
+              "Skipped",
+              "TimedOut"
+            ]
+          },
+          "expression": {
+            "equals": [
+              "@actions(\u0027Get_application\u0027)?[\u0027status\u0027]",
+              "Succeeded"
+            ]
+          },
+          "actions": {},
+          "else": {
+            "actions": {
+              "Return_application_not_found": {
+                "type": "Response",
+                "kind": "Skills",
+                "runAfter": {},
+                "inputs": {
+                  "statusCode": 200,
+                  "body": {
+                    "status": "invalid_target",
+                    "applicationId": "@triggerBody()?[\u0027applicationId\u0027]",
+                    "decisionRecordId": "",
+                    "decidedAt": "",
+                    "message": "\u5BFE\u8C61\u6848\u4EF6\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002\u6848\u4EF6\u304C\u5B58\u5728\u3057\u306A\u3044\u304B\u3001\u4E00\u6642\u7684\u306B\u53C2\u7167\u3067\u304D\u307E\u305B\u3093\u3002\u6642\u9593\u3092\u304A\u3044\u3066\u518D\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "title": "status",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "applicationId": {
+                        "title": "applicationId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "decisionRecordId": {
+                        "title": "decisionRecordId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "decidedAt": {
+                        "title": "decidedAt",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "message": {
+                        "title": "message",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      }
+                    }
+                  }
+                }
+              },
+              "Stop_after_Return_application_not_found": {
+                "type": "Terminate",
+                "runAfter": {
+                  "Return_application_not_found": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "runStatus": "Succeeded"
+                }
+              }
+            }
+          }
+        },
+        "Validate_submitted_application": {
+          "type": "If",
+          "runAfter": {
+            "Validate_application_found": [
               "Succeeded"
             ]
           },
@@ -389,7 +467,7 @@
           },
           "expression": {
             "equals": [
-              "@toLower(outputs(\u0027Get_application\u0027)?[\u0027body/_ds_deciderid_value\u0027])",
+              "@toLower(coalesce(outputs(\u0027Get_application\u0027)?[\u0027body/_ds_deciderid_value\u0027], \u0027\u0027))",
               "@toLower(first(outputs(\u0027List_current_user\u0027)?[\u0027body/value\u0027])?[\u0027systemuserid\u0027])"
             ]
           },

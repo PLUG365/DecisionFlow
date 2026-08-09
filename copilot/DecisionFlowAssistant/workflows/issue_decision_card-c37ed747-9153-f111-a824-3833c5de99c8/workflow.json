@@ -68,10 +68,307 @@
           "runAfter": {},
           "inputs": "@guid()"
         },
-        "List_prior_issued_decisioncards": {
+        "List_current_user": {
           "type": "OpenApiConnection",
           "runAfter": {
             "Compose_cardInstanceId": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            },
+            "parameters": {
+              "entityName": "systemusers",
+              "$filter": "@if(empty(triggerBody()?[\u0027actorAadObjectId\u0027]), concat(\u0027domainname eq \u0027\u0027\u0027, triggerBody()?[\u0027actorUpn\u0027], \u0027\u0027\u0027\u0027), concat(\u0027azureactivedirectoryobjectid eq \u0027, triggerBody()?[\u0027actorAadObjectId\u0027]))",
+              "$select": "systemuserid,domainname,internalemailaddress,azureactivedirectoryobjectid"
+            },
+            "authentication": "@parameters(\u0027$authentication\u0027)"
+          }
+        },
+        "Validate_user_found": {
+          "type": "If",
+          "runAfter": {
+            "List_current_user": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "greater": [
+              "@length(outputs(\u0027List_current_user\u0027)?[\u0027body/value\u0027])",
+              0
+            ]
+          },
+          "actions": {},
+          "else": {
+            "actions": {
+              "Return_forbidden_user_not_found": {
+                "type": "Response",
+                "kind": "Skills",
+                "runAfter": {},
+                "inputs": {
+                  "statusCode": 200,
+                  "body": {
+                    "applicationId": "@triggerBody()?[\u0027applicationId\u0027]",
+                    "cardInstanceId": "",
+                    "status": "forbidden"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "applicationId": {
+                        "title": "applicationId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "cardInstanceId": {
+                        "title": "cardInstanceId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "status": {
+                        "title": "status",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      }
+                    }
+                  }
+                }
+              },
+              "Stop_after_Return_forbidden_user_not_found": {
+                "type": "Terminate",
+                "runAfter": {
+                  "Return_forbidden_user_not_found": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "runStatus": "Succeeded"
+                }
+              }
+            }
+          }
+        },
+        "Get_application": {
+          "type": "OpenApiConnection",
+          "runAfter": {
+            "Validate_user_found": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem"
+            },
+            "parameters": {
+              "entityName": "ds_applications",
+              "recordId": "@triggerBody()?[\u0027applicationId\u0027]",
+              "$select": "ds_stage,_ds_deciderid_value"
+            },
+            "authentication": "@parameters(\u0027$authentication\u0027)"
+          }
+        },
+        "Validate_application_found": {
+          "type": "If",
+          "runAfter": {
+            "Get_application": [
+              "Succeeded",
+              "Failed",
+              "Skipped",
+              "TimedOut"
+            ]
+          },
+          "expression": {
+            "equals": [
+              "@actions(\u0027Get_application\u0027)?[\u0027status\u0027]",
+              "Succeeded"
+            ]
+          },
+          "actions": {},
+          "else": {
+            "actions": {
+              "Return_application_not_found": {
+                "type": "Response",
+                "kind": "Skills",
+                "runAfter": {},
+                "inputs": {
+                  "statusCode": 200,
+                  "body": {
+                    "applicationId": "@triggerBody()?[\u0027applicationId\u0027]",
+                    "cardInstanceId": "",
+                    "status": "invalid_target"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "applicationId": {
+                        "title": "applicationId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "cardInstanceId": {
+                        "title": "cardInstanceId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "status": {
+                        "title": "status",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      }
+                    }
+                  }
+                }
+              },
+              "Stop_after_Return_application_not_found": {
+                "type": "Terminate",
+                "runAfter": {
+                  "Return_application_not_found": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "runStatus": "Succeeded"
+                }
+              }
+            }
+          }
+        },
+        "Validate_submitted_application": {
+          "type": "If",
+          "runAfter": {
+            "Validate_application_found": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "equals": [
+              "@outputs(\u0027Get_application\u0027)?[\u0027body/ds_stage\u0027]",
+              100000001
+            ]
+          },
+          "actions": {},
+          "else": {
+            "actions": {
+              "Return_invalid_application": {
+                "type": "Response",
+                "kind": "Skills",
+                "runAfter": {},
+                "inputs": {
+                  "statusCode": 200,
+                  "body": {
+                    "applicationId": "@triggerBody()?[\u0027applicationId\u0027]",
+                    "cardInstanceId": "",
+                    "status": "invalid_target"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "applicationId": {
+                        "title": "applicationId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "cardInstanceId": {
+                        "title": "cardInstanceId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "status": {
+                        "title": "status",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      }
+                    }
+                  }
+                }
+              },
+              "Stop_after_Return_invalid_application": {
+                "type": "Terminate",
+                "runAfter": {
+                  "Return_invalid_application": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "runStatus": "Succeeded"
+                }
+              }
+            }
+          }
+        },
+        "Validate_actor_is_decider": {
+          "type": "If",
+          "runAfter": {
+            "Validate_submitted_application": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "equals": [
+              "@toLower(coalesce(outputs(\u0027Get_application\u0027)?[\u0027body/_ds_deciderid_value\u0027], \u0027\u0027))",
+              "@toLower(first(outputs(\u0027List_current_user\u0027)?[\u0027body/value\u0027])?[\u0027systemuserid\u0027])"
+            ]
+          },
+          "actions": {},
+          "else": {
+            "actions": {
+              "Return_forbidden_not_decider": {
+                "type": "Response",
+                "kind": "Skills",
+                "runAfter": {},
+                "inputs": {
+                  "statusCode": 200,
+                  "body": {
+                    "applicationId": "@triggerBody()?[\u0027applicationId\u0027]",
+                    "cardInstanceId": "",
+                    "status": "forbidden"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "applicationId": {
+                        "title": "applicationId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "cardInstanceId": {
+                        "title": "cardInstanceId",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      },
+                      "status": {
+                        "title": "status",
+                        "type": "string",
+                        "x-ms-dynamically-added": true
+                      }
+                    }
+                  }
+                }
+              },
+              "Stop_after_Return_forbidden_not_decider": {
+                "type": "Terminate",
+                "runAfter": {
+                  "Return_forbidden_not_decider": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "runStatus": "Succeeded"
+                }
+              }
+            }
+          }
+        },
+        "List_prior_issued_decisioncards": {
+          "type": "OpenApiConnection",
+          "runAfter": {
+            "Validate_actor_is_decider": [
               "Succeeded"
             ]
           },
@@ -160,7 +457,8 @@
             "statusCode": 200,
             "body": {
               "applicationId": "@triggerBody()?[\u0027applicationId\u0027]",
-              "cardInstanceId": "@outputs(\u0027Compose_cardInstanceId\u0027)"
+              "cardInstanceId": "@outputs(\u0027Compose_cardInstanceId\u0027)",
+              "status": "issued"
             },
             "schema": {
               "type": "object",
@@ -172,6 +470,11 @@
                 },
                 "cardInstanceId": {
                   "title": "cardInstanceId",
+                  "type": "string",
+                  "x-ms-dynamically-added": true
+                },
+                "status": {
+                  "title": "status",
                   "type": "string",
                   "x-ms-dynamically-added": true
                 }
