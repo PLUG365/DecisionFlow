@@ -2,10 +2,12 @@
 
 ## 今どこを進めているか
 
-進行中の作業とその進捗は [`docs/UX_ROADMAP.md`](docs/UX_ROADMAP.md) が持つ。**作業を再開するときは最初にここを読み、終えたら状態を書き戻す。**
+進行中の作業とその進捗は [`docs/UX_ROADMAP.md`](docs/UX_ROADMAP.md) が持つ。**作業を再開するときは冒頭の「現在地」を最初に読み、終えたら状態を書き戻す。**
 `docs/PLAN.md` は Phase 0〜5 の初期構築計画（実装済み）で、現在の作業対象ではない。
 
-テストの回し方も UX_ROADMAP.md に書いてある（Python は pytest ではなく `PYTHONPATH` + `unittest discover`）。
+「現在地」には、クラウドの下書きと公開版のずれ、次の作業、環境とリソースの ID、実機確認で残したテストデータ、テストの回し方（Python は pytest ではなく `PYTHONPATH` + `unittest discover`）が入っている。
+
+**Copilot Studio 側の状態はリポジトリの記述で判断しない。** `pac copilot pull` して差分を見るか、Dataverse の `botcomponent` を読む。文書は書いた時点のスナップショットで、ポータル側は勝手に進む（実際にモデルが `Sonnet46` → `GPT55Chat` に変わっていたことがある）。
 
 ## AI 開発ツール
 
