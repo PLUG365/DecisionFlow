@@ -243,6 +243,47 @@ def _return_and_stop(action_name: str, body: dict, response_properties: dict[str
     }
 
 
+def _validate_application_found(body: dict, response_properties: dict[str, str]) -> dict:
+    """`Get_application` が失敗しても status を返して終わるようにする段。
+
+    Dataverse の `GetItem` は存在しない GUID で 404 を返し、アクションごと失敗する。
+    後続が `runAfter: Succeeded` しか持たないとフロー全体がエラー終了し、Copilot Studio
+    は生の `BadGateway` とリクエスト追跡 ID を利用者に見せる（2026-08-09 に実測）。
+
+    Succeeded 以外のすべての終了状態を拾って `invalid_target` を返す。`Failed` だけに
+    すると、コネクタが 404 を別の状態に割り当てた場合に後続へ制御が渡らず、
+    BadGateway が黙って復活する。
+
+    Dataverse の一時障害も同じ status にまとまるが、どちらに転んでも書き込みには
+    到達しない（fail closed）。設計は docs/AGENT_WRITE_BOUNDARY.md。
+    """
+    return {
+        "type": "If",
+        "runAfter": {"Get_application": ["Succeeded", "Failed", "Skipped", "TimedOut"]},
+        "expression": {"equals": ["@actions('Get_application')?['status']", "Succeeded"]},
+        "actions": {},
+        "else": {
+            "actions": _return_and_stop("Return_application_not_found", body, response_properties)
+        },
+    }
+
+
+def _decider_matches_actor() -> dict:
+    """判断者が未割当て（null）でも If を落とさない。
+
+    `toLower(null)` はアクションを Failed にするため、判断者未割当ての申請では
+    status が返らずフローがエラー終了していた。`coalesce` で空文字に倒すと
+    systemuserid と一致せず、既存の else（forbidden）へ落ちる。
+    **判定の意味は変えていない。**
+    """
+    return {
+        "equals": [
+            f"@toLower(coalesce(outputs('Get_application')?['body/_{PREFIX}_deciderid_value'], ''))",
+            "@toLower(first(outputs('List_current_user')?['body/value'])?['systemuserid'])",
+        ]
+    }
+
+
 def _actor_card_filter(status: int) -> str:
     return (
         f"@if(empty(triggerBody()?['actorAadObjectId']), "
@@ -323,9 +364,13 @@ def build_issue_decision_card_clientdata(connection_refs: dict[str, str] | None 
             f"{PREFIX}_stage,_{PREFIX}_deciderid_value",
             {"Validate_user_found": ["Succeeded"]},
         ),
+        "Validate_application_found": _validate_application_found(
+            _issue_response_body("invalid_target"),
+            ISSUE_RESPONSE_PROPERTIES,
+        ),
         "Validate_submitted_application": {
             "type": "If",
-            "runAfter": {"Get_application": ["Succeeded"]},
+            "runAfter": {"Validate_application_found": ["Succeeded"]},
             "expression": {"equals": [f"@outputs('Get_application')?['body/{PREFIX}_stage']", 100000001]},
             "actions": {},
             "else": {
@@ -339,12 +384,7 @@ def build_issue_decision_card_clientdata(connection_refs: dict[str, str] | None 
         "Validate_actor_is_decider": {
             "type": "If",
             "runAfter": {"Validate_submitted_application": ["Succeeded"]},
-            "expression": {
-                "equals": [
-                    f"@toLower(outputs('Get_application')?['body/_{PREFIX}_deciderid_value'])",
-                    "@toLower(first(outputs('List_current_user')?['body/value'])?['systemuserid'])",
-                ]
-            },
+            "expression": _decider_matches_actor(),
             "actions": {},
             "else": {
                 "actions": _return_and_stop(
@@ -493,9 +533,16 @@ def build_confirm_decision_clientdata(connection_refs: dict[str, str] | None = N
             f"{PREFIX}_stage,{PREFIX}_submittedat,_{PREFIX}_deciderid_value,{PREFIX}_aidecisionoptiontext",
             {"Validate_decision_option_found": ["Succeeded"]},
         ),
+        # 取得できなかった場合と「取得できたが Submitted でない」場合は原因が違う。
+        # status は同じ invalid_target（トピックの分岐を変えないため）だが、実行履歴で
+        # 区別できるよう message は分ける。一時障害なら再実行で通る。
+        "Validate_application_found": _validate_application_found(
+            _confirm_response_body("invalid_target", "対象案件を取得できませんでした。案件が存在しないか、一時的に参照できません。時間をおいて再実行してください。"),
+            CONFIRM_RESPONSE_PROPERTIES,
+        ),
         "Validate_submitted_application": {
             "type": "If",
-            "runAfter": {"Get_application": ["Succeeded"]},
+            "runAfter": {"Validate_application_found": ["Succeeded"]},
             "expression": {"equals": [f"@outputs('Get_application')?['body/{PREFIX}_stage']", 100000001]},
             "actions": {},
             "else": {
@@ -508,12 +555,7 @@ def build_confirm_decision_clientdata(connection_refs: dict[str, str] | None = N
         "Validate_actor_is_decider": {
             "type": "If",
             "runAfter": {"Validate_submitted_application": ["Succeeded"]},
-            "expression": {
-                "equals": [
-                    f"@toLower(outputs('Get_application')?['body/_{PREFIX}_deciderid_value'])",
-                    "@toLower(first(outputs('List_current_user')?['body/value'])?['systemuserid'])",
-                ]
-            },
+            "expression": _decider_matches_actor(),
             "actions": {},
             "else": {
                 "actions": _return_and_stop(

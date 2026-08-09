@@ -415,13 +415,13 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         self.assertEqual(submitted_gate["expression"], {"equals": ["@outputs('Get_application')?['body/ds_stage']", 100000001]})
         self.assertIn("Return_invalid_application", submitted_gate["else"]["actions"])
 
-        # 4. 実行者が判断者であること
+        # 4. 実行者が判断者であること（判断者未割当ては coalesce で forbidden に倒す）
         decider_gate = actions["Validate_actor_is_decider"]
         self.assertEqual(
             decider_gate["expression"],
             {
                 "equals": [
-                    "@toLower(outputs('Get_application')?['body/_ds_deciderid_value'])",
+                    "@toLower(coalesce(outputs('Get_application')?['body/_ds_deciderid_value'], ''))",
                     "@toLower(first(outputs('List_current_user')?['body/value'])?['systemuserid'])",
                 ]
             },
@@ -438,7 +438,8 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         self.assertEqual(actions["Get_application"]["runAfter"], {"Validate_user_found": ["Succeeded"]})
         self.assertEqual(
             actions["Validate_submitted_application"]["runAfter"],
-            {"Get_application": ["Succeeded"]},
+            {"Validate_application_found": ["Succeeded"]},
+            "2.5 の found 判定を挟む。飛ばすと 404 でフローが throw する",
         )
         self.assertEqual(
             actions["Validate_actor_is_decider"]["runAfter"],
@@ -481,6 +482,79 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
             # 拒否時に返す status も固定する。成功時だけ固定していると片手落ち。
             self.assertEqual(else_actions[response_name]["inputs"]["body"]["status"], status)
             self.assertEqual(else_actions[response_name]["inputs"]["body"]["cardInstanceId"], "")
+
+    def test_both_flows_answer_instead_of_throwing_when_the_application_is_missing(self):
+        """不変条件7: どの拒否経路でもフローは status を返して Succeeded で終わる。
+
+        2026-08-09 の実測。生成オーケストレーションが applicationId に**ナレッジ
+        ソースの ID**（9bf68d84-...）を渡し、GetItem が 404 で失敗し、利用者の画面に
+        生の BadGateway とリクエスト追跡 ID が出た。設計は
+        docs/AGENT_WRITE_BOUNDARY.md「フローが status を返さず throw する経路を塞ぐ」。
+
+        Failed を拾わないと throw に戻る。runAfter から "Failed" が落ちると
+        この経路が黙って復活するので、そこを名指しで固定する。
+        """
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        for builder, response_properties in (
+            ("build_issue_decision_card_clientdata", {"applicationId", "cardInstanceId", "status"}),
+            ("build_confirm_decision_clientdata", {"applicationId", "decisionRecordId", "decidedAt", "message", "status"}),
+        ):
+            with self.subTest(builder=builder):
+                actions = json.loads(getattr(deploy, builder)())["properties"]["definition"]["actions"]
+
+                gate = actions["Validate_application_found"]
+                self.assertEqual(gate["type"], "If")
+                self.assertEqual(
+                    gate["runAfter"],
+                    {"Get_application": ["Succeeded", "Failed", "Skipped", "TimedOut"]},
+                    "Succeeded 以外を全部拾う。Failed だけだと 404 が別状態に割り当てられたとき素通りする",
+                )
+                self.assertEqual(
+                    gate["expression"],
+                    {"equals": ["@actions('Get_application')?['status']", "Succeeded"]},
+                )
+                self.assertEqual(gate["actions"], {}, "拒否は else 側に置く（他の段と同じ形）")
+
+                rejection = gate["else"]["actions"]["Return_application_not_found"]
+                self.assertEqual(rejection["inputs"]["body"]["status"], "invalid_target")
+                self.assertEqual(set(rejection["inputs"]["schema"]["properties"]), response_properties)
+
+                stop = gate["else"]["actions"]["Stop_after_Return_application_not_found"]
+                self.assertEqual(stop["type"], "Terminate")
+                self.assertEqual(stop["inputs"], {"runStatus": "Succeeded"})
+
+                # 判定順 1 → 2 → 2.5(found) → 3。found を飛ばして Submitted を見ると
+                # outputs('Get_application') が空のまま比較され、また throw する。
+                self.assertEqual(
+                    actions["Validate_submitted_application"]["runAfter"],
+                    {"Validate_application_found": ["Succeeded"]},
+                )
+
+    def test_both_flows_treat_an_unassigned_decider_as_forbidden_instead_of_throwing(self):
+        """不変条件7 の続き。判断者が未割当ての申請でも throw しない。
+
+        `toLower(null)` は If を Failed にする。docs の表 #4 は「拒否 / forbidden」と
+        書いていたが、実際は status が返っていなかった。coalesce で空文字に倒すと
+        systemuserid と一致せず、既存の else（forbidden）へ落ちる。
+
+        **判定の意味は変えていない**（不変条件8）。null を「判断者でない」に倒すだけ。
+        """
+        deploy = importlib.import_module("scripts.deploy_adaptive_card_decision_confirmation")
+
+        for builder in ("build_issue_decision_card_clientdata", "build_confirm_decision_clientdata"):
+            with self.subTest(builder=builder):
+                actions = json.loads(getattr(deploy, builder)())["properties"]["definition"]["actions"]
+
+                self.assertEqual(
+                    actions["Validate_actor_is_decider"]["expression"],
+                    {
+                        "equals": [
+                            "@toLower(coalesce(outputs('Get_application')?['body/_ds_deciderid_value'], ''))",
+                            "@toLower(first(outputs('List_current_user')?['body/value'])?['systemuserid'])",
+                        ]
+                    },
+                )
 
     def test_issue_flow_never_writes_a_card_before_every_validation_passed(self):
         """不変条件4: 拒否されたら ds_decisioncard に行が増えない。
@@ -704,7 +778,7 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
 
         validate_application = find_action(actions, "Validate_submitted_application")
         self.assertIsInstance(validate_application["expression"], dict)
-        self.assertEqual(validate_application["runAfter"], {"Get_application": ["Succeeded"]})
+        self.assertEqual(validate_application["runAfter"], {"Validate_application_found": ["Succeeded"]})
         application_json = json.dumps(validate_application, ensure_ascii=False)
         self.assertIn("ds_stage", application_json)
         self.assertIn("100000001", application_json)

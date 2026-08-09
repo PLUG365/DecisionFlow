@@ -329,6 +329,110 @@ py scripts/deploy_adaptive_card_decision_confirmation.py
 
 **Code Apps パネルは対象外。** パネルは react-markdown で描いており、Adaptive Card をレンダリングできるか未確認。パネル経由の判断確定については、この変更で何かが良くなったとも悪くなったとも言えない。確認するまで、上の主張はポータル / Teams に限定する。
 
+## 設計: フローが status を返さず throw する経路を塞ぐ（2026-08-09 固定）
+
+上の表 #2 と #4 で「別タスク」として先送りしていた2件を実施する。**認可の判定式そのものは変えない。返し方だけを変える。**
+
+### なぜ今やるか（実測）
+
+2026-08-09、Playwright でテストパネルを操作したところ、生成オーケストレーションが `applicationId` に**ナレッジソースの ID**（`9bf68d84-f05a-4317-9584-3099a0a64b19`）を渡した。`Get_application` が 404 で失敗し、フローがエラー終了し、**利用者の画面に生の `BadGateway` とリクエスト追跡 ID が出た**。
+
+先送りの判断（「行が増えないことは保たれるので直さない」）は**安全性としては正しかった**。実際に行は増えていない。しかし利用者に見える形としては破綻しており、Teams の判断者に出る。
+
+### 許可する状態と操作 / 拒否する状態と操作（変更点のみ）
+
+| # | 状態 | 現在 | 変更後 | 返す status |
+| --- | --- | --- | --- | --- |
+| 2 | `applicationId` が不正・不存在 | **throw。生の BadGateway が利用者に出る** | 拒否して応答を返す | `invalid_target` |
+| 4' | 申請の判断者が未割当て（`_ds_deciderid_value` が null） | **throw**（`toLower(null)` で `If` が Failed） | 拒否して応答を返す | `forbidden` |
+
+対象は `issue_decision_card` と `confirm_decision` の**両方**。片方だけ直すと2本の判定が食い違う（既存の表 205 行が「食い違わない」ことを根拠にしているため、**同時に直すのが条件**）。
+
+### 実現方法
+
+| # | 手段 |
+| --- | --- |
+| 2 | `Get_application` の直後に `Validate_application_found`（`If`）を挿す。`runAfter` は `{"Get_application": ["Succeeded", "Failed", "Skipped", "TimedOut"]}`、式は `@actions('Get_application')?['status']` が `Succeeded` であること。else で `invalid_target` を返して `Terminate` |
+| 4' | `Validate_actor_is_decider` の左辺を `@toLower(coalesce(outputs('Get_application')?['body/_ds_deciderid_value'], ''))` にする。null は空文字になり、systemuserid と一致しないので既存の else（`forbidden`）に落ちる |
+
+`Succeeded` 以外を全部拾うので、**Dataverse の一時障害も `invalid_target` として返る**。これは承知のうえで受け入れる。理由は次の2点。
+
+- **fail closed である。** どちらに転んでも書き込みには到達しない。安全側の性質は変わらない
+- 404 と 500 を式で区別する手段が信頼できない。区別しようとして壊すより、**利用者に文章で返るほうがよい**
+
+**代償: `confirm_decision` の途中で一時障害が起きた判断者に「対象案件が無効」と読める応答が返る。** 有効なカードを持って確定しようとしている人が「案件が壊れた」と解釈して手を止めうる。以前はエラーだったので再試行した。
+
+そこで `Return_application_not_found` の `message` は `Return_invalid_application` と**別の文面**にし、再実行を促す（`対象案件を取得できませんでした。…時間をおいて再実行してください。`）。status は `invalid_target` のままなのでトピックの分岐は変わらない。
+
+**ただしトピックは `invalid_target` に固定文を出すので、この文面は利用者には見えない。** 見えるのは実行履歴。**正しい案内は「一度再実行する」** であり、それでも同じなら本当に無効な案件である。トピック側の文面を分けるかは別タスク。
+
+`GetItem` を `ListRecords` + 0 件判定に置き換える案は採らない。両フローの下流が `outputs('Get_application')?['body/...']` を多数参照しており、**認可判定のすぐ隣で差分が大きくなる**。
+
+### 評価時点
+
+変えない。すべて書き込みの前で、`Validate_application_found` は `Get_application` と `Validate_submitted_application` の**間**に入る。判定順は 1 → 2 → 2.5(found) → 3 → 4。
+
+### 守る不変条件
+
+既存の1〜6に加えて:
+
+- **不変条件7**: どの拒否経路でも、フローは status を含む応答を返して `Succeeded` で終わる。利用者にランタイムのエラー本文を見せない
+- **不変条件8**: 認可の判定式（Submitted か / 判断者か / カードが現存か）は**一字も変えない**。#4' の `coalesce` は null を「判断者でない」に倒すだけで、判定の意味を変えない
+
+### 担保
+
+| 条件 | 自動テスト | 人間が実機で確認 |
+| --- | --- | --- |
+| 2本とも `Validate_application_found` を持ち、`runAfter` に `Failed` が入っている | フロー定義を assert | — |
+| 見つからないときに `invalid_target` を返して Terminate する | 同上 | — |
+| `Validate_actor_is_decider` が `coalesce` 済み | 同上 | — |
+| 書き込みが依然として全検証の後ろにある | 既存テスト（`Create_decisioncard` の `runAfter` 鎖） | — |
+| 実際に BadGateway が出なくなる | **守らない** | **存在しない GUID をトピックに渡して、文章で返ること。** 書き込みは起きない（`Get_application` で落ちるため） |
+
+**自動テストが守るのはフロー定義の形だけで、Power Automate ランタイムが `Failed` を実際に拾うかは守らない。** そこは実機でしか確かめられない。
+
+### 変更する範囲 / 変更しない範囲
+
+| 変更する | 変更しない |
+| --- | --- |
+| `deploy_adaptive_card_decision_confirmation.py` の issue / confirm 両方の検証段 | 認可の判定式の意味、6段ゲートの段数 |
+| `tests/test_adaptive_card_decision_confirmation.py` | `zdI.mcs.yml`（`issueStatus <> "issued"` で既に拾える） |
+| この文書 | `ds_decisioncard` スキーマ、セキュリティロール、Code Apps 側 |
+
+トピックは変更しない。`invalid_target` は `Topic.issueStatus <> "issued"` に該当し、既存の `sendIssueRejected` が出る。`confirm_decision` 側は既に `invalid_target` / `forbidden` の分岐を持っている。
+
+### 実装の結果（2026-08-09）
+
+表のとおり実装した。共通化して両フローが同じ段を持つようにしてある。
+
+| 追加 | 場所 |
+| --- | --- |
+| `_validate_application_found()` | issue / confirm 両方の `Validate_application_found` を生成 |
+| `_decider_matches_actor()` | 両方の `Validate_actor_is_decider` の式を生成。`coalesce` はここ1箇所 |
+
+アクションの鎖を出力して確認した。**書き込みは依然として全検証の後ろにある。**
+
+```text
+issue:   Get_application → Validate_application_found → Validate_submitted_application
+         → Validate_actor_is_decider → List_prior → Supersede → Create_decisioncard
+confirm: Get_application → Validate_application_found → Validate_submitted_application
+         → Validate_actor_is_decider → Validate_rationale_exists → …
+```
+
+ゲートは python 115（+2）/ vitest 106 / lint / ai-tooling すべて緑。
+
+### まだ確かめていないこと
+
+- **Power Automate ランタイムが 404 で後続へ制御を渡すか。** 定義の形はテストで固定したが、挙動は実機でしか分からない。**渡さなければ BadGateway は直っておらず、それでもゲートは全部緑のままである。** テストは「自分が書いた JSON が自分の書いたとおりか」しか見ていない
+- `@actions('Get_application')?['status']` が期待どおり `Failed` を返すか
+- 一時障害が `invalid_target` に化ける件の実害（設計上は受け入れ済み）
+
+### デプロイ
+
+`py scripts/deploy_adaptive_card_decision_confirmation.py` の実行が要る（クラウドのフロー定義を書き換える）。**flowId は変わらない**ため `zdI.mcs.yml` は無傷。
+
+デプロイ後の実機確認は、**存在しない GUID をトピックに渡して文章が返ること**。書き込みは起きない（`Get_application` で落ちるため、Submitted の申請があっても到達しない）。
+
 ## 検証
 
 | 対象 | 自動テスト | 実機確認 |
