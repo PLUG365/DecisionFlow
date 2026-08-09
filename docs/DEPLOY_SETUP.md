@@ -249,8 +249,17 @@ Copilot Studio 側の定義は `pac copilot clone` で取り込んだ YAML が�
 | 操作 | コマンド |
 | --- | --- |
 | クラウド → ローカル | `pac copilot pull --project-dir copilot/DecisionFlowAssistant` |
-| ローカル → クラウド（下書き） | `pac copilot push --project-dir copilot/DecisionFlowAssistant` |
+| ローカル → クラウド（下書き） | `pac copilot push --project-dir "<絶対パス>\copilot\DecisionFlowAssistant"` |
 | 下書きを公開 | `pac copilot publish` |
+
+**`push` は `--project-dir` に絶対パスが要ります**（2026-08-09・pac 2.10.1 で確認）。相対パスだと
+同じディレクトリでも `Error: No synced workspace found at the specified directory.` になります。
+`pull` は相対パスでも通るので、片方だけ失敗して混乱しやすい箇所です。
+
+**`pull` は差分適用です。** クラウド側で変わったコンポーネントだけを書き戻すため、
+**ローカルだけの編集は pull で消えません**（2026-08-09 に確認）。下の「UI で編集したら先に
+`pull` する」は、**push がローカルを正として上書きする**ことへの注意であって、pull が
+ローカルを壊すという意味ではありません。
 
 `push` が書き換えるのは**下書き**だけです。Teams などのチャネルに出るのは `publish` の後です。
 
