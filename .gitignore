@@ -84,3 +84,6 @@ tsconfig.tsbuildinfo
 
 # Superpowers Visual Companion の設計セッション生成物
 .superpowers/
+
+# Local git worktrees
+.worktrees/
