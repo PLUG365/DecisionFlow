@@ -21,6 +21,7 @@
 - Do not add dependencies.
 - Desktop decision layout is 40% sticky action rail and 60% AI reading area; below `lg` it is one non-sticky column.
 - D4 requires human verification at desktop and narrow widths even after mechanical gates pass.
+- User-approved TDD boundary: the pure classifier uses red-green TDD; dashboard JSX wiring and CSS-only layout use build, lint, and browser verification because this repository has no DOM test harness and this plan adds no dependency.
 
 ---
 
@@ -60,18 +61,12 @@ function application(
 }
 
 describe("groupDashboardActionApplications", () => {
-  it("separates overdue Draft and Submitted rows and excludes non-actions", () => {
+  it("separates overdue Draft and Submitted rows", () => {
     const rows = [
       application("draft-overdue"),
       application("submitted-overdue", {
         ds_stage: ApplicationStage.Submitted,
       }),
-      application("due-today", { ds_duedate: "2026-08-11" }),
-      application("due-future", { ds_duedate: "2026-08-12" }),
-      application("decided", { ds_stage: ApplicationStage.Decided }),
-      application("missing-due", { ds_duedate: undefined }),
-      application("unknown-stage", { ds_stage: 999 as never }),
-      application("invalid-due", { ds_duedate: "not-a-date" }),
     ];
 
     const result = groupDashboardActionApplications({
@@ -87,6 +82,26 @@ describe("groupDashboardActionApplications", () => {
     expect(result.decide.map((row) => row.ds_applicationid)).toEqual([
       "submitted-overdue",
     ]);
+  });
+
+  it("excludes rows that are not overdue actionable stages", () => {
+    const rows = [
+      application("due-today", { ds_duedate: "2026-08-11" }),
+      application("due-future", { ds_duedate: "2026-08-12" }),
+      application("decided", { ds_stage: ApplicationStage.Decided }),
+      application("missing-due", { ds_duedate: undefined }),
+      application("unknown-stage", { ds_stage: 999 as never }),
+      application("invalid-due", { ds_duedate: "not-a-date" }),
+    ];
+
+    const result = groupDashboardActionApplications({
+      applications: rows,
+      scope: "all",
+      currentSystemUserId: null,
+      now: NOW,
+    });
+
+    expect(result).toEqual({ submitOrRevise: [], decide: [] });
   });
 
   it("uses creator ownership for Draft and decider ownership for Submitted", () => {
@@ -268,7 +283,7 @@ Run:
 npm test -- src/lib/dashboard-actions.test.ts
 ```
 
-Expected: 1 test file and 4 tests pass, with 0 failures.
+Expected: 1 test file and 5 tests pass, with 0 failures.
 
 - [ ] **Step 5: Run local type and lint gates for the new module**
 
@@ -484,7 +499,7 @@ npm run build
 npm run lint
 ```
 
-Expected: 4 targeted tests pass; build and lint exit 0.
+Expected: 5 targeted tests pass; build and lint exit 0.
 
 - [ ] **Step 5: Commit the dashboard UI**
 
