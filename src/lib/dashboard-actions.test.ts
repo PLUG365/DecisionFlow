@@ -50,6 +50,9 @@ describe("groupDashboardActionApplications", () => {
       application("missing-due", { ds_duedate: undefined }),
       application("unknown-stage", { ds_stage: 999 as never }),
       application("invalid-due", { ds_duedate: "not-a-date" }),
+      application("invalid-due-suffix", {
+        ds_duedate: "2026-08-10not-a-date",
+      }),
     ];
 
     const result = groupDashboardActionApplications({

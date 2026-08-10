@@ -19,7 +19,9 @@ export type DashboardActionInput = {
 };
 
 function calendarDateKey(value: string): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)?)?$/.exec(
+    value,
+  );
   if (!match) return null;
 
   const year = Number(match[1]);
