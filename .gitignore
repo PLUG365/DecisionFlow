@@ -78,3 +78,6 @@ tsconfig.tsbuildinfo
 
 # Claude Code
 .claude/
+
+# Playwright MCP のスナップショット・スクリーンショット・コンソールログ
+.playwright-mcp/
