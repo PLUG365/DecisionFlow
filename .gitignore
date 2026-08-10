@@ -81,6 +81,7 @@ tsconfig.tsbuildinfo
 
 # Playwright MCP のスナップショット・スクリーンショット・コンソールログ
 .playwright-mcp/
+.playwright-cli/
 
 # Superpowers Visual Companion の設計セッション生成物
 .superpowers/
