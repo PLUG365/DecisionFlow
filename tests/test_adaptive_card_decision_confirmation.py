@@ -596,6 +596,50 @@ class AdaptiveCardDecisionConfirmationFoundationTests(unittest.TestCase):
         )
         self.assertEqual(response["inputs"]["body"]["status"], "issued")
 
+    def test_decision_topic_refuses_channels_that_cannot_render_cards(self):
+        """不変条件9: 対話UIを持たないチャネルでは判断カードを発行しない。
+
+        Code Apps パネル（コネクタ経由）は Adaptive Card を描画できない。それでも
+        トピックに入ると issue_decision_card が ds_decisioncard を発行し、Teams で
+        出したカードを Superseded にしたうえで行き止まる。
+
+        チャネル ID の実値は conversationtranscript から確認した（2026-08-10）。
+        テストパネルが pva-studio、コネクタ経由が pva-autonomous。
+
+        **ガードは issue_decision_card より前になければ意味がない。** 位置を
+        index で固定する。条件式だけ見ていると、後ろへ移動しても緑のままになる。
+        """
+        import yaml
+
+        topic = yaml.safe_load(DECISION_TOPIC_PATH.read_text(encoding="utf-8"))
+        steps = topic["beginDialog"]["actions"]
+
+        guard_index = next(
+            i for i, s in enumerate(steps)
+            if s.get("id") == "validateCardCapableChannel"
+        )
+        issue_index = next(
+            i for i, s in enumerate(steps)
+            if s.get("kind") == "InvokeFlowAction" and str(s.get("flowId", "")).startswith("c37ed747")
+        )
+        self.assertLess(guard_index, issue_index, "ガードはカード発行フローより前に置く")
+        self.assertEqual(guard_index, 0, "トピックの先頭に置く")
+
+        guard = steps[guard_index]
+        condition = guard["conditions"][0]
+        self.assertEqual(
+            condition["condition"],
+            '=System.Activity.ChannelId = "pva-autonomous"',
+        )
+
+        # 止めるのは pva-autonomous だけにする。許可リストにすると Teams や
+        # M365 Copilot を巻き込んで壊す。
+        self.assertNotIn("msteams", yaml.safe_dump(guard, allow_unicode=True))
+
+        kinds = [action["kind"] for action in condition["actions"]]
+        self.assertEqual(kinds, ["SendActivity", "EndConversation"])
+        self.assertIn("判断タブ", condition["actions"][0]["activity"])
+
     def test_decision_topic_stops_before_the_card_when_issue_is_rejected(self):
         """トピック側。issueStatus が issued 以外ならカードを出さずに終える。
 

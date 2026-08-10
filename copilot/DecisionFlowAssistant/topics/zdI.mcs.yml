@@ -11,6 +11,19 @@ beginDialog:
   intent: {}
   actions:
     - kind: ConditionGroup
+      id: validateCardCapableChannel
+      conditions:
+        - id: channelCannotRenderCards
+          condition: =System.Activity.ChannelId = "pva-autonomous"
+          actions:
+            - kind: SendActivity
+              id: sendChannelCannotRenderCards
+              activity: この画面では判断カードを表示できないため、ここでは判断を確定できません。Code Apps の判断タブから確定してください。
+
+            - kind: EndConversation
+              id: endChannelCannotRenderCards
+
+    - kind: ConditionGroup
       id: validateApplicationContext
       conditions:
         - id: missingApplicationContext
