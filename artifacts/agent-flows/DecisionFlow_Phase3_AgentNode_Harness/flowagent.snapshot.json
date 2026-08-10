@@ -1,0 +1,64 @@
+{
+  "snapshotVersion": 1,
+  "capturedOn": "2026-08-11",
+  "environmentId": "00d89c77-ca3e-eb82-a5ad-33a6b930da13",
+  "flowId": "fc589c0d-1195-f111-b8db-7ced8d22eaa9",
+  "displayName": "DecisionFlow_Phase3_AgentNode_Harness",
+  "state": "Stopped",
+  "componentState": "Draft",
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "$authentication": {
+        "defaultValue": {},
+        "type": "SecureObject"
+      },
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      }
+    },
+    "triggers": {
+      "manual": {
+        "type": "Request",
+        "kind": "Button",
+        "inputs": {
+          "schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      }
+    },
+    "actions": {
+      "Run_an_agent": {
+        "runAfter": {},
+        "type": "OpenApiConnection",
+        "inputs": {
+          "parameters": {
+            "body/agentId": "ds_DecisionFlowAssistant",
+            "body/prompt": "Phase 3 benchmark. Do not call tools or write data. Reply exactly: PHASE3_AGENT_NODE_OK",
+            "body/isHitlEscalationEnabled": false
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_agentnode",
+            "operationId": "InvokeAgent",
+            "connectionName": "shared_agentnode"
+          }
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "connectionReferences": {
+    "shared_agentnode": {
+      "connectionReferenceLogicalName": "new_sharedagentnode_c6fa5",
+      "source": "Invoker",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_agentnode",
+      "displayName": "Agents",
+      "tier": "Standard"
+    }
+  }
+}
