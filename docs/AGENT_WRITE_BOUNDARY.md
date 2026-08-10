@@ -477,7 +477,7 @@ confirm: Get_application → Validate_application_found → Validate_submitted_a
 | --- | --- | --- |
 | 判断確定の6段ゲート | `tests/test_adaptive_card_decision_confirmation.py` | 判断者以外・未提出・理由なし・カード再利用の各拒否 |
 | 判断確定の実行者の出どころ | 同上（`zdI.mcs.yml` の束縛と、action YAML 2 本が存在しないこと） | **2026-08-09 実施済み。** `confirm_decision` のトリガー payload に `actorAadObjectId` が入っていることを確認 |
-| 判断確定トピックのルーティング | — | **不十分。** 「〇〇の申請を判断したい」ではナレッジ検索に吸われる。Trigger phrases 未設定 |
+| 判断確定トピックのルーティング | — | **2026-08-10 に下書きで確認済み。** `modelDescription` と `applicationId` の説明を書き直して、ナレッジ検索に吸われなくなった。Trigger phrases は generative orchestration では効かないので入れていない |
 | 会話投稿の関係者チェック | フロー定義のテストで assert | 関係者でないユーザーからの投稿が拒否される |
 | 実行者の出どころ | `tests/test_copilot_agent.py` | 投稿後にフロー実行履歴のトリガー payload を見て、`actorAadObjectId` が入っていること |
 | パネルを閉じたら反映 | — | エージェントが書き込んだ内容がパネルを閉じた後の画面に出る |
