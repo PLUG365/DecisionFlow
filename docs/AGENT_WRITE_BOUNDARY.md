@@ -329,6 +329,8 @@ py scripts/deploy_adaptive_card_decision_confirmation.py
 
 **Code Apps パネルは対象外。** パネルは react-markdown で描いており、Adaptive Card をレンダリングできるか未確認。パネル経由の判断確定については、この変更で何かが良くなったとも悪くなったとも言えない。確認するまで、上の主張はポータル / Teams に限定する。
 
+> **2026-08-10 追記: 「未確認」は「描画できない」で確定した。** 下の「Code Apps パネルでは判断確定できない」を参照。
+
 ## 設計: フローが status を返さず throw する経路を塞ぐ（2026-08-09 固定）
 
 上の表 #2 と #4 で「別タスク」として先送りしていた2件を実施する。**認可の判定式そのものは変えない。返し方だけを変える。**
@@ -470,6 +472,62 @@ confirm: Get_application → Validate_application_found → Validate_submitted_a
 `py scripts/deploy_adaptive_card_decision_confirmation.py` の実行が要る（クラウドのフロー定義を書き換える）。**flowId は変わらない**ため `zdI.mcs.yml` は無傷。
 
 デプロイ後の実機確認は、**存在しない GUID をトピックに渡して文章が返ること**。書き込みは起きない（`Get_application` で落ちるため、Submitted の申請があっても到達しない）。
+
+## Code Apps パネルでは判断確定できない（2026-08-10 に確定）
+
+「未確認」としていた項目を調べ、**描画できない**と確定した。実機でも `npm run dev` で起動したアプリのパネルから判断確定トピックが起動することを確認した。
+
+### 4段すべてで落ちる
+
+| # | 箇所 | 事実 |
+| --- | --- | --- |
+| 1 | コネクタの契約 | `ExecuteCopilotAsyncV2` の応答型は `ExecuteAgentJsonResponse { message?: string }`。**添付も activity も運ばない** |
+| 2 | 応答パーサ | `src/lib/copilot-response.ts` の `extractCopilotText` は文字列フィールドしか見ない |
+| 3 | 描画 | `src/components/copilot-panel.tsx` は react-markdown だけ。カードのレンダラが無い |
+| 4 | 返信 | `buildCopilotRequestBody` は `{message, notificationUrl, locale}` のみ。`Action.Submit` の `value` を返す経路が無い |
+
+Adaptive Card は**チャネル上の activity** として運ばれる。このコネクタはチャネルではなく「プロンプトを投げてテキストを受け取る」API なので、構造的に届かない。
+
+### 起きる害
+
+パネルから判断確定トピックに入ると:
+
+1. `issue_decision_card` が走り、`ds_decisioncard` に Issued の行ができる。**その実行者の既存カードは Superseded になる**（Teams で発行したカードが無効化される）
+2. カードは表示されない
+3. 確定できないまま行き止まる
+
+`ds_decision` は作られない。**6段ゲートは効いており、セキュリティの穴ではない。** 害はデータの衛生とUXに限られる。
+
+**2026-08-10 時点では顕在化していない。** Submitted の申請が1件も無く、`issue_decision_card` が検証で止まるため行が作られない。**判断待ちが1件でも出た瞬間に起きる。**
+
+実測（2026-08-10 21:08、`npm run dev` のパネル）: 判断確定トピックは起動し、対象が Decided だったため拒否メッセージが返った。`ds_decisioncard` は増えていない。
+
+### 暫定策（2026-08-10 実施）
+
+アプリが送る文脈に制約を1行足し、Instructions に例外を書いた。
+
+| 変更 | 場所 |
+| --- | --- |
+| `[この画面の制約] この画面は Adaptive Card を表示できません。…判断タブへ案内してください。` を全メッセージに付与 | `src/lib/copilot-context.ts` |
+| 「アプリの文脈に『Adaptive Card を表示できません』と書かれている場合は専用トピックを使わない」 | `agent.mcs.yml` の `## 判断の確定` |
+
+**これはモデルの従い方に依存する暫定策である。** 確実に塞ぐなら、トピック側で `System.Activity.ChannelId` を見て、カードを描けないチャネルでは `issue_decision_card` を呼ぶ前に終える。ただし各チャネルの ChannelId の実値が未確認で、パネルはコネクタ経由＝**公開版**を見るため、確かめるには publish の往復が要る。**Teams と M365 Copilot を巻き込んで壊す危険があるので、実値を確認するまで入れない。**
+
+### 本筋の解（トランスポートの入れ替え）
+
+パネルでカードを扱いたいなら、コネクタではなく**チャネル**につなぐ。Microsoft の手順は [Integrate with web or native apps by using Microsoft 365 Agents SDK](https://learn.microsoft.com/microsoft-copilot-studio/publication-integrate-web-or-native-app-m365-agents-sdk)。
+
+**リポジトリに残っていた「iframe は認証なしのエージェントでしか使えない → コネクタ経由」という制約は iframe の話**で、Agents SDK / DirectLine の経路は別にある。`Authenticate with Microsoft` のエージェントには**接続文字列**が提示される。
+
+スパイクで分かったこと（2026-08-10）:
+
+| 項目 | 結果 |
+| --- | --- |
+| `@microsoft/agents-copilotstudio-client` のブラウザ対応 | ✅ v1.7.2 に `browser` フィールドの shim（`os` / `crypto`）がある |
+| Power Apps ホストのトークンを流用できるか | ❌ `_getAccessToken` は **private**（`.d.ts` で `private`）。しかも取れるのは `apiId` 単位の**コネクタ API 向け**トークンで、`CopilotStudio.Copilots.Invoke` ではない |
+| 残る未知 | **Power Apps の iframe 内で MSAL の対話サインインが通るか。** 自前のアプリ登録（委任 `Power Platform API → CopilotStudio.Copilots.Invoke`）が要る |
+
+**ここが通らなければ B はこの形では不成立。** その場合は暫定策を恒久策に格上げする。
 
 ## 検証
 

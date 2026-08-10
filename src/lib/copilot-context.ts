@@ -40,6 +40,21 @@ export function getCopilotScreenContext(
   return { screenLabel: SCREEN_LABELS[first] ?? UNKNOWN_SCREEN_LABEL };
 }
 
+/**
+ * このパネルは Adaptive Card を描画できない。
+ *
+ * `ExecuteCopilotAsyncV2` の応答契約はテキスト（`message`）だけで、添付や activity を
+ * 運ばない。パネル側にもカードのレンダラは無い。そのため判断確定トピックがここで
+ * 起動すると、`issue_decision_card` が `ds_decisioncard` を発行して Teams で出した
+ * カードを Superseded にしたうえで、カードが表示できずに行き止まる。
+ *
+ * エージェントへ制約を伝えて、パネルでは判断確定トピックへ入らせない。
+ * **これはモデルの従い方に依存する暫定策**であり、確実に塞ぐならトピック側で
+ * `System.Activity.ChannelId` を見るのが本筋（docs/AGENT_WRITE_BOUNDARY.md）。
+ */
+const PANEL_CAPABILITY_NOTE =
+  "この画面は Adaptive Card を表示できません。カードを出す操作（判断の確定）はここでは実行せず、判断タブへ案内してください。";
+
 export function buildCopilotMessageWithContext(
   message: string,
   context: CopilotScreenContext,
@@ -52,7 +67,8 @@ export function buildCopilotMessageWithContext(
 
   return [
     `[DecisionFlow アプリの文脈] ${parts.join(" / ")}`,
-    "（この行はアプリが自動付与した参考情報です。ユーザーの発言は次の行から）",
+    `[この画面の制約] ${PANEL_CAPABILITY_NOTE}`,
+    "（上の2行はアプリが自動付与した参考情報です。ユーザーの発言は次の行から）",
     trimmed,
   ].join("\n");
 }

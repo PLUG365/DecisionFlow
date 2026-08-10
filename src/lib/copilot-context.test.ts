@@ -61,6 +61,19 @@ describe("copilot message with context", () => {
     expect(built).not.toContain("申請ID");
   });
 
+  it("tells the agent that this surface cannot render adaptive cards", () => {
+    // これが落ちると、パネルから判断確定トピックへ入って ds_decisioncard を
+    // 発行したまま行き止まる（Teams で出したカードも Superseded になる）。
+    const built = buildCopilotMessageWithContext("この申請を判断したい", {
+      screenLabel: "申請詳細",
+      applicationId: "abc-123",
+    });
+
+    expect(built).toContain("Adaptive Card を表示できません");
+    expect(built).toContain("判断タブ");
+    expect(built.endsWith("この申請を判断したい")).toBe(true);
+  });
+
   it("includes the application id when on a detail screen", () => {
     const built = buildCopilotMessageWithContext("この申請どう思う？", {
       screenLabel: "申請詳細",

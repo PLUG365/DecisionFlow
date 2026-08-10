@@ -67,6 +67,21 @@ class AgentYamlInstructionsTests(unittest.TestCase):
         self.assertIn("自分で組み立ててはならない", self.instructions)
         self.assertIn("認証済みユーザー", self.instructions)
 
+    def test_instructions_skip_the_decision_topic_where_cards_cannot_render(self):
+        """Code Apps パネルは Adaptive Card を描画できない。
+
+        コネクタ（ExecuteCopilotAsyncV2）の応答契約がテキストだけで、添付を運ばない。
+        トピックに入ると issue_decision_card が ds_decisioncard を発行し、Teams で
+        出したカードを Superseded にしたうえで行き止まる。アプリが送る文脈の
+        「Adaptive Card を表示できません」を見て避ける。
+
+        **モデルの従い方に依存する暫定策**。確実に塞ぐならトピック側で
+        System.Activity.ChannelId を見る（docs/AGENT_WRITE_BOUNDARY.md）。
+        """
+        self.assertIn("Adaptive Card を表示できません", self.instructions)
+        self.assertIn("専用トピックを使わない", self.instructions)
+        self.assertIn("判断タブ", self.instructions)
+
     def test_instructions_state_what_the_agent_cannot_do(self):
         # docs/AGENT_WRITE_BOUNDARY.md の禁止対象を、エージェント自身にも伝える。
         self.assertIn("できないこと", self.instructions)
