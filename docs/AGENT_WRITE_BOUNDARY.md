@@ -434,11 +434,36 @@ confirm: Get_application → Validate_application_found → Validate_submitted_a
 
 **これで「ランタイムが `runAfter` の `Failed` を拾うか」が実証された。** 自動テストでは守れないと書いた部分がここで埋まった。`ds_decisioncard` は1行も増えていない（不変条件4）。
 
+### 正常系の実機確認（2026-08-10 20:28〜20:32 JST・下書きチャット）
+
+**通った。** ミノが Code Apps から `在宅勤務について`（`d1da7d6b`）を提出し、テストパネルから判断確定まで実行した。
+
+| 確認 | 結果 |
+| --- | --- |
+| カード発行 | ✅ `issue_decision_card` が `issued` を返し、Adaptive Card が表示された |
+| カードの入力と submit | ✅ 承認 + 判断理由で `Action.Submit` が通った |
+| 完了メッセージ | ✅ `判断を確定しました。案件ステージと通知は Decision_OnCreated で反映されます。` |
+| `ds_decision` | ✅ `f7e06c16` を作成。理由が入り、`ds_aisuggestionatdecision` に当時のAI推奨 `差し戻し` が記録された（G1 の採否記録が効いている） |
+| `ds_application` | ✅ `Decided`（100000004）へ更新 |
+| `ds_decisioncard` | ✅ `efd78390` が `Consumed`。それ以前の発行分は `Superseded` |
+
+**これで判断確定は、発行 → カード → 確定 → 記録まで一度も欠けずに通った。** 6段ゲートの拒否側と合わせて、両側が実測できた。
+
+### 操作メモ: テストパネルの Adaptive Card を Playwright で操作するとき
+
+**カード内のクリックはオーサリング画面へ遷移する。** 活動マップと連動しているため、ラジオを押すと `/adaptive/{topicId}/triggers/main/actions/askDecisionWithAdaptiveCard` へ飛ぶ。
+
+- 遷移しても**会話は生きている**。`page.goBack()`（SPA バック）で戻ると、カードの入力状態も保たれる。**フルリロードすると会話ごと消える**
+- ラジオは `element.checked = true` では効かない。React 管理で再描画時に戻され、submit 時に `判断選択肢を選択してください。` になる。**実クリックが要る**
+- テキストエリアは `HTMLTextAreaElement.prototype.value` の native setter + `input`/`change` の dispatch で入る
+- カード要素で `stopPropagation` すると遷移は防げるが、**React の合成イベントごと止まるので submit も飛ばなくなる**。使えない
+
+手順としては「実クリック → 遷移 → SPA バック → 次の操作」が確実。
+
 ### まだ確かめていないこと
 
 - 一時障害が `invalid_target` に化ける件の実害（設計上は受け入れ済み。再現手段が無い）
 - `Skipped` / `TimedOut` の経路。実測できたのは 404 の `Failed` のみ
-- **正常系（Submitted の申請でカードが出る）は今回も未確認。** 提出済みの申請が1件も無く、作ると `Application_OnSubmitted` がメールを送るため
 
 ### デプロイ
 
