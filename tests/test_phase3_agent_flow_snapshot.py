@@ -11,6 +11,7 @@ SNAPSHOT = (
     / "DecisionFlow_Phase3_AgentNode_Harness"
     / "flowagent.snapshot.json"
 )
+SOLUTION_EXPORT = SNAPSHOT.with_name("solution-export.workflow.json")
 
 
 class Phase3AgentFlowSnapshotTests(unittest.TestCase):
@@ -32,6 +33,25 @@ class Phase3AgentFlowSnapshotTests(unittest.TestCase):
 
     def test_snapshot_contains_no_runtime_secret_or_trigger_url(self) -> None:
         serialized = json.dumps(self.snapshot).lower()
+        for forbidden in ("flowtriggeruri", "sig=", "access_token", "refresh_token"):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_solution_export_contains_reproducible_agent_action(self) -> None:
+        exported = json.loads(SOLUTION_EXPORT.read_text(encoding="utf-8"))
+        properties = exported["properties"]
+        action = properties["definition"]["actions"]["Run_an_agent"]
+        self.assertEqual(action["inputs"]["host"]["operationId"], "InvokeAgent")
+        self.assertEqual(
+            action["inputs"]["parameters"]["body/agentId"],
+            "ds_DecisionFlowAssistant",
+        )
+        self.assertEqual(
+            properties["connectionReferences"]["shared_agentnode"]["connection"]
+            ["connectionReferenceLogicalName"],
+            "new_sharedagentnode_c6fa5",
+        )
+
+        serialized = json.dumps(exported).lower()
         for forbidden in ("flowtriggeruri", "sig=", "access_token", "refresh_token"):
             self.assertNotIn(forbidden, serialized)
 

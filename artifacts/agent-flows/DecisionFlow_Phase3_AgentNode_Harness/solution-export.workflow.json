@@ -1,0 +1,63 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_agentnode": {
+        "api": {
+          "name": "shared_agentnode"
+        },
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedagentnode_c6fa5"
+        },
+        "runtimeSource": "invoker"
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "actions": {
+        "Run_an_agent": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "body/agentId": "ds_DecisionFlowAssistant",
+              "body/prompt": "Phase 3 benchmark. Do not call tools or write data. Reply exactly: PHASE3_AGENT_NODE_OK",
+              "body/isHitlEscalationEnabled": false
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_agentnode",
+              "operationId": "InvokeAgent",
+              "connectionName": "shared_agentnode"
+            }
+          },
+          "runAfter": {}
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "Button",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            }
+          }
+        }
+      },
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "outputs": {}
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}
