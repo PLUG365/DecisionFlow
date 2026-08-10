@@ -660,9 +660,9 @@ export default function ApplicationDetailPage() {
         </TabsContent>
 
         <TabsContent value="decision" className="space-y-4">
-          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[2fr_3fr]">
             {/* AI判断は縦に長いので、判断パネル側を追従させて常に手が届くようにする */}
-            <div className="space-y-4 lg:sticky lg:top-4">
+            <div className="min-w-0 space-y-4 lg:sticky lg:top-4">
               {latestDecision && (
                 <Card>
                   <CardHeader>
@@ -735,7 +735,7 @@ export default function ApplicationDetailPage() {
               )}
             </div>
 
-            <Card>
+            <Card className="min-w-0">
               <CardHeader className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <CardTitle className="text-base">AI判断</CardTitle>
