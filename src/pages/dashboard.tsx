@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bar,
@@ -23,16 +23,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   useApplications,
   useCategories,
+  useCurrentSystemUser,
   useDecisionOptions,
   useDecisions,
   useSystemUsers,
 } from "@/hooks/use-decisionflow";
 import {
-  ApplicationStage,
   stageMeta,
   type Application,
   type ApplicationStageValue,
 } from "@/types/decisionflow";
+import {
+  groupDashboardActionApplications,
+  type DashboardActionScope,
+} from "@/lib/dashboard-actions";
 import {
   buildLatestDecisionOptionNameLookup,
   normalizeApplicationStage,
@@ -60,6 +64,13 @@ export default function DashboardPage() {
   const { data: decisions = [] } = useDecisions();
   const { data: decisionOptions = [] } = useDecisionOptions();
   const { data: users = [] } = useSystemUsers();
+  const [actionScope, setActionScope] =
+    useState<DashboardActionScope>("mine");
+  const {
+    systemUserId,
+    isLoading: isCurrentUserLoading,
+    isError: isCurrentUserError,
+  } = useCurrentSystemUser();
 
   const categoryMap = useMemo(
     () => new Map(categories.map((item) => [item.ds_categoryid, item.ds_name])),
@@ -90,14 +101,23 @@ export default function DashboardPage() {
     return counts;
   }, [applications]);
 
-  const stalledApplications = useMemo(() => {
-    const today = new Date();
-    return applications.filter((application) => {
-      if (application.ds_stage === ApplicationStage.Decided) return false;
-      if (!application.ds_duedate) return false;
-      return new Date(application.ds_duedate) < today;
-    });
-  }, [applications]);
+  const actionGroups = useMemo(
+    () =>
+      groupDashboardActionApplications({
+        applications,
+        scope: actionScope,
+        currentSystemUserId: systemUserId,
+        now: new Date(),
+      }),
+    [applications, actionScope, systemUserId],
+  );
+
+  const isMineIdentityPending =
+    actionScope === "mine" && isCurrentUserLoading;
+  const isMineIdentityUnavailable =
+    actionScope === "mine" &&
+    !isCurrentUserLoading &&
+    (isCurrentUserError || !systemUserId);
 
   const categoryChartData = useMemo(() => {
     const counts = new Map<string, number>();
@@ -273,30 +293,99 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <ListTable
-          data={applications.slice(0, 8) as ApplicationRow[]}
-          columns={columns}
-          title="直近の申請"
-          searchKeys={["ds_name"]}
-          itemsPerPage={5}
-          onRowClick={(row) =>
-            navigate(`/applications/${row.ds_applicationid}`)
-          }
-        />
-        <ListTable
-          data={stalledApplications as ApplicationRow[]}
-          columns={columns}
-          title="期限超過の申請"
-          description="希望期限を過ぎた未確定の申請（下書き・提出済みを含む）"
-          searchKeys={["ds_name"]}
-          itemsPerPage={5}
-          emptyMessage="期限超過の申請はありません"
-          onRowClick={(row) =>
-            navigate(`/applications/${row.ds_applicationid}`)
-          }
-        />
-      </div>
+      <section className="space-y-3" aria-labelledby="dashboard-actions-heading">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 id="dashboard-actions-heading" className="text-lg font-semibold">
+              対応が必要な申請
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              希望期限を過ぎ、提出・修正または判断が必要な申請です。
+            </p>
+          </div>
+          <div
+            className="inline-flex w-fit rounded-md border p-1"
+            role="group"
+            aria-label="申請の表示範囲"
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant={actionScope === "mine" ? "default" : "ghost"}
+              aria-pressed={actionScope === "mine"}
+              onClick={() => setActionScope("mine")}
+            >
+              自分
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={actionScope === "all" ? "default" : "ghost"}
+              aria-pressed={actionScope === "all"}
+              onClick={() => setActionScope("all")}
+            >
+              全体
+            </Button>
+          </div>
+        </div>
+
+        {isMineIdentityPending ? (
+          <Card>
+            <CardContent className="p-6 text-sm text-muted-foreground">
+              本人情報を確認しています。
+            </CardContent>
+          </Card>
+        ) : isMineIdentityUnavailable ? (
+          <Card>
+            <CardContent className="p-6 text-sm text-muted-foreground">
+              本人情報を取得できませんでした。「全体」に切り替えると、閲覧可能な申請を確認できます。
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <ListTable
+              data={actionGroups.submitOrRevise as ApplicationRow[]}
+              columns={columns}
+              title="提出・修正が必要"
+              description={
+                actionScope === "mine"
+                  ? "自分が作成した、希望期限超過の下書き・差し戻し申請"
+                  : "希望期限超過の下書き・差し戻し申請"
+              }
+              searchKeys={["ds_name"]}
+              itemsPerPage={5}
+              emptyMessage={
+                actionScope === "mine"
+                  ? "自分が提出・修正する期限超過申請はありません"
+                  : "提出・修正が必要な期限超過申請はありません"
+              }
+              onRowClick={(row) =>
+                navigate(`/applications/${row.ds_applicationid}`)
+              }
+            />
+            <ListTable
+              data={actionGroups.decide as ApplicationRow[]}
+              columns={columns}
+              title="判断が必要"
+              description={
+                actionScope === "mine"
+                  ? "自分が判断者の、希望期限超過の提出済み申請"
+                  : "希望期限超過の提出済み申請"
+              }
+              searchKeys={["ds_name"]}
+              itemsPerPage={5}
+              emptyMessage={
+                actionScope === "mine"
+                  ? "自分が判断する期限超過申請はありません"
+                  : "判断が必要な期限超過申請はありません"
+              }
+              onRowClick={(row) =>
+                navigate(`/applications/${row.ds_applicationid}`)
+              }
+            />
+          </div>
+        )}
+      </section>
     </div>
   );
 }
