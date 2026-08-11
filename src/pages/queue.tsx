@@ -22,6 +22,10 @@ import {
   getDeciderQueueColumnKey,
   type DeciderQueueColumnKey,
 } from "@/lib/decisionflow-utils";
+import {
+  getQueueDueStatus,
+  sortQueueApplicationsByDueDate,
+} from "@/lib/queue-priority";
 
 const columns: {
   key: DeciderQueueColumnKey;
@@ -96,6 +100,8 @@ function QueueCard({
   decisionOptionName?: string;
   onClick: () => void;
 }) {
+  const dueStatus = getQueueDueStatus(application.ds_duedate, new Date());
+
   return (
     <Card
       className="min-w-0 cursor-pointer overflow-hidden hover:shadow-md"
@@ -104,6 +110,16 @@ function QueueCard({
       <CardContent className="min-w-0 space-y-2 p-3">
         <p className="truncate text-sm font-medium">{application.ds_name}</p>
         <div className="flex min-w-0 flex-wrap gap-1">
+          {dueStatus === "overdue" && (
+            <Badge variant="destructive" className="text-[10px]">
+              期限超過
+            </Badge>
+          )}
+          {dueStatus === "today" && (
+            <Badge variant="secondary" className="text-[10px]">
+              期限当日
+            </Badge>
+          )}
           {categoryName && (
             <Badge variant="secondary" className="text-[10px]">
               {categoryName}
@@ -176,6 +192,12 @@ export default function QueuePage() {
         if (columnKey) map.get(columnKey)?.push(application);
       },
     );
+    columns.forEach((column) => {
+      map.set(
+        column.key,
+        sortQueueApplicationsByDueDate(map.get(column.key) ?? []),
+      );
+    });
     return map;
   }, [applications, systemUserId, getLatestDecisionOptionName]);
 
@@ -184,7 +206,7 @@ export default function QueuePage() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight">判断キュー</h2>
         <p className="text-sm text-muted-foreground">
-          自分が判断者に設定されている申請をステージ別に確認します。
+          自分が判断者に設定されている申請を、ステージ別・希望期限の近い順に確認します。
         </p>
       </div>
       <div className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-3">
