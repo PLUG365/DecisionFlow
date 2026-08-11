@@ -9,9 +9,10 @@ component type 29 による追加が `workflow ... Does Not Exist`、Power Autom
 候補なしだった。
 
 公開後は同じ Flow ID を `DecisionSupport` Solution へ component type 29 として追加できた。
-`solution-export.workflow.json` は、その直後の unmanaged Solution export に含まれた公式 Workflow JSON から
-対象フローだけを保存したもの。`InvokeAgent`、エージェント schema name、固定プロンプト、接続参照の論理名を
-Solution 成果物として再現できることを確認した。試験後のクラウド上のフローは停止状態へ戻している。
+`solution-export.workflow.json` は、unmanaged Solution export に含まれた公式 Workflow JSON から
+対象フローだけを保存したもの。`InvokeAgent`、エージェント schema name、固定プロンプト、structured output、
+接続参照の論理名をSolution成果物として再現できることを確認した。`status` を必須文字列とし、追加プロパティを
+禁止する最小スキーマで固定値の完全一致を実機確認済み。試験後のクラウド上のフローは停止状態へ戻している。
 
 採用・運用の正本へ昇格する前に、次を満たすこと。
 

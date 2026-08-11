@@ -20,8 +20,22 @@
           "inputs": {
             "parameters": {
               "body/agentId": "ds_DecisionFlowAssistant",
-              "body/prompt": "Phase 3 benchmark. Do not call tools or write data. Reply exactly: PHASE3_AGENT_NODE_OK",
-              "body/isHitlEscalationEnabled": false
+              "body/prompt": "フェーズ3のstructured outputテストです。ツールを呼び出さず、データを書き込まないでください。応答本文は短い日本語にし、必須の status プロパティには次の値だけを一字一句そのまま設定してください: フェーズ3エージェントノード正常",
+              "body/isHitlEscalationEnabled": false,
+              "body/outputSchema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "description": "必ず「フェーズ3エージェントノード正常」を設定する",
+                    "x-ms-summary": "status"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "additionalProperties": false
+              }
             },
             "host": {
               "apiId": "/providers/Microsoft.PowerApps/apis/shared_agentnode",

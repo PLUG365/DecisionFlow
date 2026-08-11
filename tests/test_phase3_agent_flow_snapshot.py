@@ -45,6 +45,12 @@ class Phase3AgentFlowSnapshotTests(unittest.TestCase):
             action["inputs"]["parameters"]["body/agentId"],
             "ds_DecisionFlowAssistant",
         )
+        parameters = action["inputs"]["parameters"]
+        output_schema = parameters["body/outputSchema"]
+        self.assertIn("structured output", parameters["body/prompt"])
+        self.assertEqual(output_schema["required"], ["status"])
+        self.assertEqual(output_schema["properties"]["status"]["type"], "string")
+        self.assertFalse(output_schema["additionalProperties"])
         self.assertEqual(
             properties["connectionReferences"]["shared_agentnode"]["connection"]
             ["connectionReferenceLogicalName"],
