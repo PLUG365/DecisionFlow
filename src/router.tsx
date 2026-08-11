@@ -6,6 +6,7 @@ const NotFoundPage = lazy(() => import("@/pages/not-found"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const ApplicationsPage = lazy(() => import("@/pages/applications"));
 const QueuePage = lazy(() => import("@/pages/queue"));
+const SearchPage = lazy(() => import("@/pages/search"));
 const ApplicationDetailPage = lazy(() => import("@/pages/application-detail"));
 const MentionsPage = lazy(() => import("@/pages/mentions"));
 const ResourcesPage = lazy(() => import("@/pages/resources"));
@@ -52,6 +53,7 @@ export const router = createBrowserRouter(
           element: withSuspense(ApplicationDetailPage),
         },
         { path: "queue", element: withSuspense(QueuePage) },
+        { path: "search", element: withSuspense(SearchPage) },
         { path: "mentions", element: withSuspense(MentionsPage) },
         { path: "resources", element: withSuspense(ResourcesPage) },
         { path: "masters", element: withSuspense(MastersPage) },

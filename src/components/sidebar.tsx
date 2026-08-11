@@ -7,6 +7,7 @@ import {
   Columns3,
   FileText,
   Paperclip,
+  Search,
   Settings2,
   type LucideIcon,
 } from "lucide-react";
@@ -46,6 +47,7 @@ export function Sidebar() {
         { icon: LayoutDashboard, label: "ダッシュボード", path: "dashboard" },
         { icon: FileText, label: "申請リスト", path: "applications" },
         { icon: Columns3, label: "判断キュー", path: "queue" },
+        { icon: Search, label: "横断検索", path: "search" },
       ],
     },
     {
