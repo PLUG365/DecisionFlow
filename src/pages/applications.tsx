@@ -58,6 +58,7 @@ import {
   type Application,
   type ApplicationStageValue,
 } from "@/types/decisionflow";
+import { getOperationErrorMessage } from "@/lib/operation-error";
 import { toast } from "sonner";
 
 type ApplicationRow = Application & Record<string, unknown>;
@@ -362,13 +363,22 @@ export default function ApplicationsPage() {
               });
               setIsFormOpen(false);
             },
-            onError: () =>
+            onError: (error) =>
               toast.error(
-                "AI事前確認に失敗しました。下書きのまま再試行できます。",
+                getOperationErrorMessage(
+                  error,
+                  "AI事前確認に失敗しました。下書きのまま再試行できます。",
+                ),
               ),
           });
         },
-        onError: () => toast.error("AI事前確認用の下書き保存に失敗しました"),
+        onError: (error) =>
+          toast.error(
+            getOperationErrorMessage(
+              error,
+              "AI事前確認用の下書き保存に失敗しました。",
+            ),
+          ),
       },
     );
   };
@@ -406,13 +416,19 @@ export default function ApplicationsPage() {
                 toast.success("AI判断を確認しました");
                 setIsFormOpen(false);
               },
-              onError: () =>
+              onError: (error) =>
                 toast.error(
-                  "AI判断の取得に失敗しました。申請は下書きのままです。",
+                  getOperationErrorMessage(
+                    error,
+                    "AI判断の取得に失敗しました。申請は下書きのままです。",
+                  ),
                 ),
             });
           },
-          onError: () => toast.error("下書き保存に失敗しました"),
+          onError: (error) =>
+            toast.error(
+              getOperationErrorMessage(error, "下書き保存に失敗しました。"),
+            ),
         },
       );
       return;
@@ -427,7 +443,10 @@ export default function ApplicationsPage() {
             setIsFormOpen(false);
             resetForm();
           },
-          onError: () => toast.error("申請の更新に失敗しました"),
+          onError: (error) =>
+            toast.error(
+              getOperationErrorMessage(error, "申請の更新に失敗しました。"),
+            ),
         },
       );
       return;
@@ -439,7 +458,10 @@ export default function ApplicationsPage() {
         setIsFormOpen(false);
         resetForm();
       },
-      onError: () => toast.error("申請の作成に失敗しました"),
+      onError: (error) =>
+        toast.error(
+          getOperationErrorMessage(error, "申請の作成に失敗しました。"),
+        ),
     });
   };
 
@@ -461,7 +483,10 @@ export default function ApplicationsPage() {
       },
       {
         onSuccess: () => toast.success("申請を下書きに戻しました"),
-        onError: () => toast.error("下書きへの戻しに失敗しました"),
+        onError: (error) =>
+          toast.error(
+            getOperationErrorMessage(error, "下書きへの戻しに失敗しました。"),
+          ),
       },
     );
   };
@@ -473,7 +498,10 @@ export default function ApplicationsPage() {
         toast.success("申請を削除しました");
         setApplicationToDelete(null);
       },
-      onError: () => toast.error("申請の削除に失敗しました"),
+      onError: (error) =>
+        toast.error(
+          getOperationErrorMessage(error, "申請の削除に失敗しました。"),
+        ),
     });
   };
 
@@ -485,7 +513,8 @@ export default function ApplicationsPage() {
         setAiResultDialog(null);
         resetForm();
       },
-      onError: () => toast.error("本提出に失敗しました"),
+      onError: (error) =>
+        toast.error(getOperationErrorMessage(error, "本提出に失敗しました。")),
     });
   };
 
@@ -497,7 +526,13 @@ export default function ApplicationsPage() {
         setAiResultDialog(null);
         resetForm();
       },
-      onError: () => toast.error("下書き維持の保存に失敗しました"),
+      onError: (error) =>
+        toast.error(
+          getOperationErrorMessage(
+            error,
+            "下書き維持の保存に失敗しました。",
+          ),
+        ),
     });
   };
 

@@ -65,6 +65,7 @@ import {
   formatAiDecisionUpdatedAt,
   parseAiDecisionBasis,
 } from "@/lib/ai-decision";
+import { getOperationErrorMessage } from "@/lib/operation-error";
 import { toast } from "sonner";
 
 export default function ApplicationDetailPage() {
@@ -231,7 +232,10 @@ export default function ApplicationDetailPage() {
     if (!id) return;
     runAiPreCheck.mutate(id, {
       onSuccess: () => toast.success("AI判断を更新しました"),
-      onError: () => toast.error("AI判断の更新に失敗しました"),
+      onError: (error) =>
+        toast.error(
+          getOperationErrorMessage(error, "AI判断の更新に失敗しました。"),
+        ),
     });
   };
 
@@ -272,11 +276,20 @@ export default function ApplicationDetailPage() {
             {
               onSuccess: () =>
                 toast.success("コメントとメンションを投稿しました"),
-              onError: () => toast.error("メンションの作成に失敗しました"),
+              onError: (error) =>
+                toast.error(
+                  getOperationErrorMessage(
+                    error,
+                    "メンションの作成に失敗しました。",
+                  ),
+                ),
             },
           );
         },
-        onError: () => toast.error("コメントの投稿に失敗しました"),
+        onError: (error) =>
+          toast.error(
+            getOperationErrorMessage(error, "コメントの投稿に失敗しました。"),
+          ),
       },
     );
   };
@@ -284,22 +297,33 @@ export default function ApplicationDetailPage() {
   const handleDecision = () => {
     if (!id || !canDecide || !decisionOptionId || !rationale.trim()) return;
     const selectedDecisionOptionName = decisionOptionMap.get(decisionOptionId);
-    createDecision.mutate({
-      ds_name: `${application.ds_name} - 判断`,
-      ds_rationale: rationale.trim(),
-      // 判断時点の AI 推奨を控える。application 側は再生成で上書きされるため、
-      // ここで残さないと「AI 推奨と実判断が一致したか」を後から測れない。
-      ds_aisuggestionatdecision:
-        application.ds_aidecisionoptiontext?.trim() || undefined,
-      _ds_applicationid_value: id,
-      _ds_deciderid_value: application._ds_deciderid_value,
-      _ds_decisionoptionid_value: decisionOptionId,
-      nextApplicationStage: getDecisionNextApplicationStage(
-        selectedDecisionOptionName,
-      ),
-    });
-    setRationale("");
-    setDecisionOptionId("");
+    createDecision.mutate(
+      {
+        ds_name: `${application.ds_name} - 判断`,
+        ds_rationale: rationale.trim(),
+        // 判断時点の AI 推奨を控える。application 側は再生成で上書きされるため、
+        // ここで残さないと「AI 推奨と実判断が一致したか」を後から測れない。
+        ds_aisuggestionatdecision:
+          application.ds_aidecisionoptiontext?.trim() || undefined,
+        _ds_applicationid_value: id,
+        _ds_deciderid_value: application._ds_deciderid_value,
+        _ds_decisionoptionid_value: decisionOptionId,
+        nextApplicationStage: getDecisionNextApplicationStage(
+          selectedDecisionOptionName,
+        ),
+      },
+      {
+        onSuccess: () => {
+          toast.success("判断を確定しました");
+          setRationale("");
+          setDecisionOptionId("");
+        },
+        onError: (error) =>
+          toast.error(
+            getOperationErrorMessage(error, "判断の確定に失敗しました。"),
+          ),
+      },
+    );
   };
 
   const resetParticipantForm = () => {
@@ -331,7 +355,10 @@ export default function ApplicationDetailPage() {
           setIsParticipantFormOpen(false);
           resetParticipantForm();
         },
-        onError: () => toast.error("関係者の追加に失敗しました"),
+        onError: (error) =>
+          toast.error(
+            getOperationErrorMessage(error, "関係者の追加に失敗しました。"),
+          ),
       },
     );
   };
@@ -356,7 +383,10 @@ export default function ApplicationDetailPage() {
           toast.success("関係者を削除しました");
           setParticipantToDelete(null);
         },
-        onError: () => toast.error("関係者の削除に失敗しました"),
+        onError: (error) =>
+          toast.error(
+            getOperationErrorMessage(error, "関係者の削除に失敗しました。"),
+          ),
       },
     );
   };

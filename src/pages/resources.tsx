@@ -16,6 +16,7 @@ import {
   useResources,
 } from "@/hooks/use-decisionflow";
 import { validateResourceInput } from "@/lib/decisionflow-utils";
+import { getOperationErrorMessage } from "@/lib/operation-error";
 import { type ApplicationResource } from "@/types/decisionflow";
 import { toast } from "sonner";
 
@@ -84,9 +85,7 @@ export default function ResourcesPage() {
         },
         onError: (error) =>
           toast.error(
-            error instanceof Error
-              ? error.message
-              : "関連資料の追加に失敗しました",
+            getOperationErrorMessage(error, "関連資料の追加に失敗しました。"),
           ),
       },
     );
@@ -99,7 +98,13 @@ export default function ResourcesPage() {
         toast.success("関連資料リンクを削除しました");
         setResourceToDelete(null);
       },
-      onError: () => toast.error("関連資料リンクの削除に失敗しました"),
+      onError: (error) =>
+        toast.error(
+          getOperationErrorMessage(
+            error,
+            "関連資料リンクの削除に失敗しました。",
+          ),
+        ),
     });
   };
 

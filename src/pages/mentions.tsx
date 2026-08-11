@@ -10,7 +10,9 @@ import {
   useMentionsForCurrentUser,
   useMessages,
 } from "@/hooks/use-decisionflow";
+import { getOperationErrorMessage } from "@/lib/operation-error";
 import type { Mention } from "@/types/decisionflow";
+import { toast } from "sonner";
 
 type MentionRow = Mention & Record<string, unknown>;
 
@@ -83,7 +85,15 @@ export default function MentionsPage() {
           disabled={item.ds_isread}
           onClick={(event) => {
             event.stopPropagation();
-            markRead.mutate(item.ds_mentionid);
+            markRead.mutate(item.ds_mentionid, {
+              onError: (error) =>
+                toast.error(
+                  getOperationErrorMessage(
+                    error,
+                    "メンションを既読にできませんでした。",
+                  ),
+                ),
+            });
           }}
         >
           既読にする

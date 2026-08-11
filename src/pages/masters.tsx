@@ -17,6 +17,7 @@ import {
   validateCategoryRegulationInput,
 } from "@/lib/decisionflow-utils";
 import { isFixedDecisionOptionName } from "@/lib/decision-options";
+import { getOperationErrorMessage } from "@/lib/operation-error";
 import { toast } from "sonner";
 
 type MasterRow = Record<string, unknown> & { id: string };
@@ -123,7 +124,10 @@ export default function MastersPage() {
       },
       {
         onSuccess: () => toast.success("カテゴリを保存しました"),
-        onError: () => toast.error("カテゴリの保存に失敗しました"),
+        onError: (error) =>
+          toast.error(
+            getOperationErrorMessage(error, "カテゴリの保存に失敗しました。"),
+          ),
       },
     );
   };
@@ -148,7 +152,10 @@ export default function MastersPage() {
       },
       {
         onSuccess: () => toast.success("カテゴリを追加しました"),
-        onError: () => toast.error("カテゴリの追加に失敗しました"),
+        onError: (error) =>
+          toast.error(
+            getOperationErrorMessage(error, "カテゴリの追加に失敗しました。"),
+          ),
       },
     );
   };
@@ -156,9 +163,12 @@ export default function MastersPage() {
   const handleDeleteCategory = (id: string | number) => {
     deleteCategory.mutate(String(id), {
       onSuccess: () => toast.success("カテゴリを削除しました"),
-      onError: () =>
+      onError: (error) =>
         toast.error(
-          "カテゴリの削除に失敗しました。既存の申請で参照されている可能性があります。",
+          getOperationErrorMessage(
+            error,
+            "カテゴリの削除に失敗しました。既存の申請で参照されている可能性があります。",
+          ),
         ),
     });
   };
