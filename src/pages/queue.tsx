@@ -32,7 +32,8 @@ import {
 import {
   filterQueueApplicationsByCategory,
   getQueueDueStatus,
-  sortQueueApplicationsByDueDate,
+  sortQueueApplications,
+  type QueueSortMode,
 } from "@/lib/queue-priority";
 
 const columns: {
@@ -163,6 +164,7 @@ function QueueCard({
 export default function QueuePage() {
   const navigate = useNavigate();
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [sortMode, setSortMode] = useState<QueueSortMode>("due");
   const { data: applications = [] } = useApplications();
   const { data: categories = [] } = useCategories();
   const { data: decisions = [] } = useDecisions();
@@ -218,11 +220,16 @@ export default function QueuePage() {
     columns.forEach((column) => {
       map.set(
         column.key,
-        sortQueueApplicationsByDueDate(map.get(column.key) ?? []),
+        sortQueueApplications(map.get(column.key) ?? [], sortMode),
       );
     });
     return map;
-  }, [filteredApplications, systemUserId, getLatestDecisionOptionName]);
+  }, [
+    filteredApplications,
+    systemUserId,
+    getLatestDecisionOptionName,
+    sortMode,
+  ]);
 
   return (
     <div className="space-y-4">
@@ -233,23 +240,34 @@ export default function QueuePage() {
             自分が判断者に設定されている申請を、ステージ別・希望期限の近い順に確認します。
           </p>
         </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-full sm:w-[240px]" aria-label="カテゴリで絞り込む">
-            <SelectValue placeholder="カテゴリで絞り込む" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">すべてのカテゴリ</SelectItem>
-            <SelectItem value="unassigned">未分類</SelectItem>
-            {categoryOptions.map((category) => (
-              <SelectItem
-                key={category.ds_categoryid}
-                value={category.ds_categoryid}
-              >
-                {category.ds_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Select value={sortMode} onValueChange={(value) => setSortMode(value as QueueSortMode)}>
+            <SelectTrigger className="w-full sm:w-[180px]" aria-label="並び順">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="due">期限が近い順</SelectItem>
+              <SelectItem value="oldest">更新が古い順</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-full sm:w-[240px]" aria-label="カテゴリで絞り込む">
+              <SelectValue placeholder="カテゴリで絞り込む" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">すべてのカテゴリ</SelectItem>
+              <SelectItem value="unassigned">未分類</SelectItem>
+              {categoryOptions.map((category) => (
+                <SelectItem
+                  key={category.ds_categoryid}
+                  value={category.ds_categoryid}
+                >
+                  {category.ds_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <div className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-3">
         {columns.map((column) => {

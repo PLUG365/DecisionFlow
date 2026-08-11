@@ -2,6 +2,7 @@ import type { Application } from "@/types/decisionflow";
 
 export type QueueDueStatus = "overdue" | "today" | "upcoming" | "none";
 export type QueueCategoryFilter = "all" | "unassigned" | string;
+export type QueueSortMode = "due" | "oldest";
 
 function calendarDateKey(value: string | null | undefined): number | null {
   if (!value) return null;
@@ -57,6 +58,34 @@ export function sortQueueApplicationsByDueDate(
     .sort(
       (left, right) =>
         left.dueDateKey - right.dueDateKey || left.index - right.index,
+    )
+    .map(({ application }) => application);
+}
+
+export function sortQueueApplications(
+  applications: Application[],
+  mode: QueueSortMode,
+): Application[] {
+  if (mode === "due") {
+    return sortQueueApplicationsByDueDate(applications);
+  }
+
+  return applications
+    .map((application, index) => {
+      const activityDate =
+        application.modifiedon ??
+        application.ds_submittedat ??
+        application.createdon;
+      const timestamp = activityDate ? Date.parse(activityDate) : NaN;
+      return {
+        application,
+        index,
+        timestamp: Number.isFinite(timestamp) ? timestamp : Infinity,
+      };
+    })
+    .sort(
+      (left, right) =>
+        left.timestamp - right.timestamp || left.index - right.index,
     )
     .map(({ application }) => application);
 }

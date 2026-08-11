@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterQueueApplicationsByCategory,
   getQueueDueStatus,
+  sortQueueApplications,
   sortQueueApplicationsByDueDate,
 } from "./queue-priority";
 import type { Application } from "@/types/decisionflow";
@@ -76,5 +77,23 @@ describe("queue priority", () => {
       ),
     ).toEqual(["unassigned"]);
     expect(filterQueueApplicationsByCategory(rows, "all")).toBe(rows);
+  });
+
+  it("sorts the oldest activity first and puts missing dates last", () => {
+    const rows: Application[] = [
+      { ...application("missing") },
+      { ...application("newer"), modifiedon: "2026-08-11T10:00:00Z" },
+      { ...application("older"), modifiedon: "2026-08-10T10:00:00Z" },
+      {
+        ...application("submitted"),
+        ds_submittedat: "2026-08-09T10:00:00Z",
+      },
+    ];
+
+    expect(
+      sortQueueApplications(rows, "oldest").map(
+        (row) => row.ds_applicationid,
+      ),
+    ).toEqual(["submitted", "older", "newer", "missing"]);
   });
 });
