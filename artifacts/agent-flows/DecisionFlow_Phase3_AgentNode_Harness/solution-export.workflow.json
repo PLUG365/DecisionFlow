@@ -1,6 +1,15 @@
 {
   "properties": {
     "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        },
+        "connection": {
+          "connectionReferenceLogicalName": "ds_shared_commondataserviceforapps"
+        },
+        "runtimeSource": "embedded"
+      },
       "shared_agentnode": {
         "api": {
           "name": "shared_agentnode"
@@ -14,13 +23,102 @@
     "definition": {
       "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
       "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "PowerAppV2",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "description": "AI判断を生成する申請 ID",
+                  "title": "applicationId",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_1": {
+                  "description": "関連資料",
+                  "title": "resources",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_2": {
+                  "description": "会話履歴",
+                  "title": "conversation",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_3": {
+                  "description": "過去類似案件",
+                  "title": "similarCases",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_4": {
+                  "description": "判断選択肢",
+                  "title": "decisionOptions",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_5": {
+                  "description": "カテゴリ別レギュレーション",
+                  "title": "categoryRegulation",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                }
+              },
+              "required": [
+                "text",
+                "text_1",
+                "text_2",
+                "text_3",
+                "text_4",
+                "text_5"
+              ]
+            }
+          }
+        }
+      },
       "actions": {
+        "Get_application": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "entityName": "ds_applications",
+              "recordId": "@triggerBody()?['text']",
+              "$select": "ds_applicationid,ds_name,ds_body,ds_stage,ds_duedate,ds_submittedat,_ds_categoryid_value"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "connectionName": "shared_commondataserviceforapps"
+            }
+          },
+          "runAfter": {}
+        },
         "Run_an_agent": {
           "type": "OpenApiConnection",
           "inputs": {
             "parameters": {
               "body/agentId": "ds_DecisionFlowAssistant",
-              "body/prompt": "あなたは企業内の意思決定支援アシスタントです。これはPhase 3の読み取り専用ベンチマークです。ツールを呼び出さず、データを書き込まないでください。入力だけを根拠に判断者向け推奨案を作成し、指定されたJSONスキーマへ厳密に出力してください。\n\n制約:\n- recommendedOption は判断選択肢の名称から1つ選ぶ。\n- applicationSummary は3〜5文。\n- 会話履歴がない場合は conversationSummary を「提出時点では会話履歴はありません。」とする。\n- 過去の判断理由は原文のまま使用し、推測した理由を書かない。\n- レギュレーションの充足状況、懸念、追加確認事項を comment または risks に含める。\n\n申請情報:\n@{triggerBody()?['text']}\n\n関連資料:\n@{triggerBody()?['text_1']}\n\n会話履歴:\n@{triggerBody()?['text_2']}\n\n過去類似案件:\n@{triggerBody()?['text_3']}\n\n判断選択肢:\n@{triggerBody()?['text_4']}\n\nカテゴリ別レギュレーション:\n@{triggerBody()?['text_5']}",
+              "body/prompt": "あなたは企業内の意思決定支援アシスタントです。これはPhase 3の読み取り専用ベンチマークです。ツールを呼び出さず、データを書き込まないでください。入力だけを根拠に判断者向け推奨案を作成し、指定されたJSONスキーマへ厳密に出力してください。\n\n制約:\n- recommendedOption は判断選択肢の名称から1つ選ぶ。\n- applicationSummary は3〜5文。\n- 会話履歴がない場合は conversationSummary を「提出時点では会話履歴はありません。」とする。\n- 過去の判断理由は原文のまま使用し、推測した理由を書かない。\n- レギュレーションの充足状況、懸念、追加確認事項を comment または risks に含める。\n\n申請情報:\nタイトル: @{outputs('Get_application')?['body/ds_name']}\n本文: @{coalesce(outputs('Get_application')?['body/ds_body'], '')}\nステージ: @{outputs('Get_application')?['body/ds_stage']}\n希望期限: @{coalesce(outputs('Get_application')?['body/ds_duedate'], '未設定')}\n\n関連資料:\n@{triggerBody()?['text_1']}\n\n会話履歴:\n@{triggerBody()?['text_2']}\n\n過去類似案件:\n@{triggerBody()?['text_3']}\n\n判断選択肢:\n@{triggerBody()?['text_4']}\n\nカテゴリ別レギュレーション:\n@{triggerBody()?['text_5']}",
               "body/isHitlEscalationEnabled": false,
               "body/outputSchema": {
                 "type": "object",
@@ -108,80 +206,11 @@
               "connectionName": "shared_agentnode"
             }
           },
-          "runAfter": {}
-        }
-      },
-      "triggers": {
-        "manual": {
-          "type": "Request",
-          "kind": "Button",
-          "inputs": {
-            "schema": {
-              "type": "object",
-              "properties": {
-                "text": {
-                  "description": "入力を指定してください",
-                  "title": "application",
-                  "type": "string",
-                  "x-ms-content-hint": "TEXT",
-                  "x-ms-dynamically-added": true
-                },
-                "text_1": {
-                  "description": "入力を指定してください",
-                  "title": "resources",
-                  "type": "string",
-                  "x-ms-content-hint": "TEXT",
-                  "x-ms-dynamically-added": true
-                },
-                "text_2": {
-                  "description": "入力を指定してください",
-                  "title": "conversation",
-                  "type": "string",
-                  "x-ms-content-hint": "TEXT",
-                  "x-ms-dynamically-added": true
-                },
-                "text_3": {
-                  "description": "入力を指定してください",
-                  "title": "similarCases",
-                  "type": "string",
-                  "x-ms-content-hint": "TEXT",
-                  "x-ms-dynamically-added": true
-                },
-                "text_4": {
-                  "description": "入力を指定してください",
-                  "title": "decisionOptions",
-                  "type": "string",
-                  "x-ms-content-hint": "TEXT",
-                  "x-ms-dynamically-added": true
-                },
-                "text_5": {
-                  "description": "入力を指定してください",
-                  "title": "categoryRegulation",
-                  "type": "string",
-                  "x-ms-content-hint": "TEXT",
-                  "x-ms-dynamically-added": true
-                }
-              },
-              "required": [
-                "text",
-                "text_1",
-                "text_2",
-                "text_3",
-                "text_4",
-                "text_5"
-              ]
-            }
+          "runAfter": {
+            "Get_application": [
+              "SUCCEEDED"
+            ]
           }
-        }
-      },
-      "parameters": {
-        "$authentication": {
-          "defaultValue": {},
-          "type": "SecureObject"
-        },
-        "$connections": {
-          "defaultValue": {},
-          "type": "Object"
         }
       },
       "outputs": {}

@@ -13,10 +13,12 @@ component type 29 による追加が `workflow ... Does Not Exist`、Power Autom
 対象フローだけを保存したもの。`InvokeAgent`、エージェント schema name、6個の必須 trigger 入力、structured output、
 接続参照の論理名をSolution成果物として再現できることを確認した。`decision-output.schema.json` は現行
 AI Builder契約と同じ6項目を持ち、全項目・ネスト項目を必須化して追加プロパティを禁止するAgent node用契約。
-手動 Button trigger の `application` / `resources` / `conversation` / `similarCases` / `decisionOptions` /
-`categoryRegulation` をプロンプトへ動的に差し込み、代表入力のデザイナーテストで6項目とネスト配列を
-実機確認済み。Power Apps V2 trigger への置換とDataverse読取りはまだ行っていない。試験後のクラウド上の
-フローは停止状態へ戻している。
+Power Apps V2 trigger の `applicationId` / `resources` / `conversation` / `similarCases` /
+`decisionOptions` / `categoryRegulation` を受け取り、`applicationId` をキーに Dataverse の
+`ds_applications` を `GetItem` で読み取る。取得列は申請ID、タイトル、本文、ステージ、希望期限、
+提出日時、カテゴリ参照に限定し、残り5入力と合わせてプロンプトへ差し込む。容量非消費のデザイナーテスト
+`08584151963493496286200518404CU21` で読取りと Agent action の成功を実機確認した。書込み action はなく、
+試験後のクラウド上のフローは停止状態へ戻している。
 
 採用・運用の正本へ昇格する前に、次を満たすこと。
 
