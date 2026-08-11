@@ -61,6 +61,31 @@ class Phase3AgentFlowSnapshotTests(unittest.TestCase):
         for forbidden in ("flowtriggeruri", "sig=", "access_token", "refresh_token"):
             self.assertNotIn(forbidden, serialized)
 
+    def test_solution_export_maps_six_required_trigger_inputs_to_prompt(self) -> None:
+        exported = json.loads(SOLUTION_EXPORT.read_text(encoding="utf-8"))
+        definition = exported["properties"]["definition"]
+        trigger_schema = definition["triggers"]["manual"]["inputs"]["schema"]
+        expected = {
+            "text": "application",
+            "text_1": "resources",
+            "text_2": "conversation",
+            "text_3": "similarCases",
+            "text_4": "decisionOptions",
+            "text_5": "categoryRegulation",
+        }
+
+        self.assertEqual(trigger_schema["required"], list(expected))
+        self.assertEqual(
+            {name: spec["title"] for name, spec in trigger_schema["properties"].items()},
+            expected,
+        )
+
+        prompt = definition["actions"]["Run_an_agent"]["inputs"]["parameters"][
+            "body/prompt"
+        ]
+        for name in expected:
+            self.assertIn(f"@{{triggerBody()?['{name}']}}", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

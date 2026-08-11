@@ -20,7 +20,7 @@
           "inputs": {
             "parameters": {
               "body/agentId": "ds_DecisionFlowAssistant",
-              "body/prompt": "あなたは企業内の意思決定支援アシスタントです。これはPhase 3の読み取り専用ベンチマークです。ツールを呼び出さず、データを書き込まないでください。入力だけを根拠に判断者向け推奨案を作成し、指定されたJSONスキーマへ厳密に出力してください。\n\n制約:\n- recommendedOption は判断選択肢の名称から1つ選ぶ。\n- applicationSummary は3〜5文。\n- 会話履歴がないため conversationSummary は「提出時点では会話履歴はありません。」とする。\n- 過去の判断理由は原文のまま使用し、推測した理由を書かない。\n- レギュレーションの充足状況、懸念、追加確認事項を comment または risks に含める。\n\n申請情報:\nタイトル: 顧客案件: 見積条件の例外承認\n本文: 重要顧客向けの提案で通常条件から外れる支払条件を提示したい。希望期限は今週末。利用文脈は判断者レビュー。\n\n関連資料:\n見積条件資料: https://example.com\n\n会話履歴:\n提出時点では会話履歴はありません。\n\n過去類似案件:\nタイトル: 顧客案件: 前回の例外承認\n実際の判断: 承認\n判断理由: 顧客影響が大きく、例外期間と回収条件を限定したため。\n\n判断選択肢:\n承認\n却下\n差し戻し\n\nカテゴリ別レギュレーション:\n例外条件は収益影響、顧客影響、回収条件を確認する。",
+              "body/prompt": "あなたは企業内の意思決定支援アシスタントです。これはPhase 3の読み取り専用ベンチマークです。ツールを呼び出さず、データを書き込まないでください。入力だけを根拠に判断者向け推奨案を作成し、指定されたJSONスキーマへ厳密に出力してください。\n\n制約:\n- recommendedOption は判断選択肢の名称から1つ選ぶ。\n- applicationSummary は3〜5文。\n- 会話履歴がない場合は conversationSummary を「提出時点では会話履歴はありません。」とする。\n- 過去の判断理由は原文のまま使用し、推測した理由を書かない。\n- レギュレーションの充足状況、懸念、追加確認事項を comment または risks に含める。\n\n申請情報:\n@{triggerBody()?['text']}\n\n関連資料:\n@{triggerBody()?['text_1']}\n\n会話履歴:\n@{triggerBody()?['text_2']}\n\n過去類似案件:\n@{triggerBody()?['text_3']}\n\n判断選択肢:\n@{triggerBody()?['text_4']}\n\nカテゴリ別レギュレーション:\n@{triggerBody()?['text_5']}",
               "body/isHitlEscalationEnabled": false,
               "body/outputSchema": {
                 "type": "object",
@@ -118,8 +118,58 @@
           "inputs": {
             "schema": {
               "type": "object",
-              "properties": {},
-              "required": []
+              "properties": {
+                "text": {
+                  "description": "入力を指定してください",
+                  "title": "application",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_1": {
+                  "description": "入力を指定してください",
+                  "title": "resources",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_2": {
+                  "description": "入力を指定してください",
+                  "title": "conversation",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_3": {
+                  "description": "入力を指定してください",
+                  "title": "similarCases",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_4": {
+                  "description": "入力を指定してください",
+                  "title": "decisionOptions",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                },
+                "text_5": {
+                  "description": "入力を指定してください",
+                  "title": "categoryRegulation",
+                  "type": "string",
+                  "x-ms-content-hint": "TEXT",
+                  "x-ms-dynamically-added": true
+                }
+              },
+              "required": [
+                "text",
+                "text_1",
+                "text_2",
+                "text_3",
+                "text_4",
+                "text_5"
+              ]
             }
           }
         }

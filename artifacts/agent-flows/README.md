@@ -10,10 +10,13 @@ component type 29 による追加が `workflow ... Does Not Exist`、Power Autom
 
 公開後は同じ Flow ID を `DecisionSupport` Solution へ component type 29 として追加できた。
 `solution-export.workflow.json` は、unmanaged Solution export に含まれた公式 Workflow JSON から
-対象フローだけを保存したもの。`InvokeAgent`、エージェント schema name、固定プロンプト、structured output、
+対象フローだけを保存したもの。`InvokeAgent`、エージェント schema name、6個の必須 trigger 入力、structured output、
 接続参照の論理名をSolution成果物として再現できることを確認した。`decision-output.schema.json` は現行
 AI Builder契約と同じ6項目を持ち、全項目・ネスト項目を必須化して追加プロパティを禁止するAgent node用契約。
-代表入力のデザイナーテストで6項目とネスト配列を実機確認済み。試験後のクラウド上のフローは停止状態へ戻している。
+手動 Button trigger の `application` / `resources` / `conversation` / `similarCases` / `decisionOptions` /
+`categoryRegulation` をプロンプトへ動的に差し込み、代表入力のデザイナーテストで6項目とネスト配列を
+実機確認済み。Power Apps V2 trigger への置換とDataverse読取りはまだ行っていない。試験後のクラウド上の
+フローは停止状態へ戻している。
 
 採用・運用の正本へ昇格する前に、次を満たすこと。
 
