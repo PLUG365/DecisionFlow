@@ -8,6 +8,8 @@ import { Ds_decisionoptionsService } from "@/generated/services/Ds_decisionoptio
 import { Ds_decisionsService } from "@/generated/services/Ds_decisionsService";
 import { Ds_mentionsService } from "@/generated/services/Ds_mentionsService";
 import { Ds_messagesService } from "@/generated/services/Ds_messagesService";
+import { Ds_delegationrequestsService } from "@/generated/services/Ds_delegationrequestsService";
+import type { Ds_delegationrequestsBase } from "@/generated/models/Ds_delegationrequestsModel";
 import { Ds_participantsService } from "@/generated/services/Ds_participantsService";
 import { Participant_PreDelete_RevokeAccessService } from "@/generated/services/Participant_PreDelete_RevokeAccessService";
 import { Application_GenerateAiDecisionService } from "@/services/application-generate-ai-decision-service";
@@ -38,6 +40,20 @@ type CreateApplication = Partial<Application> & Pick<Application, "ds_name">;
 type CreateCategory = Partial<Category> & Pick<Category, "ds_name">;
 type CreateDecisionOption = Partial<DecisionOption> &
   Pick<DecisionOption, "ds_name">;
+
+export type DelegationRequestOutcome = {
+  status: "processed" | "rejected" | "pending";
+  message: string;
+};
+
+const DELEGATION_PENDING = 100000000;
+const DELEGATION_PROCESSED = 100000001;
+const DELEGATION_REJECTED = 100000002;
+const DELEGATION_POLL_ATTEMPTS = 30;
+const DELEGATION_POLL_INTERVAL_MS = 1000;
+
+const delay = (milliseconds: number) =>
+  new Promise<void>((resolve) => globalThis.setTimeout(resolve, milliseconds));
 type CreateMessage = Partial<Message> & Pick<Message, "ds_name">;
 type CreateMention = Partial<Mention> & Pick<Mention, "ds_name">;
 type CreateResource = Partial<ApplicationResource> &
@@ -501,6 +517,60 @@ export const DataverseService = {
       ),
       "updateApplication",
     ) as Application;
+  },
+
+  async requestApplicationDelegation({
+    applicationId,
+    applicationName,
+    requestedDeciderId,
+  }: {
+    applicationId: string;
+    applicationName: string;
+    requestedDeciderId: string;
+  }): Promise<DelegationRequestOutcome> {
+    const created = requireData(
+      await Ds_delegationrequestsService.create({
+        ds_name: `${applicationName} - 担当変更`,
+        ds_status: DELEGATION_PENDING,
+        statecode: 0,
+        "ds_applicationid@odata.bind": bind(
+          "ds_applications",
+          applicationId,
+        ),
+        "ds_requesteddeciderid@odata.bind": bind(
+          "systemusers",
+          requestedDeciderId,
+        ),
+      } as Omit<Ds_delegationrequestsBase, "ds_delegationrequestid">),
+      "createDelegationRequest",
+    );
+
+    for (let attempt = 0; attempt < DELEGATION_POLL_ATTEMPTS; attempt += 1) {
+      await delay(DELEGATION_POLL_INTERVAL_MS);
+      const request = requireData(
+        await Ds_delegationrequestsService.get(created.ds_delegationrequestid),
+        "getDelegationRequest",
+      );
+      if (request.ds_status === DELEGATION_PROCESSED) {
+        return {
+          status: "processed",
+          message: request.ds_resultmessage || "判断担当者を変更しました。",
+        };
+      }
+      if (request.ds_status === DELEGATION_REJECTED) {
+        return {
+          status: "rejected",
+          message:
+            request.ds_resultmessage ||
+            "担当変更を実行できませんでした。申請状態と権限を確認してください。",
+        };
+      }
+    }
+    return {
+      status: "pending",
+      message:
+        "担当変更を受け付けました。処理完了まで時間がかかっているため、しばらくしてから画面を更新してください。",
+    };
   },
 
   async saveDraftForAiCheck(

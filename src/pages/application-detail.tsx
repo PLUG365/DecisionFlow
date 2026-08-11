@@ -6,6 +6,7 @@ import {
   MessageSquarePlus,
   Sparkles,
   Trash2,
+  UserRoundCog,
   UserPlus,
 } from "lucide-react";
 
@@ -35,13 +36,16 @@ import {
   useCreateMention,
   useCreateMessage,
   useCurrentSystemUser,
+  useDeciders,
   useDeleteParticipant,
   useDecisionOptions,
   useDecisions,
   useMentionsByMessage,
   useMessages,
+  useIsAdmin,
   useParticipants,
   useRunAiPreCheck,
+  useRequestApplicationDelegation,
   useResources,
   useSystemUsers,
 } from "@/hooks/use-decisionflow";
@@ -53,6 +57,7 @@ import {
 import {
   canDecideApplication,
   canRefreshAiDecisionFromDecisionTab,
+  canReassignApplication,
   getAiCheckWaitState,
   getDecisionNextApplicationStage,
   isApplicationReturnedForRevision,
@@ -76,6 +81,8 @@ export default function ApplicationDetailPage() {
     useApplication(id);
   const { data: categories = [] } = useCategories();
   const { data: users = [] } = useSystemUsers();
+  const { data: deciders = [] } = useDeciders();
+  const { data: isAdmin = false } = useIsAdmin();
   const { data: messages = [] } = useMessages(id);
   const { data: mentionsByMessage } = useMentionsByMessage(id);
   const { data: resources = [] } = useResources(id);
@@ -89,6 +96,7 @@ export default function ApplicationDetailPage() {
   const addParticipant = useAddParticipantWithMention();
   const deleteParticipant = useDeleteParticipant();
   const runAiPreCheck = useRunAiPreCheck();
+  const requestDelegation = useRequestApplicationDelegation();
   const [messageBody, setMessageBody] = useState("");
   const [mentionTargetUserId, setMentionTargetUserId] = useState("");
   const [decisionOptionId, setDecisionOptionId] = useState("");
@@ -97,6 +105,8 @@ export default function ApplicationDetailPage() {
   const [participantUserId, setParticipantUserId] = useState("");
   const [participantToDelete, setParticipantToDelete] =
     useState<Participant | null>(null);
+  const [isDelegationFormOpen, setIsDelegationFormOpen] = useState(false);
+  const [requestedDeciderId, setRequestedDeciderId] = useState("");
   const tabValue = [
     "summary",
     "thread",
@@ -165,6 +175,16 @@ export default function ApplicationDetailPage() {
       value: user.systemuserid,
       label: user.fullname || user.internalemailaddress || "名前なし",
     }));
+  const delegationDeciderOptions = deciders
+    .filter(
+      (user) =>
+        normalizeGuid(user.systemuserid) !==
+        normalizeGuid(application?._ds_deciderid_value),
+    )
+    .map((user) => ({
+      value: user.systemuserid,
+      label: user.fullname || user.internalemailaddress || "名前なし",
+    }));
   const decisionOptionMap = useMemo(
     () =>
       new Map(
@@ -221,6 +241,11 @@ export default function ApplicationDetailPage() {
   const canDecide = canDecideApplication({
     application,
     currentSystemUserId: systemUserId,
+  });
+  const canReassign = canReassignApplication({
+    application,
+    currentSystemUserId: systemUserId,
+    isAdmin,
   });
   const participantDeleteWaitState = getParticipantDeleteWaitState(
     deleteParticipant.isPending,
@@ -391,6 +416,38 @@ export default function ApplicationDetailPage() {
     );
   };
 
+  const handleRequestDelegation = () => {
+    if (!id || !requestedDeciderId || !canReassign) return;
+    requestDelegation.mutate(
+      {
+        applicationId: id,
+        applicationName: application.ds_name,
+        requestedDeciderId,
+      },
+      {
+        onSuccess: (outcome) => {
+          if (outcome.status === "processed") {
+            toast.success(outcome.message);
+            setIsDelegationFormOpen(false);
+            setRequestedDeciderId("");
+            return;
+          }
+          if (outcome.status === "rejected") {
+            toast.error(outcome.message);
+            return;
+          }
+          toast.info(outcome.message);
+          setIsDelegationFormOpen(false);
+          setRequestedDeciderId("");
+        },
+        onError: (error) =>
+          toast.error(
+            getOperationErrorMessage(error, "担当変更要求の送信に失敗しました。"),
+          ),
+      },
+    );
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -417,6 +474,15 @@ export default function ApplicationDetailPage() {
             )}
           </div>
         </div>
+        {canReassign && (
+          <Button
+            variant="outline"
+            onClick={() => setIsDelegationFormOpen(true)}
+          >
+            <UserRoundCog className="mr-2 h-4 w-4" />
+            担当を変更
+          </Button>
+        )}
       </div>
 
       <Tabs
@@ -876,6 +942,32 @@ export default function ApplicationDetailPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <FormModal
+        open={isDelegationFormOpen}
+        onOpenChange={(open) => {
+          setIsDelegationFormOpen(open);
+          if (!open) setRequestedDeciderId("");
+        }}
+        title="判断担当者を変更"
+        description="この申請の判断担当を別の判断者へ引き継ぎます。変更内容は監査履歴に記録され、関係者へ通知されます。"
+        onSave={handleRequestDelegation}
+        saveLabel="担当を変更"
+        isSaving={requestDelegation.isPending}
+      >
+        <FormSection title="変更先">
+          <div className="space-y-2">
+            <Label>新しい判断者 *</Label>
+            <Combobox
+              options={delegationDeciderOptions}
+              value={requestedDeciderId}
+              onValueChange={setRequestedDeciderId}
+              placeholder="判断者を選択"
+              searchPlaceholder="判断者を検索"
+            />
+          </div>
+        </FormSection>
+      </FormModal>
 
       <FormModal
         open={isParticipantFormOpen}

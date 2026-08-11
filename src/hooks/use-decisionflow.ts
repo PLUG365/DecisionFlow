@@ -203,6 +203,16 @@ export function useUpdateApplication() {
   });
 }
 
+export function useRequestApplicationDelegation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      input: Parameters<typeof DataverseService.requestApplicationDelegation>[0],
+    ) => DataverseService.requestApplicationDelegation(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
 export function useDeleteApplication() {
   const queryClient = useQueryClient();
   return useMutation({

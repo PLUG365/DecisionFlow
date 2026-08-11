@@ -181,6 +181,8 @@ erDiagram
 | `ds_decision`            | 判断             | 従属               | 申請(Lookup), 判断者(Lookup→SystemUser), 判断結果(Lookup→`ds_decisionoption`), 理由(Memo), 確定日時                                                       |
 | `ds_decisioncard`        | 判断カード発行   | 従属               | 申請(Lookup), cardInstanceId, actor AAD, actor UPN, 状態, 発行/消費/失効日時                                                                              |
 | `ds_applicationresource` | 関連資料         | 従属               | 申請(Lookup), タイトル, URL, 説明(Memo)                                                                                                                   |
+| `ds_delegationrequest`   | 担当変更要求     | 操作要求           | 申請(Lookup), 変更先判断者(Lookup→SystemUser), 変更前判断者, 状態, 処理日時, 結果                                                                          |
+| `ds_delegationhistory`   | 担当変更履歴     | 監査履歴           | 要求・申請・実行者・変更前/後判断者(Lookup), 結果, 詳細, 処理日時                                                                                           |
 | `ds_category`            | カテゴリ         | マスタ             | 名称, 説明, 推奨フォーマット(Memo), レギュレーション(Memo)。カテゴリごとに1つのAI判断用確認観点を保持する                                                 |
 | `ds_decisionoption`      | 判断選択肢       | 固定システムマスタ | 名称, 説明, 並び順。固定値は `承認` / `却下` / `差し戻し`。フロー・Copilot Studio・Adaptive Card が名称で参照するため、運用中に追加・名称変更・削除しない |
 | `SystemUser`             | システムユーザー | 標準               | （申請者 = `createdby` で取得、判断者・関係者は Lookup）                                                                                                  |
@@ -224,6 +226,12 @@ erDiagram
 | `ds_applicationresource` | `ds_name`                  | タイトル         | String       | 主列                                                  |
 | `ds_applicationresource` | `ds_url`                   | URL              | String(1000) | Link 用                                               |
 | `ds_applicationresource` | `ds_description`           | 説明             | Memo         | 任意                                                  |
+| `ds_delegationrequest`   | `ds_status`                | 処理状態         | Choice       | Pending / Processed / Rejected                        |
+| `ds_delegationrequest`   | `ds_processedat`           | 処理日時         | DateAndTime  | フローが設定                                          |
+| `ds_delegationrequest`   | `ds_resultmessage`         | 処理結果         | String(1000) | 利用者向けの安全な結果                                |
+| `ds_delegationhistory`   | `ds_result`                | 処理結果         | Choice       | Succeeded / Rejected                                  |
+| `ds_delegationhistory`   | `ds_detail`                | 結果詳細         | String(1000) | フローが追記                                          |
+| `ds_delegationhistory`   | `ds_processedat`           | 処理日時         | DateAndTime  | フローが追記                                          |
 
 > 過去設計で作成した `ds_type` / `ds_attachment` / `ds_status` / `ds_version` / `ds_replacedat` / `ds_replacedfromid` は廃止対象。既存環境では [scripts/migrate_cleanup_obsolete_metadata.py](../scripts/migrate_cleanup_obsolete_metadata.py) で削除済み。旧 AI 要約計画で作成した `ds_aisummary` / `ds_summaryupdatedat` / `ds_message.kind=AISummary` も [scripts/migrate_cleanup_old_ai_summary.py](../scripts/migrate_cleanup_old_ai_summary.py) で削除済み。
 
@@ -245,6 +253,14 @@ erDiagram
 | `ds_decision`            | `ds_decisionoption` | `ds_decisionoptionid` | 判断結果     |
 | `ds_decisioncard`        | `ds_application`    | `ds_applicationid`    | 申請         |
 | `ds_applicationresource` | `ds_application`    | `ds_applicationid`    | 申請         |
+| `ds_delegationrequest`   | `ds_application`    | `ds_applicationid`    | 申請         |
+| `ds_delegationrequest`   | `systemuser`        | `ds_requesteddeciderid` | 変更先判断者 |
+| `ds_delegationrequest`   | `systemuser`        | `ds_previousdeciderid` | 変更前判断者 |
+| `ds_delegationhistory`   | `ds_delegationrequest` | `ds_delegationrequestid` | 担当変更要求 |
+| `ds_delegationhistory`   | `ds_application`    | `ds_applicationid`    | 申請         |
+| `ds_delegationhistory`   | `systemuser`        | `ds_actorid`          | 実行者       |
+| `ds_delegationhistory`   | `systemuser`        | `ds_previousdeciderid` | 変更前判断者 |
+| `ds_delegationhistory`   | `systemuser`        | `ds_newdeciderid`     | 変更後判断者 |
 
 ### 2.5 Choice 値定義
 
@@ -283,6 +299,10 @@ erDiagram
 | 100000001 | Consumed   | submit 成功後に消費済み            |
 | 100000002 | Superseded | 再発行により無効化されたカード     |
 | 100000003 | Expired    | 有効期限切れとして無効化したカード |
+
+**担当変更要求状態** (`ds_delegationrequest.status`): Pending (100000000) / Processed (100000001) / Rejected (100000002)。
+
+**担当変更履歴結果** (`ds_delegationhistory.result`): Succeeded (100000000) / Rejected (100000001)。
 
 ### 2.6 マスタ初期値
 
@@ -362,6 +382,7 @@ erDiagram
 | `Mention_OnCreated`                  | メンション対象ユーザーへ通知する                   | Dataverse: `ds_mention` 行追加                                            |
 | `Application_StalledReminder`        | 期限超過または停滞申請を判断者へリマインドする     | Recurrence: 毎朝 9:00 JST                                                 |
 | `Application_GenerateAiDecision`     | 申請の AI 判断を生成・更新する                     | Power Apps V2: Code Apps の Submitted 保存時 / 「AI判断更新」ボタン       |
+| `Application_DelegationRequest_OnCreated` | Submitted申請の判断担当を安全に変更する       | Dataverse: `ds_delegationrequest` 行追加                                  |
 
 <!-- markdownlint-enable MD060 -->
 
@@ -378,6 +399,7 @@ erDiagram
 | `Mention_OnCreated`                  | 対象ユーザー Lookup がある、`ds_isread` が false                                                        | メッセージと申請を取得し、対象ユーザーへ Outlook メール通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                                                                             | Dataverse, Microsoft Teams, Office 365 Outlook |
 | `Application_StalledReminder`        | `ds_stage` が Submitted、希望期限超過または `ds_submittedat` から 3 日以上経過。`modifiedon` は使わない | 対象申請ごとに判断者を取得し、Outlook メールで通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                                                                                      | Dataverse, Office 365 Outlook, Microsoft Teams |
 | `Application_GenerateAiDecision`     | 対象申請が Submitted。提出直後は会話履歴が空でもよい。類似過去案件は初回提出時から検索対象にする。      | 申請、関連資料、会話履歴、過去類似案件、判断選択肢を取得し、AI Builder `DecisionRecommendation` を実行。申請概要・会話概要・推奨判断・コメント・根拠を `ds_application` に保存し、Code Apps 呼び出し時は結果を返す。                                                                                                    | Dataverse, AI Builder                          |
+| `Application_DelegationRequest_OnCreated` | 要求がPending、申請がSubmitted、実行者が現在担当または`ds_Admin`、変更先が有効な`DecisionFlow-Deciders` | `createdby`を実行者として再評価し、判断者を1名へ更新。要求と専用履歴へ結果を残し、成功後に新旧担当者と申請者へメール通知する。トリガー同時実行数は1。 | Dataverse, Office 365 Outlook |
 
 <!-- markdownlint-enable MD060 -->
 

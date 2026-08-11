@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createDecisionRecord = vi.fn();
 const createApplicationRecord = vi.fn();
@@ -19,6 +19,8 @@ const getDecisions = vi.fn();
 const getResources = vi.fn();
 const getSystemUsers = vi.fn();
 const runAiDecision = vi.fn();
+const createDelegationRequest = vi.fn();
+const getDelegationRequest = vi.fn();
 
 vi.mock("@microsoft/power-apps/app", () => ({
   getContext: vi.fn(),
@@ -40,6 +42,13 @@ vi.mock("@/generated/services/Ds_applicationsService", () => ({
     get: getApplicationRecord,
     getAll: getApplications,
     update: updateApplicationRecord,
+  },
+}));
+
+vi.mock("@/generated/services/Ds_delegationrequestsService", () => ({
+  Ds_delegationrequestsService: {
+    create: createDelegationRequest,
+    get: getDelegationRequest,
   },
 }));
 
@@ -142,6 +151,79 @@ describe("DataverseService category regulation payloads", () => {
       "category-1",
       expect.objectContaining({ ds_regulationtext: "最新の確認観点。" }),
     );
+  });
+});
+
+describe("DataverseService.requestApplicationDelegation", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    createDelegationRequest.mockReset();
+    getDelegationRequest.mockReset();
+    updateApplicationRecord.mockClear();
+    createDelegationRequest.mockResolvedValue({
+      success: true,
+      data: { ds_delegationrequestid: "request-1" },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("creates a pending request with only application and requested decider inputs", async () => {
+    getDelegationRequest.mockResolvedValue({
+      success: true,
+      data: {
+        ds_delegationrequestid: "request-1",
+        ds_status: 100000001,
+        ds_resultmessage: "変更済み",
+      },
+    });
+    const { DataverseService } = await import("./dataverse-service");
+
+    const promise = DataverseService.requestApplicationDelegation({
+      applicationId: "application-1",
+      applicationName: "申請",
+      requestedDeciderId: "user-2",
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(promise).resolves.toEqual({
+      status: "processed",
+      message: "変更済み",
+    });
+
+    expect(createDelegationRequest).toHaveBeenCalledWith({
+      ds_name: "申請 - 担当変更",
+      ds_status: 100000000,
+      statecode: 0,
+      "ds_applicationid@odata.bind": "/ds_applications(application-1)",
+      "ds_requesteddeciderid@odata.bind": "/systemusers(user-2)",
+    });
+  });
+
+  it("returns the server-side rejection message without changing the application directly", async () => {
+    getDelegationRequest.mockResolvedValue({
+      success: true,
+      data: {
+        ds_delegationrequestid: "request-1",
+        ds_status: 100000002,
+        ds_resultmessage: "権限がありません。",
+      },
+    });
+    const { DataverseService } = await import("./dataverse-service");
+
+    const promise = DataverseService.requestApplicationDelegation({
+      applicationId: "application-1",
+      applicationName: "申請",
+      requestedDeciderId: "user-2",
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(promise).resolves.toEqual({
+      status: "rejected",
+      message: "権限がありません。",
+    });
+    expect(updateApplicationRecord).not.toHaveBeenCalled();
   });
 });
 

@@ -3,6 +3,7 @@ import sys
 import time
 import traceback
 import json
+import argparse
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -128,6 +129,17 @@ DECISION_CARD_STATUS_OPTIONS = [
     (100000003, "Expired"),
 ]
 
+DELEGATION_REQUEST_STATUS_OPTIONS = [
+    (100000000, "Pending"),
+    (100000001, "Processed"),
+    (100000002, "Rejected"),
+]
+
+DELEGATION_HISTORY_RESULT_OPTIONS = [
+    (100000000, "Succeeded"),
+    (100000001, "Rejected"),
+]
+
 TABLES = [
     {
         "logical": f"{PREFIX}_category",
@@ -237,6 +249,28 @@ TABLES = [
             {"logical": f"{PREFIX}_description", "type": "Memo", "display": "説明", "maxLength": 4000},
         ],
     },
+    {
+        "logical": f"{PREFIX}_delegationrequest",
+        "display": "担当変更要求",
+        "plural": "担当変更要求",
+        "description": "判断担当者の変更要求。作成者はDataverseのcreatedbyから確定し、利用者による更新・削除を許可しない。",
+        "columns": [
+            {"logical": f"{PREFIX}_status", "type": "Picklist", "display": "処理状態", "options": DELEGATION_REQUEST_STATUS_OPTIONS, "defaultValue": 100000000},
+            {"logical": f"{PREFIX}_processedat", "type": "DateTime", "display": "処理日時", "format": "DateAndTime"},
+            {"logical": f"{PREFIX}_resultmessage", "type": "String", "display": "処理結果", "maxLength": 1000},
+        ],
+    },
+    {
+        "logical": f"{PREFIX}_delegationhistory",
+        "display": "担当変更履歴",
+        "plural": "担当変更履歴",
+        "description": "担当変更の成功・拒否をフローだけが追記する監査履歴。一般利用者による更新・削除を許可しない。",
+        "columns": [
+            {"logical": f"{PREFIX}_result", "type": "Picklist", "display": "処理結果", "options": DELEGATION_HISTORY_RESULT_OPTIONS},
+            {"logical": f"{PREFIX}_detail", "type": "String", "display": "結果詳細", "maxLength": 1000},
+            {"logical": f"{PREFIX}_processedat", "type": "DateTime", "display": "処理日時", "format": "DateAndTime"},
+        ],
+    },
 ]
 
 # cascade_share=True を指定したリレーションは、関係者に申請が共有されたとき
@@ -257,6 +291,14 @@ LOOKUPS = [
     {"schema": f"{PREFIX}_decision_{PREFIX}_decisionoption", "referencing": f"{PREFIX}_decision", "referenced": f"{PREFIX}_decisionoption", "lookup_attr": f"{PREFIX}_decisionoptionid", "lookup_display": "判断結果"},
     {"schema": f"{PREFIX}_decisioncard_{PREFIX}_application", "referencing": f"{PREFIX}_decisioncard", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "cascade_share": True},
     {"schema": f"{PREFIX}_applicationresource_{PREFIX}_application", "referencing": f"{PREFIX}_applicationresource", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "cascade_share": True},
+    {"schema": f"{PREFIX}_delegationrequest_{PREFIX}_application", "referencing": f"{PREFIX}_delegationrequest", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請", "required_level": "ApplicationRequired"},
+    {"schema": f"{PREFIX}_delegationrequest_systemuser_requesteddecider", "referencing": f"{PREFIX}_delegationrequest", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_requesteddeciderid", "lookup_display": "変更先判断者", "required_level": "ApplicationRequired"},
+    {"schema": f"{PREFIX}_delegationrequest_systemuser_previousdecider", "referencing": f"{PREFIX}_delegationrequest", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_previousdeciderid", "lookup_display": "変更前判断者"},
+    {"schema": f"{PREFIX}_delegationhistory_{PREFIX}_delegationrequest", "referencing": f"{PREFIX}_delegationhistory", "referenced": f"{PREFIX}_delegationrequest", "lookup_attr": f"{PREFIX}_delegationrequestid", "lookup_display": "担当変更要求"},
+    {"schema": f"{PREFIX}_delegationhistory_{PREFIX}_application", "referencing": f"{PREFIX}_delegationhistory", "referenced": f"{PREFIX}_application", "lookup_attr": f"{PREFIX}_applicationid", "lookup_display": "申請"},
+    {"schema": f"{PREFIX}_delegationhistory_systemuser_actor", "referencing": f"{PREFIX}_delegationhistory", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_actorid", "lookup_display": "実行者"},
+    {"schema": f"{PREFIX}_delegationhistory_systemuser_previousdecider", "referencing": f"{PREFIX}_delegationhistory", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_previousdeciderid", "lookup_display": "変更前判断者"},
+    {"schema": f"{PREFIX}_delegationhistory_systemuser_newdecider", "referencing": f"{PREFIX}_delegationhistory", "referenced": "systemuser", "lookup_attr": f"{PREFIX}_newdeciderid", "lookup_display": "変更後判断者"},
 ]
 
 
@@ -357,6 +399,8 @@ def column_body(column: dict) -> dict:
                 "Options": [{"Value": value, "Label": label(text)} for value, text in column["options"]],
             },
         })
+        if "defaultValue" in column:
+            body["DefaultFormValue"] = column["defaultValue"]
     elif col_type == "Boolean":
         body.update({
             "@odata.type": "#Microsoft.Dynamics.CRM.BooleanAttributeMetadata",
@@ -450,7 +494,7 @@ def create_lookups() -> None:
                 "Lookup": {
                     "SchemaName": l["lookup_attr"],
                     "DisplayName": label(l["lookup_display"]),
-                    "RequiredLevel": {"Value": "None"},
+                    "RequiredLevel": {"Value": l.get("required_level", "None")},
                 },
             }
             if l.get("cascade_share"):
@@ -680,7 +724,14 @@ def verify_tables() -> None:
         print(f"  OK: {logical} ({set_name}) rows_sample={len(rows)}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Set up DecisionFlow Dataverse metadata and optional demo data.")
+    parser.add_argument(
+        "--schema-only",
+        action="store_true",
+        help="Create/publish solution metadata without creating any demo records.",
+    )
+    args = parser.parse_args(argv)
     print("=" * 72)
     print("DecisionFlow Dataverse setup")
     print("=" * 72)
@@ -694,7 +745,8 @@ def main() -> int:
     create_lookups()
     publish_all()
     ensure_solution_membership()
-    create_demo_data()
+    if not args.schema_only:
+        create_demo_data()
     verify_tables()
     print("\nDone.")
     return 0

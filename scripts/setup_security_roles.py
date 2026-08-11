@@ -33,6 +33,8 @@ TABLE_LOGICAL_NAMES = [
     f"{PREFIX}_decision",
     f"{PREFIX}_decisioncard",
     f"{PREFIX}_applicationresource",
+    f"{PREFIX}_delegationrequest",
+    f"{PREFIX}_delegationhistory",
 ]
 
 
@@ -66,6 +68,16 @@ MENTION_WRITABLE = table_defaults(
 )
 
 APPLICANT_READ_OWNED = table_defaults(Read="Basic", AppendTo="Basic")
+
+NO_ACCESS = table_defaults()
+
+DELEGATION_REQUEST_CREATE_ONLY = table_defaults(
+    Create="Basic",
+    Read="Basic",
+    Append="Basic",
+)
+
+DELEGATION_HISTORY_READ_ONLY = table_defaults(Read="Global")
 
 DECIDER_CONTEXT_READ = table_defaults(Read="Global", AppendTo="Global")
 
@@ -106,6 +118,8 @@ ROLE_DEFINITIONS = [
             f"{PREFIX}_decision": APPLICANT_READ_OWNED,
             f"{PREFIX}_decisioncard": APPLICANT_READ_OWNED,
             f"{PREFIX}_mention": MENTION_WRITABLE,
+            f"{PREFIX}_delegationrequest": NO_ACCESS,
+            f"{PREFIX}_delegationhistory": NO_ACCESS,
         },
     },
     {
@@ -120,6 +134,8 @@ ROLE_DEFINITIONS = [
             f"{PREFIX}_participant": table_defaults(Create="Basic", Read="Global", Write="Basic", Delete="Basic", Append="Basic", AppendTo="Global", Share="Basic"),
             f"{PREFIX}_decision": DECIDER_OWNED_WRITE | {"Read": "Global"},
             f"{PREFIX}_decisioncard": DECISION_CARD_ASSIGNED_ACTOR,
+            f"{PREFIX}_delegationrequest": DELEGATION_REQUEST_CREATE_ONLY,
+            f"{PREFIX}_delegationhistory": DELEGATION_HISTORY_READ_ONLY,
         },
     },
     {

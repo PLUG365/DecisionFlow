@@ -358,6 +358,27 @@ export function canDecideApplication({
   );
 }
 
+export function canReassignApplication({
+  application,
+  currentSystemUserId,
+  isAdmin,
+}: {
+  application: {
+    ds_stage?: ApplicationStageValue | null;
+    _ds_deciderid_value?: string | null;
+  };
+  currentSystemUserId?: string | null;
+  isAdmin: boolean;
+}) {
+  if (application.ds_stage !== ApplicationStage.Submitted) return false;
+  if (isAdmin) return true;
+  return (
+    normalizeGuid(application._ds_deciderid_value) !== null &&
+    normalizeGuid(application._ds_deciderid_value) ===
+      normalizeGuid(currentSystemUserId)
+  );
+}
+
 export function validateParticipantInput(
   input: ParticipantInput,
 ): ValidationResult {

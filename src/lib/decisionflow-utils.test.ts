@@ -4,6 +4,7 @@ import {
   applicantSelectableStageValues,
   buildLatestDecisionOptionNameLookup,
   canDecideApplication,
+  canReassignApplication,
   canEditMasterData,
   canRefreshAiDecisionFromDecisionTab,
   canEditApplication,
@@ -181,6 +182,47 @@ describe("canEditApplication", () => {
           ds_stage: 100000001,
         },
         currentSystemUserId: "user-a",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("canReassignApplication", () => {
+  const submitted = {
+    ds_stage: ApplicationStage.Submitted,
+    _ds_deciderid_value: "USER-A",
+  };
+
+  it("allows the current decider or an admin for submitted applications", () => {
+    expect(
+      canReassignApplication({
+        application: submitted,
+        currentSystemUserId: "user-a",
+        isAdmin: false,
+      }),
+    ).toBe(true);
+    expect(
+      canReassignApplication({
+        application: submitted,
+        currentSystemUserId: "user-b",
+        isAdmin: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects other users and non-submitted applications", () => {
+    expect(
+      canReassignApplication({
+        application: submitted,
+        currentSystemUserId: "user-b",
+        isAdmin: false,
+      }),
+    ).toBe(false);
+    expect(
+      canReassignApplication({
+        application: { ...submitted, ds_stage: ApplicationStage.Decided },
+        currentSystemUserId: "user-a",
+        isAdmin: true,
       }),
     ).toBe(false);
   });
