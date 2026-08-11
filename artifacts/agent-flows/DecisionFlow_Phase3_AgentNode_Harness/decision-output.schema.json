@@ -1,0 +1,79 @@
+{
+  "type": "object",
+  "properties": {
+    "applicationSummary": {
+      "type": "string",
+      "description": "申請の論点を判断者向けに3〜5文で要約する。"
+    },
+    "conversationSummary": {
+      "type": "string",
+      "description": "会話履歴の論点、追加確認、合意事項を要約する。履歴がなければその旨を明記する。"
+    },
+    "recommendedOption": {
+      "type": "string",
+      "description": "入力された判断選択肢の名称から最も近いものを1つ返す。"
+    },
+    "comment": {
+      "type": "string",
+      "description": "推奨理由、レギュレーション充足状況、追加確認事項を簡潔に示す。"
+    },
+    "risks": {
+      "type": "array",
+      "description": "判断前に確認すべきリスクの一覧。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "リスク分類。"
+          },
+          "detail": {
+            "type": "string",
+            "description": "具体的な懸念または追加確認事項。"
+          }
+        },
+        "required": [
+          "category",
+          "detail"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "similarCases": {
+      "type": "array",
+      "description": "判断根拠として参照した過去案件。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "過去案件のタイトル。"
+          },
+          "decision": {
+            "type": "string",
+            "description": "過去案件で実際に選ばれた判断。"
+          },
+          "reason": {
+            "type": "string",
+            "description": "記録された判断理由の原文。空なら「理由の記録なし」。"
+          }
+        },
+        "required": [
+          "title",
+          "decision",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "applicationSummary",
+    "conversationSummary",
+    "recommendedOption",
+    "comment",
+    "risks",
+    "similarCases"
+  ],
+  "additionalProperties": false
+}

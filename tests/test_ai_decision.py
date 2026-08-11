@@ -7,6 +7,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+AGENT_OUTPUT_SCHEMA = json.loads(
+    (
+        ROOT
+        / "artifacts"
+        / "agent-flows"
+        / "DecisionFlow_Phase3_AgentNode_Harness"
+        / "decision-output.schema.json"
+    ).read_text(encoding="utf-8")
+)
+
 import deploy_ai_decision as ai_decision  # noqa: E402
 import migrate_cleanup_old_ai_summary as old_ai_summary_cleanup  # noqa: E402
 import setup_dataverse as setup_dataverse  # noqa: E402
@@ -110,6 +120,27 @@ class AiDecisionPromptDefinitionTests(unittest.TestCase):
         example_risk = output["jsonExamples"][0]["risks"][0]
         self.assertIsInstance(example_risk, dict)
         self.assertIn("detail", example_risk)
+
+    def test_agent_output_schema_matches_ai_builder_contract_and_is_strict(self):
+        ai_properties = ai_decision.AI_OUTPUT_DEFINITION["jsonSchema"]["properties"]
+        agent_properties = AGENT_OUTPUT_SCHEMA["properties"]
+
+        self.assertEqual(set(agent_properties), set(ai_properties))
+        self.assertEqual(set(AGENT_OUTPUT_SCHEMA["required"]), set(ai_properties))
+        self.assertFalse(AGENT_OUTPUT_SCHEMA["additionalProperties"])
+
+        for collection, required_fields in (
+            ("risks", {"category", "detail"}),
+            ("similarCases", {"title", "decision", "reason"}),
+        ):
+            agent_items = agent_properties[collection]["items"]
+            ai_items = ai_properties[collection]["items"]
+            self.assertEqual(
+                set(agent_items["properties"]),
+                set(ai_items["properties"]),
+            )
+            self.assertEqual(set(agent_items["required"]), required_fields)
+            self.assertFalse(agent_items["additionalProperties"])
 
     def test_flow_uses_powerapp_v2_trigger_and_ai_builder_action(self):
         clientdata = json.loads(

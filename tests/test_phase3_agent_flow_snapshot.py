@@ -12,6 +12,7 @@ SNAPSHOT = (
     / "flowagent.snapshot.json"
 )
 SOLUTION_EXPORT = SNAPSHOT.with_name("solution-export.workflow.json")
+DECISION_OUTPUT_SCHEMA = SNAPSHOT.with_name("decision-output.schema.json")
 
 
 class Phase3AgentFlowSnapshotTests(unittest.TestCase):
@@ -47,10 +48,9 @@ class Phase3AgentFlowSnapshotTests(unittest.TestCase):
         )
         parameters = action["inputs"]["parameters"]
         output_schema = parameters["body/outputSchema"]
-        self.assertIn("structured output", parameters["body/prompt"])
-        self.assertEqual(output_schema["required"], ["status"])
-        self.assertEqual(output_schema["properties"]["status"]["type"], "string")
-        self.assertFalse(output_schema["additionalProperties"])
+        expected_schema = json.loads(DECISION_OUTPUT_SCHEMA.read_text(encoding="utf-8"))
+        self.assertIn("読み取り専用ベンチマーク", parameters["body/prompt"])
+        self.assertEqual(output_schema, expected_schema)
         self.assertEqual(
             properties["connectionReferences"]["shared_agentnode"]["connection"]
             ["connectionReferenceLogicalName"],
