@@ -3,13 +3,17 @@ import { Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { CopilotPanel } from "@/components/copilot-panel";
+import { DataLoadError } from "@/components/data-load-error";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Sidebar } from "@/components/sidebar";
 import {
   SidebarProvider,
   useSidebarContext,
 } from "@/components/sidebar-layout";
-import { queryKeys } from "@/hooks/use-decisionflow";
+import {
+  queryKeys,
+  useDecisionFlowData,
+} from "@/hooks/use-decisionflow";
 import { Bot, Menu } from "lucide-react";
 
 type LayoutProps = { showHeader?: boolean };
@@ -18,6 +22,11 @@ function LayoutContent({ showHeader = true }: LayoutProps) {
   const [isMobileView, setIsMobileView] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const queryClient = useQueryClient();
+  const {
+    isError: isDataError,
+    isFetching: isDataRetrying,
+    refetch: retryDataLoad,
+  } = useDecisionFlowData();
   const { isCollapsed, toggleSidebar, toggleMobile, isMobileOpen } =
     useSidebarContext();
 
@@ -111,7 +120,14 @@ function LayoutContent({ showHeader = true }: LayoutProps) {
             <div
               className={`flex-1 p-6 max-w-full min-w-0 transition-all duration-300 ${isAssistantOpen ? "lg:mr-[400px]" : ""}`}
             >
-              <Outlet />
+              {isDataError ? (
+                <DataLoadError
+                  isRetrying={isDataRetrying}
+                  onRetry={retryDataLoad}
+                />
+              ) : (
+                <Outlet />
+              )}
             </div>
           </main>
         </div>

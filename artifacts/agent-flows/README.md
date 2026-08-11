@@ -20,6 +20,10 @@ Power Apps V2 trigger の `applicationId` / `resources` / `conversation` / `simi
 `08584151963493496286200518404CU21` で読取りと Agent action の成功を実機確認した。書込み action はなく、
 試験後のクラウド上のフローは停止状態へ戻している。
 
+この試作は技術的成立性の確認をもって終了した。既存の `Application_GenerateAiDecision` に対する
+具体的な利用者価値・品質・運用上の優位性が確認できず、Credits、非決定性、ALMの複雑さが増えるため、
+2026-08-11 にAgent node方式を不採用とした。成果物は再調査用の履歴であり、採用予定の正本ではない。
+
 採用・運用の正本へ昇格する前に、次を満たすこと。
 
 1. 環境固有の接続参照を Solution の publisher prefix に置き換える。
