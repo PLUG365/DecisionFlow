@@ -1,8 +1,15 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   useApplications,
   useCategories,
@@ -23,6 +30,7 @@ import {
   type DeciderQueueColumnKey,
 } from "@/lib/decisionflow-utils";
 import {
+  filterQueueApplicationsByCategory,
   getQueueDueStatus,
   sortQueueApplicationsByDueDate,
 } from "@/lib/queue-priority";
@@ -154,6 +162,7 @@ function QueueCard({
 
 export default function QueuePage() {
   const navigate = useNavigate();
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const { data: applications = [] } = useApplications();
   const { data: categories = [] } = useCategories();
   const { data: decisions = [] } = useDecisions();
@@ -179,11 +188,25 @@ export default function QueuePage() {
     () => buildLatestDecisionOptionNameLookup(decisions, decisionOptions),
     [decisions, decisionOptions],
   );
+  const categoryOptions = useMemo(
+    () =>
+      [...categories].sort(
+        (left, right) =>
+          (left.ds_sortorder ?? 0) - (right.ds_sortorder ?? 0) ||
+          left.ds_name.localeCompare(right.ds_name, "ja"),
+      ),
+    [categories],
+  );
+  const filteredApplications = useMemo(
+    () =>
+      filterQueueApplicationsByCategory(applications, categoryFilter),
+    [applications, categoryFilter],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<DeciderQueueColumnKey, Application[]>();
     columns.forEach((column) => map.set(column.key, []));
-    getDeciderQueueApplications(applications, systemUserId).forEach(
+    getDeciderQueueApplications(filteredApplications, systemUserId).forEach(
       (application) => {
         const columnKey = getDeciderQueueColumnKey(
           application.ds_stage,
@@ -199,15 +222,34 @@ export default function QueuePage() {
       );
     });
     return map;
-  }, [applications, systemUserId, getLatestDecisionOptionName]);
+  }, [filteredApplications, systemUserId, getLatestDecisionOptionName]);
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">判断キュー</h2>
-        <p className="text-sm text-muted-foreground">
-          自分が判断者に設定されている申請を、ステージ別・希望期限の近い順に確認します。
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">判断キュー</h2>
+          <p className="text-sm text-muted-foreground">
+            自分が判断者に設定されている申請を、ステージ別・希望期限の近い順に確認します。
+          </p>
+        </div>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-full sm:w-[240px]" aria-label="カテゴリで絞り込む">
+            <SelectValue placeholder="カテゴリで絞り込む" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">すべてのカテゴリ</SelectItem>
+            <SelectItem value="unassigned">未分類</SelectItem>
+            {categoryOptions.map((category) => (
+              <SelectItem
+                key={category.ds_categoryid}
+                value={category.ds_categoryid}
+              >
+                {category.ds_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-3">
         {columns.map((column) => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  filterQueueApplicationsByCategory,
   getQueueDueStatus,
   sortQueueApplicationsByDueDate,
 } from "./queue-priority";
@@ -55,5 +56,25 @@ describe("queue priority", () => {
     expect(getQueueDueStatus(dueDate, new Date(2026, 7, 11, 12))).toBe(
       expected,
     );
+  });
+
+  it("filters categories case-insensitively and supports unassigned rows", () => {
+    const rows = [
+      { ...application("a"), _ds_categoryid_value: "{CATEGORY-A}" },
+      { ...application("b"), _ds_categoryid_value: "category-b" },
+      application("unassigned"),
+    ];
+
+    expect(
+      filterQueueApplicationsByCategory(rows, "category-a").map(
+        (row) => row.ds_applicationid,
+      ),
+    ).toEqual(["a"]);
+    expect(
+      filterQueueApplicationsByCategory(rows, "unassigned").map(
+        (row) => row.ds_applicationid,
+      ),
+    ).toEqual(["unassigned"]);
+    expect(filterQueueApplicationsByCategory(rows, "all")).toBe(rows);
   });
 });

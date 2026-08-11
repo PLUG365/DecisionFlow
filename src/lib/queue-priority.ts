@@ -1,6 +1,7 @@
 import type { Application } from "@/types/decisionflow";
 
 export type QueueDueStatus = "overdue" | "today" | "upcoming" | "none";
+export type QueueCategoryFilter = "all" | "unassigned" | string;
 
 function calendarDateKey(value: string | null | undefined): number | null {
   if (!value) return null;
@@ -58,4 +59,26 @@ export function sortQueueApplicationsByDueDate(
         left.dueDateKey - right.dueDateKey || left.index - right.index,
     )
     .map(({ application }) => application);
+}
+
+function comparableId(value: string | null | undefined): string {
+  return value?.replace(/^\{|\}$/g, "").toLowerCase() ?? "";
+}
+
+export function filterQueueApplicationsByCategory(
+  applications: Application[],
+  categoryFilter: QueueCategoryFilter,
+): Application[] {
+  if (categoryFilter === "all") return applications;
+  if (categoryFilter === "unassigned") {
+    return applications.filter(
+      (application) => !application._ds_categoryid_value,
+    );
+  }
+
+  const categoryId = comparableId(categoryFilter);
+  return applications.filter(
+    (application) =>
+      comparableId(application._ds_categoryid_value) === categoryId,
+  );
 }
