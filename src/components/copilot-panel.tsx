@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useCopilotChat } from "@/hooks/use-copilot-chat";
 import { getCopilotScreenContext } from "@/lib/copilot-context";
+import { getCopilotStartersForScreen } from "@/lib/copilot-starters";
 
 /** エージェントの応答は Markdown（見出し・表・リスト）で返るため整形して描画する。 */
 const markdownComponents: Components = {
@@ -67,6 +68,13 @@ export function CopilotPanel({
     () => getCopilotScreenContext(pathname),
     [pathname],
   );
+  const starters = useMemo(
+    () =>
+      getCopilotStartersForScreen({
+        hasApplicationContext: Boolean(screenContext.applicationId),
+      }),
+    [screenContext.applicationId],
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -115,9 +123,31 @@ export function CopilotPanel({
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {messages.length === 0 && !isSending && (
-          <p className="py-8 text-center text-xs text-muted-foreground">
-            申請や判断について聞いてみてください。
-          </p>
+          <div className="py-6">
+            <p className="text-center text-xs text-muted-foreground">
+              申請や判断について聞いてみてください。
+            </p>
+            {/*
+              エージェント側の conversationStarters は Teams などのチャネルでは
+              プラットフォームがボタンにするが、この埋め込みパネルには出ない。
+              **能力はあるのに入口が無い**状態だったので、ここに出す。
+            */}
+            <div className="mt-4 flex flex-col gap-2">
+              {starters.map((starter) => (
+                <button
+                  key={starter.title}
+                  type="button"
+                  className="rounded-lg border border-dashed border-border px-3 py-2 text-left text-xs transition-colors hover:border-primary hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => void send(starter.text, screenContext)}
+                >
+                  <span className="font-medium">{starter.title}</span>
+                  <span className="mt-0.5 block text-muted-foreground">
+                    {starter.text}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {messages.map((message) => (
           <div
