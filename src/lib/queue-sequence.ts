@@ -105,6 +105,46 @@ export function getQueueNavigation(
   };
 }
 
+export type PostDecisionTarget = {
+  applicationId: string;
+  title: string;
+};
+
+/**
+ * 判断を確定した直後に出す「次の申請へ」の行き先。
+ *
+ * **確定した瞬間に、その申請は提出済み列から出る。** すると `getQueueNavigation` は
+ * `position: null` を返し、前後移動が画面から消える（列が変わった並びを黙って
+ * 進ませない、という第1段の判断は正しい）。ただしその結果、**判断者がいちばん多く通る
+ * 遷移で「戻る → 探す → 開く」が生き残っていた**。
+ *
+ * そこで**確定前に捕まえておいた行き先**を使う。並びを取り直さないので、利用者が
+ * 見ていた順のまま次へ進める。自動では飛ばさず、押せる導線として出すだけにする。
+ *
+ * 列の最後だった場合は `null`（次が無いのに出すと空振りする）。
+ */
+export function buildPostDecisionTarget({
+  capturedNextId,
+  applications,
+}: {
+  capturedNextId: string | null | undefined;
+  applications: Application[];
+}): PostDecisionTarget | null {
+  const nextId = normalizeGuid(capturedNextId);
+  if (!nextId) return null;
+
+  const next = applications.find(
+    (application) => normalizeGuid(application.ds_applicationid) === nextId,
+  );
+  // 確定処理の間に消えた申請へは送らない。
+  if (!next) return null;
+
+  return {
+    applicationId: next.ds_applicationid,
+    title: next.ds_name,
+  };
+}
+
 /**
  * 判断キューから開いたときだけ前後移動を出すための文脈。URL に載せて持ち回る。
  * 申請リストや横断検索から開いた申請には出さない（利用者が並びを選んでいないため）。

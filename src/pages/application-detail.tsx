@@ -90,8 +90,10 @@ import {
 } from "@/lib/decision-record";
 import {
   buildDeciderQueueColumns,
+  buildPostDecisionTarget,
   getQueueNavigation,
   parseQueueContext,
+  type PostDecisionTarget,
 } from "@/lib/queue-sequence";
 import {
   buildApplicationDetailParams,
@@ -191,6 +193,12 @@ export default function ApplicationDetailPage() {
     useState<Participant | null>(null);
   const [isDelegationFormOpen, setIsDelegationFormOpen] = useState(false);
   const [requestedDeciderId, setRequestedDeciderId] = useState("");
+  /**
+   * 判断確定の直後だけ出す「次の申請へ」。確定すると申請が列から出て前後移動が
+   * 消えるため、確定前に捕まえた行き先をここに置く。
+   */
+  const [postDecisionTarget, setPostDecisionTarget] =
+    useState<PostDecisionTarget | null>(null);
   const tabValue = parseApplicationDetailTab(searchParams);
 
   const categoryMap = useMemo(
@@ -341,6 +349,15 @@ export default function ApplicationDetailPage() {
     },
     [navigate, queueContext, tabValue],
   );
+
+  /**
+   * **申請が変わったら「次の申請へ」を消す。** この画面はルートが同じまま `id` だけ
+   * 変わるので再マウントされず、放っておくと前の申請の行き先が次の画面に残る。
+   * （モーダルの持ち越しと同じ罠。`getQueueShortcutDirection` のコメント参照）
+   */
+  useEffect(() => {
+    setPostDecisionTarget(null);
+  }, [id]);
 
   /**
    * `[` / `]` で前後の申請へ送る。まとめて読み切るときにマウスへ戻らないため。
@@ -520,6 +537,12 @@ export default function ApplicationDetailPage() {
   const handleDecision = () => {
     if (!id || !canDecide || !decisionOptionId || !rationale.trim()) return;
     const selectedDecisionOptionName = decisionOptionMap.get(decisionOptionId);
+    // **確定する前に**行き先を捕まえる。確定すると申請は提出済み列から出るので、
+    // あとから取り直しても次が分からなくなる。
+    const nextTarget = buildPostDecisionTarget({
+      capturedNextId: queueNavigation?.nextId,
+      applications: allApplications,
+    });
     createDecision.mutate(
       {
         ds_name: `${application.ds_name} - 判断`,
@@ -540,6 +563,7 @@ export default function ApplicationDetailPage() {
           toast.success("判断を確定しました");
           decisionDraft.clear();
           setDecisionOptionId("");
+          setPostDecisionTarget(nextTarget);
         },
         onError: (error) =>
           toast.error(
@@ -694,6 +718,24 @@ export default function ApplicationDetailPage() {
                   [ ] キーでも移動できます
                 </span>
               </>
+            )}
+            {/*
+              判断を確定すると申請は列から出て、上の前後移動が消える。空になった場所に
+              確定前に捕まえた行き先だけを置く。**自動では飛ばさない**（並びを取り直して
+              いないので、押した人の意思で進ませる）。
+            */}
+            {!queueNavigation?.position && postDecisionTarget && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-2"
+                onClick={() =>
+                  goToQueueSibling(postDecisionTarget.applicationId)
+                }
+              >
+                次の申請へ: {postDecisionTarget.title}
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
             )}
           </div>
           <h2 className="truncate text-xl font-semibold tracking-tight">

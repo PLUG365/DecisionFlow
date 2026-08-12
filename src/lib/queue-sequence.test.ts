@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeciderQueueColumns,
+  buildPostDecisionTarget,
   getQueueNavigation,
   parseQueueContext,
   toQueueContextParams,
@@ -146,5 +147,57 @@ describe("queue context round trip", () => {
     ["an unknown sort mode", "qcol=submitted&qsort=nope&qcat=all"],
   ])("refuses %s", (_label, query) => {
     expect(parseQueueContext(new URLSearchParams(query))).toBeNull();
+  });
+});
+
+describe("buildPostDecisionTarget", () => {
+  const applications = [
+    application("aaaaaaaa-1111-1111-1111-111111111111", { ds_name: "1件目" }),
+    application("bbbbbbbb-2222-2222-2222-222222222222", { ds_name: "2件目" }),
+  ];
+
+  it("確定前に捕まえた次の申請を、タイトルつきで返す", () => {
+    expect(
+      buildPostDecisionTarget({
+        capturedNextId: "bbbbbbbb-2222-2222-2222-222222222222",
+        applications,
+      }),
+    ).toEqual({
+      applicationId: "bbbbbbbb-2222-2222-2222-222222222222",
+      title: "2件目",
+    });
+  });
+
+  /**
+   * 大小文字だけ吸収する。**波括弧は落とさない**（`normalizeGuid` の挙動）。
+   * 捕まえる ID は `getQueueNavigation` が返した `ds_applicationid` そのものなので、
+   * 波括弧つきは来ない。姉妹関数と判定を揃えておく方が食い違いを生まない。
+   */
+  it("大文字小文字の違いは吸収する", () => {
+    expect(
+      buildPostDecisionTarget({
+        capturedNextId: "BBBBBBBB-2222-2222-2222-222222222222",
+        applications,
+      })?.title,
+    ).toBe("2件目");
+  });
+
+  /** 列の最後で判断した場合。次が無いのに導線を出すと空振りする。 */
+  it("次が無ければ何も出さない", () => {
+    expect(
+      buildPostDecisionTarget({ capturedNextId: null, applications }),
+    ).toBeNull();
+    expect(
+      buildPostDecisionTarget({ capturedNextId: undefined, applications }),
+    ).toBeNull();
+  });
+
+  it("確定処理の間に消えた申請へは送らない", () => {
+    expect(
+      buildPostDecisionTarget({
+        capturedNextId: "cccccccc-3333-3333-3333-333333333333",
+        applications,
+      }),
+    ).toBeNull();
   });
 });
