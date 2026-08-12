@@ -42,7 +42,15 @@ const messageKindLabels: Record<MessageKindValue, string> = {
   [MessageKind.System]: "システム",
 };
 
-/** `Application_StalledReminder` の停滞判定と同じ日数にそろえている */
+/**
+ * **最後の活動から**何日で停滞とみなすか。
+ *
+ * 日数は `Application_StalledReminder` と同じ3日にそろえているが、**判定基準は別物**である。
+ * フローは「希望期限超過 または `ds_submittedat` から3日」で判定し、意図的に最終活動時刻を見ない。
+ * こちらは会話・資料・関係者・AI生成を含む最後の活動から数える。したがって
+ * 「30日前に提出され、昨日コメントが付いた申請」はメールが飛ぶがバナーは出ない。
+ * 判断キューの停滞順（`modifiedon` 基準）とも一致しない。
+ */
 export const TIMELINE_STALLED_THRESHOLD_DAYS = 3;
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
