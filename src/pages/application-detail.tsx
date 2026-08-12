@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   MessageSquarePlus,
   Printer,
@@ -32,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   useAddParticipantWithMention,
   useApplication,
+  useApplications,
   useCategories,
   useCreateDecision,
   useCreateMention,
@@ -85,6 +88,13 @@ import {
   formatDecisionRecordPrintedAt,
   isDecisionRecordFinal,
 } from "@/lib/decision-record";
+import {
+  buildDeciderQueueColumns,
+  getQueueNavigation,
+  parseQueueContext,
+  toQueueContextParams,
+} from "@/lib/queue-sequence";
+import { buildLatestDecisionOptionNameLookup } from "@/lib/decisionflow-utils";
 import { useDecisionDraft } from "@/hooks/use-decision-draft";
 import { getOperationErrorMessage } from "@/lib/operation-error";
 import { toast } from "sonner";
@@ -289,6 +299,47 @@ export default function ApplicationDetailPage() {
       delegationHistories,
     ],
   );
+  /**
+   * 判断キューから開いたときだけ「前/次」を出す。申請リストや横断検索から開いた申請は
+   * 利用者が並びを選んでいないので出さない。
+   */
+  const { data: allApplications = [] } = useApplications();
+  const { data: allDecisions = [] } = useDecisions();
+  // 毎レンダーで新しいオブジェクトを作らない。下の useMemo が無駄に再計算される。
+  const queueContext = useMemo(
+    () => parseQueueContext(searchParams),
+    [searchParams],
+  );
+  const queueNavigation = useMemo(() => {
+    if (!queueContext) return null;
+    const columns = buildDeciderQueueColumns({
+      applications: allApplications,
+      currentSystemUserId: systemUserId,
+      categoryFilter: queueContext.categoryFilter,
+      sortMode: queueContext.sortMode,
+      getLatestDecisionOptionName: buildLatestDecisionOptionNameLookup(
+        allDecisions,
+        decisionOptions,
+      ),
+    });
+    return getQueueNavigation(columns.get(queueContext.column) ?? [], id);
+  }, [
+    queueContext,
+    allApplications,
+    allDecisions,
+    decisionOptions,
+    systemUserId,
+    id,
+  ]);
+
+  const goToQueueSibling = (applicationId: string) => {
+    if (!queueContext) return;
+    navigate(
+      `/applications/${applicationId}?` +
+        new URLSearchParams(toQueueContextParams(queueContext)).toString(),
+    );
+  };
+
   const timelineSummary = useMemo(
     () =>
       summarizeApplicationTimeline({
@@ -560,10 +611,47 @@ export default function ApplicationDetailPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-2">
-          <Button variant="ghost" className="px-0" onClick={() => navigate(-1)}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            戻る
-          </Button>
+          <div className="flex flex-wrap items-center gap-1 print:hidden">
+            <Button
+              variant="ghost"
+              className="px-0"
+              onClick={() => navigate(-1)}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              戻る
+            </Button>
+            {queueNavigation?.position && (
+              <>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  判断キュー {queueNavigation.position} / {queueNavigation.total}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!queueNavigation.previousId}
+                  onClick={() =>
+                    queueNavigation.previousId &&
+                    goToQueueSibling(queueNavigation.previousId)
+                  }
+                >
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  前の申請
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!queueNavigation.nextId}
+                  onClick={() =>
+                    queueNavigation.nextId &&
+                    goToQueueSibling(queueNavigation.nextId)
+                  }
+                >
+                  次の申請
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
           <h2 className="truncate text-xl font-semibold tracking-tight">
             {application.ds_name}
           </h2>

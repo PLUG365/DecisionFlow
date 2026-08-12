@@ -25,16 +25,16 @@ import {
 } from "@/types/decisionflow";
 import {
   buildLatestDecisionOptionNameLookup,
-  getDeciderQueueApplications,
-  getDeciderQueueColumnKey,
   type DeciderQueueColumnKey,
 } from "@/lib/decisionflow-utils";
 import {
-  filterQueueApplicationsByCategory,
   getQueueDueStatus,
-  sortQueueApplications,
   type QueueSortMode,
 } from "@/lib/queue-priority";
+import {
+  buildDeciderQueueColumns,
+  toQueueContextParams,
+} from "@/lib/queue-sequence";
 
 const columns: {
   key: DeciderQueueColumnKey;
@@ -199,37 +199,24 @@ export default function QueuePage() {
       ),
     [categories],
   );
-  const filteredApplications = useMemo(
+  // 申請詳細の「前/次」が同じ並びを見るため、列構成は共有の純関数に寄せている。
+  const grouped = useMemo(
     () =>
-      filterQueueApplicationsByCategory(applications, categoryFilter),
-    [applications, categoryFilter],
+      buildDeciderQueueColumns({
+        applications,
+        currentSystemUserId: systemUserId,
+        categoryFilter,
+        sortMode,
+        getLatestDecisionOptionName,
+      }),
+    [
+      applications,
+      systemUserId,
+      categoryFilter,
+      sortMode,
+      getLatestDecisionOptionName,
+    ],
   );
-
-  const grouped = useMemo(() => {
-    const map = new Map<DeciderQueueColumnKey, Application[]>();
-    columns.forEach((column) => map.set(column.key, []));
-    getDeciderQueueApplications(filteredApplications, systemUserId).forEach(
-      (application) => {
-        const columnKey = getDeciderQueueColumnKey(
-          application.ds_stage,
-          getLatestDecisionOptionName(application.ds_applicationid),
-        );
-        if (columnKey) map.get(columnKey)?.push(application);
-      },
-    );
-    columns.forEach((column) => {
-      map.set(
-        column.key,
-        sortQueueApplications(map.get(column.key) ?? [], sortMode),
-      );
-    });
-    return map;
-  }, [
-    filteredApplications,
-    systemUserId,
-    getLatestDecisionOptionName,
-    sortMode,
-  ]);
 
   return (
     <div className="space-y-4">
@@ -299,7 +286,16 @@ export default function QueuePage() {
                     application.ds_applicationid,
                   )}
                   onClick={() =>
-                    navigate(`/applications/${application.ds_applicationid}`)
+                    navigate(
+                      `/applications/${application.ds_applicationid}?` +
+                        new URLSearchParams(
+                          toQueueContextParams({
+                            column: column.key,
+                            sortMode,
+                            categoryFilter,
+                          }),
+                        ).toString(),
+                    )
                   }
                 />
               ))}
