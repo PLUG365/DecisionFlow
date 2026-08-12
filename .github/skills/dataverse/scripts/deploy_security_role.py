@@ -319,7 +319,14 @@ def get_table_privileges(tables):
 
 def get_basic_user_privileges(root_bu_id):
     """Basic User ロール（旧 Common Data Service User）の全権限を取得する。
-    新しいカスタムロールの土台として使用する。"""
+    新しいカスタムロールの土台として使用する。
+
+    **複数テナントへソリューションを配布するなら、この土台は取り込まないこと。**
+    取り込むと移送元の環境固有の深度が混ざり、移送先が受け付けないと import が
+    丸ごと失敗する（`prvDeleteUserSettings` の `canbebasic` が環境で違う実測例あり）。
+    その場合は利用者へ `Basic User` を併せて割り当てる運用にする。
+    詳細は references/security-role.md「ロールの土台をどうするか」。
+    """
     print("\n=== Step 3.5: Basic User ロールの権限取得 ===")
 
     # Basic User を検索（名前の揺れに対応）

@@ -88,7 +88,10 @@ ROLE_DEFINITIONS = [
 1. **ルートビジネスユニット取得** — `businessunits` から `parentbusinessunitid eq null` で取得
 2. **ソリューション内テーブル一覧取得** — `solutioncomponents` + `EntityDefinitions` で自動検出（SchemaName 取得必須）
 3. **テーブル権限 ID 取得** — `privileges` テーブルから `prv{Verb}{SchemaName}` パターンで検索
-3.5. **Basic User ロールの全権限取得** — `RetrieveRolePrivilegesRole(RoleId={id})` で約 480 権限を取得（カスタムロールの土台）
+3.5. **Basic User ロールの全権限取得** — `RetrieveRolePrivilegesRole(RoleId={id})` で約 480 権限を取得（カスタムロールの土台）。
+   **複数テナントへソリューションを配布する場合はこのステップを飛ばす。** 取り込んだ土台は
+   移送元の環境固有の深度を含み、移送先が受け付けないと import が丸ごと失敗する
+   （[security-role.md](security-role.md) の「ロールの土台をどうするか」）
 4. **ロールのべき等作成** — 名前 + BU で検索 → 更新 or 新規作成
 5. **権限設定（Basic User + カスタム）** — Basic User 権限を dict にコピー → カスタムテーブル権限で上書き/追加 → 最初のバッチは `ReplacePrivilegesRole` で全置換、2 バッチ目以降は `AddPrivilegesRole` で追加
 6. **ソリューション含有検証** — `AddSolutionComponent` (ComponentType=20)
