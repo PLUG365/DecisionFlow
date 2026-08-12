@@ -89,6 +89,16 @@ py scripts/setup_security_roles.py
 
 この時点で `ds_Applicant`, `ds_Decider`, `ds_Admin` を Dataverse に作成します。
 
+> **これらのロールは DecisionFlow の11テーブル分の権限しか持ちません。**
+> ビュー・個人設定・メモといった基盤権限は含まないので、**`ds_Xxx` だけを割り当てても
+> アプリは動きません。** 利用者には `Basic User`（または `Common Data Service User`）を
+> 必ず併せて割り当ててください。Dataverse のロールは加算式です。
+>
+> 以前はロール作成時に環境の `Basic User` を丸ごとコピーして取り込んでいましたが、
+> **移送元のベースラインを他テナントへ持ち込む**ことになり、権限の深度の可否が環境で違う場合に
+> ソリューション import が失敗します（2026-08-12 に実測）。詳細は
+> [UX_ROADMAP.md](UX_ROADMAP.md) の「ALM の実測ブロッカー」。
+
 ロール権限の概要:
 
 - `ds_Applicant`: カテゴリと判断選択肢は Read。カテゴリ別レギュレーションは申請画面で閲覧できるが編集できない
@@ -103,6 +113,8 @@ py scripts/setup_security_roles.py
 2. Power Platform 管理センターでそのグループを Dataverse のグループチームとして関連付ける
 3. そのグループチームへ `ds_Decider` ロールを割り当てる
 4. 必要に応じて申請者・管理者ユーザーへ `ds_Applicant`, `ds_Admin` を割り当てる
+5. **DecisionFlow を使う全ユーザーが `Basic User`（または `Common Data Service User`）を
+   保有していることを確認する。** `ds_Xxx` だけではアプリが動かない（上記5節の注記）
 
 この手動設定を行わないと、判断者向けの閲覧・判断導線が期待通りに動作しません。
 

@@ -119,6 +119,43 @@ class SecurityRoleDefinitionsTest(unittest.TestCase):
         self.assertIn("Power Platform admin center", joined)
 
 
+# ベースライン撤去（2026-08-12）**前**の 11テーブル×verb の深度。
+# 撤去でここが1件も動いていないことを固定するためのゴールデン表。
+# 変更するときは、それが意図した権限変更であることを人手で確認すること。
+FROZEN_ROLE_DEPTHS: dict[str, dict[str, dict[str, str | None]]] = {
+    "ds_Applicant": {
+        "ds_category": {"Create": None, "Read": "Global", "Write": None, "Delete": None, "Append": None, "AppendTo": "Global", "Assign": None, "Share": None},
+        "ds_decisionoption": {"Create": None, "Read": "Global", "Write": None, "Delete": None, "Append": None, "AppendTo": "Global", "Assign": None, "Share": None},
+        "ds_application": {"Create": "Basic", "Read": "Basic", "Write": "Basic", "Delete": "Basic", "Append": "Basic", "AppendTo": "Basic", "Assign": None, "Share": "Basic"},
+        "ds_message": {"Create": "Basic", "Read": "Basic", "Write": "Basic", "Delete": "Basic", "Append": "Basic", "AppendTo": "Basic", "Assign": None, "Share": "Basic"},
+        "ds_mention": {"Create": "Basic", "Read": "Basic", "Write": "Basic", "Delete": None, "Append": "Basic", "AppendTo": "Basic", "Assign": "Basic", "Share": "Basic"},
+        "ds_participant": {"Create": "Basic", "Read": "Basic", "Write": "Basic", "Delete": "Basic", "Append": "Basic", "AppendTo": "Basic", "Assign": None, "Share": "Basic"},
+        "ds_decision": {"Create": None, "Read": "Basic", "Write": None, "Delete": None, "Append": None, "AppendTo": "Basic", "Assign": None, "Share": None},
+        "ds_decisioncard": {"Create": None, "Read": "Basic", "Write": None, "Delete": None, "Append": None, "AppendTo": "Basic", "Assign": None, "Share": None},
+        "ds_applicationresource": {"Create": "Basic", "Read": "Basic", "Write": "Basic", "Delete": "Basic", "Append": "Basic", "AppendTo": "Basic", "Assign": None, "Share": "Basic"},
+        "ds_delegationrequest": {"Create": None, "Read": None, "Write": None, "Delete": None, "Append": None, "AppendTo": None, "Assign": None, "Share": None},
+        "ds_delegationhistory": {"Create": None, "Read": None, "Write": None, "Delete": None, "Append": None, "AppendTo": None, "Assign": None, "Share": None},
+    },
+    "ds_Decider": {
+        "ds_category": {"Create": None, "Read": "Global", "Write": "Global", "Delete": None, "Append": None, "AppendTo": "Global", "Assign": None, "Share": None},
+        "ds_decisionoption": {"Create": None, "Read": "Global", "Write": None, "Delete": None, "Append": None, "AppendTo": "Global", "Assign": None, "Share": None},
+        "ds_application": {"Create": None, "Read": "Global", "Write": None, "Delete": None, "Append": None, "AppendTo": "Global", "Assign": None, "Share": None},
+        "ds_message": {"Create": "Basic", "Read": "Global", "Write": "Basic", "Delete": None, "Append": "Basic", "AppendTo": "Basic", "Assign": None, "Share": "Basic"},
+        "ds_mention": {"Create": "Basic", "Read": "Global", "Write": "Basic", "Delete": None, "Append": "Basic", "AppendTo": "Basic", "Assign": "Basic", "Share": "Basic"},
+        "ds_participant": {"Create": "Basic", "Read": "Global", "Write": "Basic", "Delete": "Basic", "Append": "Basic", "AppendTo": "Global", "Assign": None, "Share": "Basic"},
+        "ds_decision": {"Create": "Basic", "Read": "Global", "Write": "Basic", "Delete": None, "Append": "Basic", "AppendTo": "Basic", "Assign": None, "Share": "Basic"},
+        "ds_decisioncard": {"Create": "Basic", "Read": "Basic", "Write": "Basic", "Delete": None, "Append": "Basic", "AppendTo": "Basic", "Assign": None, "Share": "Basic"},
+        "ds_applicationresource": {"Create": None, "Read": "Global", "Write": None, "Delete": None, "Append": None, "AppendTo": "Global", "Assign": None, "Share": None},
+        "ds_delegationrequest": {"Create": "Basic", "Read": "Basic", "Write": None, "Delete": None, "Append": "Basic", "AppendTo": None, "Assign": None, "Share": None},
+        "ds_delegationhistory": {"Create": None, "Read": "Global", "Write": None, "Delete": None, "Append": None, "AppendTo": None, "Assign": None, "Share": None},
+    },
+    "ds_Admin": {
+        name: {verb: "Global" for verb in roles.TABLE_VERBS}
+        for name in roles.TABLE_LOGICAL_NAMES
+    },
+}
+
+
 def _fake_tables() -> list[dict[str, str]]:
     return [
         {"logical_name": name, "schema_name": name}
@@ -165,20 +202,37 @@ class RolePrivilegeCompositionTest(unittest.TestCase):
                     "DecisionFlow のテーブル以外の権限が混ざっている",
                 )
 
-    def test_built_privileges_match_the_declared_depths_exactly(self):
-        """変更前後で 11テーブル×verb の深度が一致することの担保。"""
-        for role_name in ["ds_Applicant", "ds_Decider", "ds_Admin"]:
-            role_def = roles.role_by_name(role_name)
+    def test_built_privileges_match_the_frozen_depths_exactly(self):
+        """
+        11テーブル×verb の深度が、ベースライン撤去**前**の値と一致することの担保。
+
+        `privileges_for_table` と突き合わせても `ROLE_DEFINITIONS` を書き換えたら一緒に
+        動いてしまい、権限の拡大を検出できない。`ds_Applicant` の `*` Share を Global へ
+        変えるような事故を捕まえるため、期待値を表に焼く。
+        **表を更新するときは、それが意図した権限変更であることを人手で確認すること。**
+        """
+        for role_name, tables in FROZEN_ROLE_DEPTHS.items():
             built = self._built(role_name)
-            for name in roles.TABLE_LOGICAL_NAMES:
-                declared = roles.privileges_for_table(role_def, name)
-                for verb in roles.TABLE_VERBS:
+            for name, verbs in tables.items():
+                for verb, expected in verbs.items():
                     privilege_id = f"prv{verb}{name}"
                     with self.subTest(role=role_name, table=name, verb=verb):
-                        if declared[verb] is None:
+                        if expected is None:
                             self.assertNotIn(privilege_id, built)
                         else:
-                            self.assertEqual(built[privilege_id], declared[verb])
+                            self.assertEqual(built[privilege_id], expected)
+
+    def test_the_frozen_table_covers_every_role_table_and_verb(self):
+        """表に穴があると、抜けた組が黙って守られなくなる。"""
+        self.assertEqual(
+            set(FROZEN_ROLE_DEPTHS),
+            {role["name"] for role in roles.ROLE_DEFINITIONS},
+        )
+        for role_name, tables in FROZEN_ROLE_DEPTHS.items():
+            with self.subTest(role=role_name):
+                self.assertEqual(set(tables), set(roles.TABLE_LOGICAL_NAMES))
+                for name, verbs in tables.items():
+                    self.assertEqual(set(verbs), set(roles.TABLE_VERBS), name)
 
     def test_applicant_gets_no_delegation_privileges_at_all(self):
         built = self._built("ds_Applicant")
@@ -187,17 +241,45 @@ class RolePrivilegeCompositionTest(unittest.TestCase):
                 with self.subTest(table=name, verb=verb):
                     self.assertNotIn(f"prv{verb}{name}", built)
 
-    def test_a_table_whose_privilege_id_is_missing_is_skipped(self):
+    def test_an_unresolvable_privilege_id_stops_the_run(self):
+        """
+        黙って飛ばすと `ReplacePrivilegesRole` は全置換なので、**権限が縮んだロールが
+        エラーなしで出来上がる**。メタデータ遅延などで privilege_map が欠けたまま
+        流れる経路があるため、止まることを固定する。
+        """
         privilege_map = _fake_privilege_map()
-        privilege_map["ds_application"] = {}
+        del privilege_map["ds_application"]["Read"]
+
+        with self.assertRaises(RuntimeError) as caught:
+            roles.build_role_privileges(
+                roles.role_by_name("ds_Admin"), _fake_tables(), privilege_map
+            )
+
+        self.assertIn("prvReadds_application", str(caught.exception))
+
+    def test_a_privilege_the_role_does_not_declare_may_be_absent(self):
+        """宣言していない (table, verb) は引けなくても問題にしない。"""
+        privilege_map = _fake_privilege_map()
+        del privilege_map["ds_delegationrequest"]["Delete"]
 
         built = roles.build_role_privileges(
-            roles.role_by_name("ds_Admin"), _fake_tables(), privilege_map
+            roles.role_by_name("ds_Applicant"), _fake_tables(), privilege_map
         )
-        privilege_ids = {item["PrivilegeId"] for item in built}
 
-        self.assertNotIn("prvReadds_application", privilege_ids)
-        self.assertIn("prvReadds_message", privilege_ids)
+        self.assertNotIn(
+            "prvDeleteds_delegationrequest",
+            {item["PrivilegeId"] for item in built},
+        )
+
+    def test_zero_privileges_is_refused_instead_of_silently_succeeding(self):
+        """
+        空だと `range()` が1度も回らず、API を呼ばないまま成功扱いで次のロールへ進む。
+        既存ロールは古い権限（旧ベースライン含む）を保ったまま残ってしまう。
+        """
+        with self.assertRaises(RuntimeError):
+            roles.set_role_privileges(
+                "role-1", roles.role_by_name("ds_Admin"), []
+            )
 
     def test_privilege_count_stays_small_enough_for_one_batch(self):
         """

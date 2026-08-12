@@ -21,7 +21,6 @@ if not SOLUTION_NAME or not PREFIX:
     raise SystemExit("SOLUTION_NAME and PUBLISHER_PREFIX must be set in .env")
 
 TABLE_VERBS = ["Create", "Read", "Write", "Delete", "Append", "AppendTo", "Assign", "Share"]
-DEPTH_BY_VALUE = {0: "Basic", 1: "Local", 2: "Deep", 3: "Global"}
 
 # ReplacePrivilegesRole / AddPrivilegesRole の1回あたりの上限。
 # 11テーブル×8動詞=88 が上限なので、実際には常に1バッチで収まる。
@@ -164,20 +163,6 @@ def privileges_for_table(role_def: dict[str, Any], table_logical_name: str) -> d
     return values
 
 
-def normalize_depth(depth: Any) -> str:
-    if isinstance(depth, int):
-        return DEPTH_BY_VALUE.get(depth, "Local")
-    if isinstance(depth, dict):
-        value = depth.get("Value")
-        if isinstance(value, int):
-            return DEPTH_BY_VALUE.get(value, "Local")
-        if isinstance(value, str):
-            return value
-    if isinstance(depth, str):
-        return depth
-    return "Local"
-
-
 def get_root_business_unit() -> str:
     print("\n=== Step 1: Root business unit ===")
     result = api_get("businessunits?$filter=parentbusinessunitid eq null&$select=businessunitid,name")
@@ -290,20 +275,32 @@ def build_role_privileges(
     `docs/UX_ROADMAP.md`「ALM の実測ブロッカー」と、その下の境界表。
     """
     privileges: dict[str, dict[str, str]] = {}
+    unresolved: list[str] = []
 
     for table in tables:
         logical_name = table["logical_name"]
         table_privileges = privileges_for_table(role_def, logical_name)
         table_privilege_ids = privilege_map.get(logical_name, {})
         for verb in TABLE_VERBS:
-            privilege_id = table_privilege_ids.get(verb)
-            if not privilege_id:
-                continue
             depth = table_privileges.get(verb)
             if depth is None:
-                privileges.pop(privilege_id, None)
-            else:
-                privileges[privilege_id] = {"PrivilegeId": privilege_id, "Depth": depth}
+                # 深度なし = このロールに与えない。土台が空なので消す対象は存在しない。
+                continue
+            privilege_id = table_privilege_ids.get(verb)
+            if not privilege_id:
+                unresolved.append(f"prv{verb}{logical_name}")
+                continue
+            privileges[privilege_id] = {"PrivilegeId": privilege_id, "Depth": depth}
+
+    if unresolved:
+        # 黙って飛ばすと ReplacePrivilegesRole は全置換なので、**権限が縮んだロールが
+        # エラーなしで出来上がる**。テーブル発行直後のメタデータ遅延などで privilege_map が
+        # 欠けたまま流れる経路があるため、ここで止める。
+        raise RuntimeError(
+            f"{role_def['name']}: 付与すべき権限の privilege ID を解決できなかった: "
+            + ", ".join(sorted(unresolved))
+        )
+
     return list(privileges.values())
 
 
@@ -314,6 +311,13 @@ def set_role_privileges(role_id: str, role_def: dict[str, Any], privileges: list
     ベースラインを取り込まなくなったので11テーブル分だけになり、収まる前提。
     収まらなくなったらテストが落ちる（`tests/test_security_roles.py`）。
     """
+    if not privileges:
+        # 空だと range() が1度も回らず、API を呼ばないまま「成功」で次のロールへ進む。
+        # 既存ロールは古い権限（旧ベースライン含む）を保ったまま残るので、黙って通さない。
+        raise RuntimeError(
+            f"{role_def['name']}: 付与する権限が0件。privilege ID の解決に失敗している可能性がある"
+        )
+
     print(f"\n  Setting privileges: {role_def['name']} ({len(privileges)} total)")
     batch_size = PRIVILEGE_BATCH_SIZE
     for index in range(0, len(privileges), batch_size):
@@ -327,7 +331,7 @@ def set_role_privileges(role_id: str, role_def: dict[str, Any], privileges: list
 
 
 def ensure_solution_membership(role_ids: list[tuple[str, str]]) -> None:
-    print("\n=== Step 6: Solution membership ===")
+    print("\n=== Step 5: Solution membership ===")
     for role_id, role_name in role_ids:
         try:
             api_post(
@@ -373,7 +377,7 @@ def decider_group_team_manual_steps() -> list[str]:
 
 
 def print_decider_group_team_manual_steps(role_ids: list[tuple[str, str]]) -> None:
-    print("\n=== Step 7: Decider group team ===")
+    print("\n=== Step 6: Decider group team ===")
     decider_role_id = next((role_id for role_id, role_name in role_ids if role_name == "ds_Decider"), "")
     if not decider_role_id:
         print("  Skipped: ds_Decider role ID was not found")
@@ -405,7 +409,7 @@ def main() -> int:
         role_ids.append((role_id, role_def["name"]))
 
     ensure_solution_membership(role_ids)
-    print("\n=== Step 6b: Solution membership verification ===")
+    print("\n=== Step 5b: Solution membership verification ===")
     verify_solution_membership(role_ids)
     print_decider_group_team_manual_steps(role_ids)
 
