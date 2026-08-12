@@ -34,6 +34,14 @@ function listSourceFiles(dir: string): string[] {
   });
 }
 
+/**
+ * **「出荷されないファイル」は 2026-08-12 時点で `*.test.ts(x)` だけ**。
+ * `src/` を数えた内訳は ts 75 / tsx 52 / svg 1 / css 1 で、`*.spec.*`・`*.stories.*`・
+ * `__mocks__`・fixtures は存在しない。この判定が網羅的なのはそのためである。
+ *
+ * **別の形の非出荷ファイルを足すときは、ここも一緒に更新すること。** 更新を忘れると、
+ * 死んだモジュールがそのファイルから「参照されている」ことになり、下の検査が黙る。
+ */
 const isTestFile = (file: string) => /\.test\.tsx?$/.test(file);
 
 const productionFiles = listSourceFiles(SRC_ROOT).filter(
@@ -42,6 +50,19 @@ const productionFiles = listSourceFiles(SRC_ROOT).filter(
 const libModules = readdirSync(LIB_DIR)
   .filter((entry) => /\.ts$/.test(entry) && !isTestFile(entry))
   .map((entry) => entry.replace(/\.ts$/, ""));
+
+/**
+ * **数えるものがゼロでも緑になる**のを防ぐ。`it.each([])` はテストを1件も登録せず、
+ * それでもスイートは通る。`tools/` の移動やディレクトリ名の変更で `LIB_DIR` が
+ * 別の場所を指したとき、「何も検査せずに緑」になるのが一番まずい
+ * ——このセッションで潰して回ったのと同じ形なので、ここで自分にも適用する。
+ */
+describe("検査対象を実際に拾えている", () => {
+  it("lib モジュールと本番ファイルを見つけている", () => {
+    expect(libModules.length).toBeGreaterThan(10);
+    expect(productionFiles.length).toBeGreaterThan(50);
+  });
+});
 
 describe("lib モジュールは本番コードから参照されている", () => {
   /**
