@@ -44,6 +44,7 @@ import {
   useMentionsByMessage,
   useMessages,
   useIsAdmin,
+  useIsDecider,
   useParticipants,
   useRunAiPreCheck,
   useRequestApplicationDelegation,
@@ -107,6 +108,17 @@ export default function ApplicationDetailPage() {
   const { data: participants = [] } = useParticipants(id);
   const { data: decisions = [] } = useDecisions(id);
   const { data: delegationHistories } = useDelegationHistories(id);
+  const { data: isDecider = false } = useIsDecider();
+  /**
+   * ロール表（`scripts/setup_security_roles.py`）で `ds_delegationhistory` を読めるのは
+   * `ds_Decider` と `ds_Admin` だけ。読めない利用者に取得失敗を出さないのは体裁の話ではない。
+   *
+   * SDK は失敗を `new Error("<friendly>: <message>")` に潰し、**HTTPステータスを捨てる**
+   * （`@microsoft/power-apps` の `createErrorResponse`）。つまり `denied` の判定は
+   * メッセージ本文頼みで、Dataverse が privilege 名を含まない文言を返せば `failed` に倒れる。
+   * そのとき申請者の全画面に恒久的な偽の警告が出てしまう。このゲートがその失敗モードを消す。
+   */
+  const canReadDelegationHistory = isDecider || isAdmin;
   const { data: decisionOptions = [] } = useDecisionOptions();
   const { systemUserId } = useCurrentSystemUser();
   const createMessage = useCreateMessage();
@@ -709,7 +721,7 @@ export default function ApplicationDetailPage() {
                   ))}
                 </ol>
               )}
-              {delegationHistories?.status === "failed" && (
+              {delegationHistories?.status === "failed" && canReadDelegationHistory && (
                 <p className="mt-3 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
                   担当変更の履歴を読み込めませんでした。表示されていない出来事がある可能性があります。
                 </p>
