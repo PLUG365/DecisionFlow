@@ -136,7 +136,11 @@ export function buildPostDecisionTarget({
   const next = applications.find(
     (application) => normalizeGuid(application.ds_applicationid) === nextId,
   );
-  // 確定処理の間に消えた申請へは送らない。
+  /**
+   * 一覧に無い ID なら出さない。**これは防御であって、現在の呼び出し側では起きない。**
+   * `capturedNextId` は同じ `applications` から組んだ列の `nextId` なので必ず見つかる。
+   * 別の経路から ID を渡すようになったときに効く（守っている、と読み違えないこと）。
+   */
   if (!next) return null;
 
   return {
