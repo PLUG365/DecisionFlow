@@ -7,6 +7,7 @@ import {
 } from "./application-timeline";
 import {
   ApplicationStage,
+  DelegationResult,
   MessageKind,
   ParticipantRole,
 } from "@/types/decisionflow";
@@ -232,6 +233,110 @@ describe("buildApplicationTimeline", () => {
       "user-author",
       "user-decider",
     ]);
+  });
+
+  it("places both successful and rejected delegations in the timeline", () => {
+    const events = build({
+      delegationHistories: [
+        {
+          ds_delegationhistoryid: "hist-ok",
+          ds_processedat: "2026-08-12T01:00:00Z",
+          ds_result: DelegationResult.Succeeded,
+          _ds_actorid_value: "user-grady",
+          _ds_previousdeciderid_value: "user-grady",
+          _ds_newdeciderid_value: "user-adele",
+        },
+        {
+          ds_delegationhistoryid: "hist-ng",
+          ds_processedat: "2026-08-12T02:00:00Z",
+          ds_result: DelegationResult.Rejected,
+          ds_detail: "現在の判断者でも管理者でもありません。",
+          _ds_actorid_value: "user-grady",
+          _ds_previousdeciderid_value: "user-adele",
+          _ds_newdeciderid_value: "user-grady",
+        },
+      ],
+    });
+
+    expect(
+      events.map((event) => ({
+        title: event.title,
+        detail: event.detail,
+        actor: event.actorUserId,
+        delegation: event.delegation,
+      })),
+    ).toEqual([
+      {
+        title: "担当を変更",
+        detail: undefined,
+        actor: "user-grady",
+        delegation: {
+          previousUserId: "user-grady",
+          newUserId: "user-adele",
+        },
+      },
+      {
+        title: "担当変更を却下",
+        detail: "現在の判断者でも管理者でもありません。",
+        actor: "user-grady",
+        delegation: {
+          previousUserId: "user-adele",
+          newUserId: "user-grady",
+        },
+      },
+    ]);
+  });
+
+  it("interleaves delegations with the other events by time", () => {
+    const events = build({
+      application: {
+        ds_applicationid: "app-1",
+        ds_submittedat: "2026-08-01T00:00:00Z",
+      },
+      decisions: [
+        { ds_decisionid: "dec-1", ds_decidedat: "2026-08-03T00:00:00Z" },
+      ],
+      delegationHistories: [
+        {
+          ds_delegationhistoryid: "hist-1",
+          ds_processedat: "2026-08-02T00:00:00Z",
+          ds_result: DelegationResult.Succeeded,
+        },
+      ],
+    });
+
+    expect(events.map((event) => event.type)).toEqual([
+      "submitted",
+      "delegation",
+      "decision",
+    ]);
+  });
+
+  it("drops delegations without a processed timestamp", () => {
+    const events = build({
+      delegationHistories: [
+        {
+          ds_delegationhistoryid: "hist-1",
+          ds_result: DelegationResult.Succeeded,
+          ds_detail: "日時なし",
+        },
+      ],
+    });
+
+    expect(events).toEqual([]);
+  });
+
+  it("builds the same timeline whether delegations are absent or empty", () => {
+    // 権限が無い利用者には空で渡ってくる。空でも組み立てが壊れないこと。
+    const withoutKey = build({
+      application: { ds_applicationid: "app-1", createdon: "2026-08-01T00:00:00Z" },
+    });
+    const withEmpty = build({
+      application: { ds_applicationid: "app-1", createdon: "2026-08-01T00:00:00Z" },
+      delegationHistories: [],
+    });
+
+    expect(withEmpty).toEqual(withoutKey);
   });
 
   it("truncates long detail text", () => {

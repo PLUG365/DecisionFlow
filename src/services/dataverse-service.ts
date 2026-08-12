@@ -8,6 +8,7 @@ import { Ds_decisionoptionsService } from "@/generated/services/Ds_decisionoptio
 import { Ds_decisionsService } from "@/generated/services/Ds_decisionsService";
 import { Ds_mentionsService } from "@/generated/services/Ds_mentionsService";
 import { Ds_messagesService } from "@/generated/services/Ds_messagesService";
+import { Ds_delegationhistoriesService } from "@/generated/services/Ds_delegationhistoriesService";
 import { Ds_delegationrequestsService } from "@/generated/services/Ds_delegationrequestsService";
 import type { Ds_delegationrequestsBase } from "@/generated/models/Ds_delegationrequestsModel";
 import { Ds_participantsService } from "@/generated/services/Ds_participantsService";
@@ -15,6 +16,7 @@ import { Participant_PreDelete_RevokeAccessService } from "@/generated/services/
 import { Application_GenerateAiDecisionService } from "@/services/application-generate-ai-decision-service";
 import { SystemusersService } from "@/generated/services/SystemusersService";
 import { isIgnorableParticipantRevokeFailure } from "@/lib/decisionflow-utils";
+import { isPermissionDeniedError } from "@/lib/operation-error";
 import {
   DEFAULT_CATEGORIES,
   DEFAULT_DECISION_OPTIONS,
@@ -30,6 +32,8 @@ import {
   type Category,
   type Decision,
   type DecisionOption,
+  type DelegationHistory,
+  type DelegationHistoryFetch,
   type Message,
   type Mention,
   type Participant,
@@ -106,6 +110,7 @@ export const DataverseService = {
       resources,
       users,
       deciders,
+      delegationHistories,
     ] = await Promise.all([
       this.getApplications(),
       this.getMessages(),
@@ -115,6 +120,7 @@ export const DataverseService = {
       this.getResources(),
       this.getSystemUsers(),
       this.getDeciders(),
+      this.getDelegationHistories(),
     ]);
 
     return {
@@ -128,7 +134,36 @@ export const DataverseService = {
       resources,
       users,
       deciders,
+      delegationHistories,
     };
+  },
+
+  /**
+   * 担当変更履歴。**この取得は例外を投げない。**
+   *
+   * `ds_Applicant` はこのテーブルに NO_ACCESS なので、申請者の画面では 403 が返るのが正常。
+   * ここで throw すると `decisionflow/data` 全体が落ち、G10 の読込失敗画面へ切り替わって
+   * 申請者はアプリを一切使えなくなる。権限なしと本当の失敗を分けて返す。
+   */
+  async getDelegationHistories(): Promise<DelegationHistoryFetch> {
+    try {
+      const result = await Ds_delegationhistoriesService.getAll({
+        orderBy: ["ds_processedat desc", "createdon desc"],
+      });
+      if (result.success) {
+        return {
+          status: "ok",
+          histories: result.data as DelegationHistory[],
+        };
+      }
+      return isPermissionDeniedError(result.error)
+        ? { status: "denied" }
+        : { status: "failed" };
+    } catch (error) {
+      return isPermissionDeniedError(error)
+        ? { status: "denied" }
+        : { status: "failed" };
+    }
   },
 
   async ensureInitialData(input: {

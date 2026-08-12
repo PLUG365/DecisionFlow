@@ -21,6 +21,7 @@ const getSystemUsers = vi.fn();
 const runAiDecision = vi.fn();
 const createDelegationRequest = vi.fn();
 const getDelegationRequest = vi.fn();
+const getDelegationHistories = vi.fn();
 
 vi.mock("@microsoft/power-apps/app", () => ({
   getContext: vi.fn(),
@@ -42,6 +43,12 @@ vi.mock("@/generated/services/Ds_applicationsService", () => ({
     get: getApplicationRecord,
     getAll: getApplications,
     update: updateApplicationRecord,
+  },
+}));
+
+vi.mock("@/generated/services/Ds_delegationhistoriesService", () => ({
+  Ds_delegationhistoriesService: {
+    getAll: getDelegationHistories,
   },
 }));
 
@@ -384,10 +391,12 @@ describe("DataverseService.getData", () => {
       getDecisions,
       getResources,
       getSystemUsers,
+      getDelegationHistories,
     ]) {
       mock.mockReset();
     }
 
+    getDelegationHistories.mockResolvedValue({ success: true, data: [] });
     getApplications.mockResolvedValue({ success: true, data: [] });
     getMessages.mockResolvedValue({ success: true, data: [] });
     getMentions.mockResolvedValue({ success: true, data: [] });
@@ -543,5 +552,78 @@ describe("DataverseService.getData", () => {
     await DataverseService.getData();
 
     expect(createCategory).not.toHaveBeenCalled();
+  });
+
+  describe("delegation history is fetched without breaking the whole load", () => {
+    beforeEach(() => {
+      getCategories.mockResolvedValue({
+        success: true,
+        data: [{ ds_categoryid: "category-1", ds_name: "独自カテゴリ" }],
+      });
+      getDecisionOptions.mockResolvedValue({
+        success: true,
+        data: [
+          { ds_decisionoptionid: "option-1", ds_name: "承認" },
+          { ds_decisionoptionid: "option-2", ds_name: "却下" },
+          { ds_decisionoptionid: "option-3", ds_name: "差し戻し" },
+        ],
+      });
+    });
+
+    it("returns the rows when the user may read them", async () => {
+      getDelegationHistories.mockResolvedValue({
+        success: true,
+        data: [{ ds_delegationhistoryid: "hist-1" }],
+      });
+      const { DataverseService } = await import("./dataverse-service");
+
+      expect((await DataverseService.getData()).delegationHistories).toEqual({
+        status: "ok",
+        histories: [{ ds_delegationhistoryid: "hist-1" }],
+      });
+    });
+
+    it.each([
+      [
+        "a failed result",
+        () =>
+          getDelegationHistories.mockResolvedValue({
+            success: false,
+            error: {
+              status: 403,
+              message: "missing prvReadds_delegationhistory privilege",
+            },
+          }),
+      ],
+      [
+        "a thrown error",
+        () =>
+          getDelegationHistories.mockRejectedValue(
+            new Error("403 Forbidden"),
+          ),
+      ],
+    ])(
+      "reports denied without failing the load when the SDK signals %s",
+      async (_label, arrange) => {
+        // ds_Applicant は NO_ACCESS。ここで throw すると読込失敗画面になり
+        // 申請者がアプリを一切使えなくなる。
+        arrange();
+        const { DataverseService } = await import("./dataverse-service");
+
+        const data = await DataverseService.getData();
+
+        expect(data.delegationHistories).toEqual({ status: "denied" });
+        expect(data.applications).toEqual([]);
+      },
+    );
+
+    it("separates a real failure from a permission denial", async () => {
+      getDelegationHistories.mockRejectedValue(new Error("Failed to fetch"));
+      const { DataverseService } = await import("./dataverse-service");
+
+      expect((await DataverseService.getData()).delegationHistories).toEqual({
+        status: "failed",
+      });
+    });
   });
 });

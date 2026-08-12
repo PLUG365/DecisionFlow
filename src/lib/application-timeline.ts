@@ -1,5 +1,6 @@
 import {
   ApplicationStage,
+  DelegationResult,
   MessageKind,
   participantRoleLabels,
   type Application,
@@ -7,6 +8,7 @@ import {
   type ApplicationStageValue,
   type Decision,
   type DecisionOption,
+  type DelegationHistory,
   type Message,
   type MessageKindValue,
   type Participant,
@@ -21,7 +23,8 @@ export type TimelineEventType =
   | "participant"
   | "resource"
   | "message"
-  | "decision";
+  | "decision"
+  | "delegation";
 
 export type TimelineEvent = {
   id: string;
@@ -33,6 +36,8 @@ export type TimelineEvent = {
   detail?: string;
   /** 表示側で氏名へ解決する。純関数側では ID のままにする */
   actorUserId?: string;
+  /** 担当変更のときだけ入る。表示側で氏名へ解決する */
+  delegation?: { previousUserId?: string; newUserId?: string };
 };
 
 const messageKindLabels: Record<MessageKindValue, string> = {
@@ -99,6 +104,21 @@ export type BuildApplicationTimelineInput = {
     | "_ds_decisionoptionid_value"
   >[];
   decisionOptions: Pick<DecisionOption, "ds_decisionoptionid" | "ds_name">[];
+  /**
+   * 担当変更履歴。**権限が無い利用者には空で渡ってくる**（`ds_Applicant` は NO_ACCESS）。
+   * 空であることと「履歴が無い」ことをここでは区別しない。区別は取得側の
+   * `DelegationHistoryFetch` が持ち、表示側が扱う。
+   */
+  delegationHistories?: Pick<
+    DelegationHistory,
+    | "ds_delegationhistoryid"
+    | "ds_detail"
+    | "ds_result"
+    | "ds_processedat"
+    | "_ds_actorid_value"
+    | "_ds_previousdeciderid_value"
+    | "_ds_newdeciderid_value"
+  >[];
 };
 
 /**
@@ -114,6 +134,7 @@ export function buildApplicationTimeline({
   resources,
   decisions,
   decisionOptions,
+  delegationHistories = [],
 }: BuildApplicationTimelineInput): TimelineEvent[] {
   const optionNameById = new Map(
     decisionOptions.map((option) => [
@@ -233,6 +254,26 @@ export function buildApplicationTimeline({
       title: optionName ? `判断: ${optionName}` : "判断",
       detail: truncate(decision.ds_rationale),
       actorUserId: decision._ds_deciderid_value ?? undefined,
+    });
+  });
+
+  delegationHistories.forEach((history) => {
+    const processedAt = parseTimestamp(history.ds_processedat);
+    if (processedAt === null) return;
+    // 却下された試行も証跡として残す。G2 が書いた履歴を読める場所はここしかない。
+    const succeeded = history.ds_result === DelegationResult.Succeeded;
+    events.push({
+      id: `delegation:${history.ds_delegationhistoryid}`,
+      type: "delegation",
+      at: history.ds_processedat!,
+      timestamp: processedAt,
+      title: succeeded ? "担当を変更" : "担当変更を却下",
+      detail: truncate(history.ds_detail),
+      actorUserId: history._ds_actorid_value ?? undefined,
+      delegation: {
+        previousUserId: history._ds_previousdeciderid_value ?? undefined,
+        newUserId: history._ds_newdeciderid_value ?? undefined,
+      },
     });
   });
 

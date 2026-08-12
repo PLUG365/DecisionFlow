@@ -159,6 +159,37 @@ export type ApplicationResource = {
   _createdby_value?: string;
 };
 
+export const DelegationResult = {
+  Succeeded: 100000000,
+  Rejected: 100000001,
+} as const;
+
+export type DelegationResultValue =
+  (typeof DelegationResult)[keyof typeof DelegationResult];
+
+export type DelegationHistory = {
+  ds_delegationhistoryid: string;
+  ds_name?: string;
+  ds_detail?: string;
+  ds_result?: DelegationResultValue;
+  ds_processedat?: string;
+  _ds_applicationid_value?: string;
+  _ds_actorid_value?: string;
+  _ds_previousdeciderid_value?: string;
+  _ds_newdeciderid_value?: string;
+};
+
+/**
+ * 担当変更履歴は `ds_Applicant` が **NO_ACCESS**（`scripts/setup_security_roles.py`）。
+ * 申請者の画面では 403 になるのが**正常**なので、取得失敗と権限なしを混ぜない。
+ * `denied` は何も出さず、`failed` だけ「読み込めなかった」と明示する
+ * （空の一覧を完全な結果として見せないため）。
+ */
+export type DelegationHistoryFetch =
+  | { status: "ok"; histories: DelegationHistory[] }
+  | { status: "denied" }
+  | { status: "failed" };
+
 export type DecisionFlowData = {
   applications: Application[];
   categories: Category[];
@@ -169,4 +200,5 @@ export type DecisionFlowData = {
   decisions: Decision[];
   resources: ApplicationResource[];
   users: SystemUser[];
+  delegationHistories: DelegationHistoryFetch;
 };

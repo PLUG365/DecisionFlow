@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { getOperationErrorMessage } from "./operation-error";
+import {
+  getOperationErrorMessage,
+  isPermissionDeniedError,
+} from "./operation-error";
 
 describe("getOperationErrorMessage", () => {
   it.each([
@@ -28,6 +31,41 @@ describe("getOperationErrorMessage", () => {
       "保存に失敗しました。 時間をおいてもう一度お試しください。",
     );
     expect(message).not.toContain("secret backend detail");
+  });
+
+  it("handles a cyclic SDK error safely", () => {
+    const error: Record<string, unknown> = { status: 403 };
+    error.error = error;
+
+    expect(
+      getOperationErrorMessage(error, "保存に失敗しました。"),
+    ).toContain("権限がありません");
+  });
+});
+
+describe("isPermissionDeniedError", () => {
+  it.each([
+    // G2 の実測で実際に返ってきた形（docs/UX_ROADMAP.md「G2 拒否系 実測」）
+    [
+      {
+        status: 403,
+        message:
+          "Principal user is missing prvReadds_delegationhistory privilege",
+      },
+    ],
+    [{ error: { code: "0x80040220", message: "Access denied" } }],
+    [new Error("403 Forbidden")],
+  ])("recognizes a Dataverse table-permission denial", (error) => {
+    expect(isPermissionDeniedError(error)).toBe(true);
+  });
+
+  it.each([
+    [new Error("401 Unauthorized")],
+    [new Error("Failed to fetch")],
+    [new Error("500 Internal Server Error")],
+    [undefined],
+  ])("does not treat a non-permission failure as denial", (error) => {
+    expect(isPermissionDeniedError(error)).toBe(false);
   });
 
   it("handles a cyclic SDK error safely", () => {

@@ -26,6 +26,17 @@ function getErrorText(
     .join(" ");
 }
 
+/**
+ * Dataverse のテーブル権限不足。`0x80040220` と `prvReadds_xxx` の形は
+ * G2 の実測で実際に返ってきた形（`docs/UX_ROADMAP.md` の「G2 拒否系 実測」）。
+ */
+const PERMISSION_DENIED_PATTERN =
+  /\b403\b|forbidden|access denied|privilege|\bprv[a-z_]+\b|0x80040220|permission|権限/;
+
+export function isPermissionDeniedError(error: unknown): boolean {
+  return PERMISSION_DENIED_PATTERN.test(getErrorText(error).toLowerCase());
+}
+
 export function getOperationErrorMessage(
   error: unknown,
   fallback: string,
@@ -35,7 +46,7 @@ export function getOperationErrorMessage(
   if (/\b401\b|unauthenticated|unauthorized|認証/.test(text)) {
     return `${fallback} サインイン状態を確認して、もう一度お試しください。`;
   }
-  if (/\b403\b|forbidden|access denied|privilege|permission|権限/.test(text)) {
+  if (PERMISSION_DENIED_PATTERN.test(text)) {
     return `${fallback} この操作を行う権限がありません。`;
   }
   if (/\b404\b|not found|does not exist|見つかりません/.test(text)) {

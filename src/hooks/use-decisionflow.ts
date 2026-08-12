@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { filterRowsForCurrentUser } from "@/lib/decisionflow-utils";
+import { filterRowsForCurrentUser, normalizeGuid } from "@/lib/decisionflow-utils";
 import { DataverseService } from "@/services/dataverse-service";
 import {
   type Application,
@@ -159,6 +159,34 @@ export function useDecisions(applicationId?: string) {
           (item) => item._ds_applicationid_value === applicationId,
         )
       : decisions,
+  };
+}
+
+/**
+ * 担当変更履歴。**権限が無いこと（`denied`）と取得失敗（`failed`）を潰さない。**
+ * `ds_Applicant` は NO_ACCESS なので `denied` が正常な状態で、そこに警告は出さない。
+ */
+export function useDelegationHistories(applicationId?: string) {
+  const query = useDecisionFlowData();
+  const fetched = query.data?.delegationHistories;
+
+  if (!fetched || fetched.status !== "ok") {
+    return { ...query, data: fetched ?? { status: "denied" as const } };
+  }
+
+  // 監査証跡なので、GUID の大小差で黙って落とさないよう正規化して突き合わせる。
+  const targetId = normalizeGuid(applicationId);
+
+  return {
+    ...query,
+    data: {
+      status: "ok" as const,
+      histories: targetId
+        ? fetched.histories.filter(
+            (item) => normalizeGuid(item._ds_applicationid_value) === targetId,
+          )
+        : fetched.histories,
+    },
   };
 }
 

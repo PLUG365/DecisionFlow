@@ -37,6 +37,7 @@ import {
   useCreateMessage,
   useCurrentSystemUser,
   useDeciders,
+  useDelegationHistories,
   useDeleteParticipant,
   useDecisionOptions,
   useDecisions,
@@ -87,6 +88,7 @@ const timelineDotClassName: Record<TimelineEventType, string> = {
   resource: "bg-teal-500",
   message: "bg-slate-300",
   decision: "bg-emerald-500",
+  delegation: "bg-indigo-500",
 };
 
 export default function ApplicationDetailPage() {
@@ -104,6 +106,7 @@ export default function ApplicationDetailPage() {
   const { data: resources = [] } = useResources(id);
   const { data: participants = [] } = useParticipants(id);
   const { data: decisions = [] } = useDecisions(id);
+  const { data: delegationHistories } = useDelegationHistories(id);
   const { data: decisionOptions = [] } = useDecisionOptions();
   const { systemUserId } = useCurrentSystemUser();
   const createMessage = useCreateMessage();
@@ -223,9 +226,21 @@ export default function ApplicationDetailPage() {
             resources,
             decisions,
             decisionOptions,
+            delegationHistories:
+              delegationHistories?.status === "ok"
+                ? delegationHistories.histories
+                : [],
           })
         : [],
-    [application, messages, participants, resources, decisions, decisionOptions],
+    [
+      application,
+      messages,
+      participants,
+      resources,
+      decisions,
+      decisionOptions,
+      delegationHistories,
+    ],
   );
   const timelineSummary = useMemo(
     () =>
@@ -673,6 +688,17 @@ export default function ApplicationDetailPage() {
                             </Badge>
                           )}
                         </div>
+                        {event.delegation && (
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {(event.delegation.previousUserId &&
+                              userMap.get(event.delegation.previousUserId)) ||
+                              "未割当"}
+                            {" → "}
+                            {(event.delegation.newUserId &&
+                              userMap.get(event.delegation.newUserId)) ||
+                              "未割当"}
+                          </p>
+                        )}
                         {event.detail && (
                           <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
                             {event.detail}
@@ -682,6 +708,11 @@ export default function ApplicationDetailPage() {
                     </li>
                   ))}
                 </ol>
+              )}
+              {delegationHistories?.status === "failed" && (
+                <p className="mt-3 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                  担当変更の履歴を読み込めませんでした。表示されていない出来事がある可能性があります。
+                </p>
               )}
             </CardContent>
           </Card>
