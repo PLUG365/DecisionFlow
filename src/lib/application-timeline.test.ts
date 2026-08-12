@@ -91,6 +91,22 @@ describe("buildApplicationTimeline", () => {
     ]);
   });
 
+  it("falls back to a plain label for a role the app does not model", () => {
+    // 実データに `CoDecider`(100000002) の行がある。`ParticipantRole` には無い値なので
+    // ラベル解決に失敗するが、出来事そのものは経緯から落とさない。
+    const events = build({
+      participants: [
+        {
+          ds_participantid: "par-1",
+          ds_addedat: "2026-05-01T13:07:47Z",
+          ds_role: 100000002 as never,
+        },
+      ],
+    });
+
+    expect(events.map((event) => event.title)).toEqual(["関係者を追加"]);
+  });
+
   it("drops rows whose timestamp is missing or unparseable", () => {
     const events = build({
       application: {
