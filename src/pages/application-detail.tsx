@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -92,8 +92,16 @@ import {
   buildDeciderQueueColumns,
   getQueueNavigation,
   parseQueueContext,
-  toQueueContextParams,
 } from "@/lib/queue-sequence";
+import {
+  buildApplicationDetailParams,
+  buildQueueSiblingPath,
+  getQueueShortcutDirection,
+  isEditableElement,
+  OPEN_DIALOG_SELECTOR,
+  parseApplicationDetailTab,
+  toApplicationDetailTab,
+} from "@/lib/application-detail-url";
 import { buildLatestDecisionOptionNameLookup } from "@/lib/decisionflow-utils";
 import { useDecisionDraft } from "@/hooks/use-decision-draft";
 import { getOperationErrorMessage } from "@/lib/operation-error";
@@ -183,16 +191,7 @@ export default function ApplicationDetailPage() {
     useState<Participant | null>(null);
   const [isDelegationFormOpen, setIsDelegationFormOpen] = useState(false);
   const [requestedDeciderId, setRequestedDeciderId] = useState("");
-  const tabValue = [
-    "summary",
-    "timeline",
-    "thread",
-    "resources",
-    "people",
-    "decision",
-  ].includes(searchParams.get("tab") ?? "")
-    ? (searchParams.get("tab") ?? "summary")
-    : "summary";
+  const tabValue = parseApplicationDetailTab(searchParams);
 
   const categoryMap = useMemo(
     () => new Map(categories.map((item) => [item.ds_categoryid, item])),
@@ -332,13 +331,53 @@ export default function ApplicationDetailPage() {
     id,
   ]);
 
-  const goToQueueSibling = (applicationId: string) => {
-    if (!queueContext) return;
-    navigate(
-      `/applications/${applicationId}?` +
-        new URLSearchParams(toQueueContextParams(queueContext)).toString(),
-    );
-  };
+  const goToQueueSibling = useCallback(
+    (applicationId: string) => {
+      if (!queueContext) return;
+      // 今見ているタブを保つ。保たないと申請ごとに判断タブを押し直すことになる。
+      navigate(
+        buildQueueSiblingPath({ applicationId, tab: tabValue, queueContext }),
+      );
+    },
+    [navigate, queueContext, tabValue],
+  );
+
+  /**
+   * `[` / `]` で前後の申請へ送る。まとめて読み切るときにマウスへ戻らないため。
+   * 発火してよいかの判定は `getQueueShortcutDirection` が持つ（入力中・IME 変換中・
+   * 修飾キー付きは全部見送る）。
+   */
+  useEffect(() => {
+    if (!queueNavigation?.position) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const direction = getQueueShortcutDirection({
+        key: event.key,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        isComposing: event.isComposing,
+        isEditableTarget: isEditableElement(event.target),
+        isDialogOpen: Boolean(
+          document.querySelector(OPEN_DIALOG_SELECTOR),
+        ),
+      });
+      if (!direction) return;
+
+      const targetId =
+        direction === "previous"
+          ? queueNavigation.previousId
+          : queueNavigation.nextId;
+      if (!targetId) return;
+
+      event.preventDefault();
+      goToQueueSibling(targetId);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [queueNavigation, goToQueueSibling]);
 
   const timelineSummary = useMemo(
     () =>
@@ -628,6 +667,7 @@ export default function ApplicationDetailPage() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  title="前の申請へ（[ キー）"
                   disabled={!queueNavigation.previousId}
                   onClick={() =>
                     queueNavigation.previousId &&
@@ -640,6 +680,7 @@ export default function ApplicationDetailPage() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  title="次の申請へ（] キー）"
                   disabled={!queueNavigation.nextId}
                   onClick={() =>
                     queueNavigation.nextId &&
@@ -649,6 +690,9 @@ export default function ApplicationDetailPage() {
                   次の申請
                   <ChevronRight className="ml-1 h-4 w-4" />
                 </Button>
+                <span className="ml-1 hidden text-xs text-muted-foreground lg:inline">
+                  [ ] キーでも移動できます
+                </span>
               </>
             )}
           </div>
@@ -809,7 +853,12 @@ export default function ApplicationDetailPage() {
       <Tabs
         value={tabValue}
         onValueChange={(value) =>
-          setSearchParams(value === "summary" ? {} : { tab: value })
+          setSearchParams(
+            buildApplicationDetailParams({
+              tab: toApplicationDetailTab(value),
+              queueContext,
+            }),
+          )
         }
         className="min-w-0"
       >
@@ -1040,7 +1089,14 @@ export default function ApplicationDetailPage() {
                           type="button"
                           variant="link"
                           className="h-auto p-0 pl-1 text-xs"
-                          onClick={() => setSearchParams({ tab: "people" })}
+                          onClick={() =>
+                            setSearchParams(
+                              buildApplicationDetailParams({
+                                tab: "people",
+                                queueContext,
+                              }),
+                            )
+                          }
                         >
                           関係者タブで追加する
                         </Button>
