@@ -119,6 +119,102 @@ class SecurityRoleDefinitionsTest(unittest.TestCase):
         self.assertIn("Power Platform admin center", joined)
 
 
+def _fake_tables() -> list[dict[str, str]]:
+    return [
+        {"logical_name": name, "schema_name": name}
+        for name in roles.TABLE_LOGICAL_NAMES
+    ]
+
+
+def _fake_privilege_map() -> dict[str, dict[str, str]]:
+    """`prv<Verb><Table>` の privilegeid が引けた状態を模す。"""
+    return {
+        table["logical_name"]: {
+            verb: f"prv{verb}{table['logical_name']}" for verb in roles.TABLE_VERBS
+        }
+        for table in _fake_tables()
+    }
+
+
+class RolePrivilegeCompositionTest(unittest.TestCase):
+    """
+    ロールは DecisionFlow の11テーブル分だけを持ち、環境の `Basic User` を取り込まない。
+
+    取り込むと移送元のベースラインを他テナントへ持ち込むことになり、深度の可否が
+    環境で違う権限（`prvDeleteUserSettings` など）でソリューション import が落ちる。
+    詳細は docs/UX_ROADMAP.md「ALM の実測ブロッカー」。
+    """
+
+    def _built(self, role_name: str) -> dict[str, str]:
+        role_def = roles.role_by_name(role_name)
+        built = roles.build_role_privileges(
+            role_def, _fake_tables(), _fake_privilege_map()
+        )
+        return {item["PrivilegeId"]: item["Depth"] for item in built}
+
+    def test_roles_carry_no_privileges_outside_the_decisionflow_tables(self):
+        allowed = {
+            f"prv{verb}{name}"
+            for name in roles.TABLE_LOGICAL_NAMES
+            for verb in roles.TABLE_VERBS
+        }
+        for role_name in ["ds_Applicant", "ds_Decider", "ds_Admin"]:
+            with self.subTest(role=role_name):
+                self.assertTrue(
+                    set(self._built(role_name)).issubset(allowed),
+                    "DecisionFlow のテーブル以外の権限が混ざっている",
+                )
+
+    def test_built_privileges_match_the_declared_depths_exactly(self):
+        """変更前後で 11テーブル×verb の深度が一致することの担保。"""
+        for role_name in ["ds_Applicant", "ds_Decider", "ds_Admin"]:
+            role_def = roles.role_by_name(role_name)
+            built = self._built(role_name)
+            for name in roles.TABLE_LOGICAL_NAMES:
+                declared = roles.privileges_for_table(role_def, name)
+                for verb in roles.TABLE_VERBS:
+                    privilege_id = f"prv{verb}{name}"
+                    with self.subTest(role=role_name, table=name, verb=verb):
+                        if declared[verb] is None:
+                            self.assertNotIn(privilege_id, built)
+                        else:
+                            self.assertEqual(built[privilege_id], declared[verb])
+
+    def test_applicant_gets_no_delegation_privileges_at_all(self):
+        built = self._built("ds_Applicant")
+        for name in ["ds_delegationrequest", "ds_delegationhistory"]:
+            for verb in roles.TABLE_VERBS:
+                with self.subTest(table=name, verb=verb):
+                    self.assertNotIn(f"prv{verb}{name}", built)
+
+    def test_a_table_whose_privilege_id_is_missing_is_skipped(self):
+        privilege_map = _fake_privilege_map()
+        privilege_map["ds_application"] = {}
+
+        built = roles.build_role_privileges(
+            roles.role_by_name("ds_Admin"), _fake_tables(), privilege_map
+        )
+        privilege_ids = {item["PrivilegeId"] for item in built}
+
+        self.assertNotIn("prvReadds_application", privilege_ids)
+        self.assertIn("prvReadds_message", privilege_ids)
+
+    def test_privilege_count_stays_small_enough_for_one_batch(self):
+        """
+        `set_role_privileges` は先頭だけ ReplacePrivilegesRole で以降は Add。
+        1バッチに収まる限り、途中失敗で「一部だけ入ったロール」は生じない。
+        """
+        for role_name in ["ds_Applicant", "ds_Decider", "ds_Admin"]:
+            with self.subTest(role=role_name):
+                self.assertLessEqual(len(self._built(role_name)), roles.PRIVILEGE_BATCH_SIZE)
+
+    def test_the_basic_user_baseline_is_no_longer_read(self):
+        self.assertFalse(
+            hasattr(roles, "get_basic_user_privileges"),
+            "ベースライン取り込みが残っている",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
 

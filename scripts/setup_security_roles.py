@@ -23,6 +23,10 @@ if not SOLUTION_NAME or not PREFIX:
 TABLE_VERBS = ["Create", "Read", "Write", "Delete", "Append", "AppendTo", "Assign", "Share"]
 DEPTH_BY_VALUE = {0: "Basic", 1: "Local", 2: "Deep", 3: "Global"}
 
+# ReplacePrivilegesRole / AddPrivilegesRole の1回あたりの上限。
+# 11テーブル×8動詞=88 が上限なので、実際には常に1バッチで収まる。
+PRIVILEGE_BATCH_SIZE = 100
+
 TABLE_LOGICAL_NAMES = [
     f"{PREFIX}_category",
     f"{PREFIX}_decisionoption",
@@ -236,32 +240,6 @@ def get_table_privileges(tables: list[dict[str, Any]]) -> dict[str, dict[str, st
     return privilege_map
 
 
-def get_basic_user_privileges(root_bu_id: str) -> list[dict[str, str]]:
-    print("\n=== Step 4: Basic User privileges ===")
-    for role_name in ["Basic User", "Common Data Service User"]:
-        roles = api_get(
-            f"roles?$filter=name eq '{role_name}' and _businessunitid_value eq {root_bu_id}"
-            "&$select=roleid,name"
-        )
-        if roles.get("value"):
-            role = roles["value"][0]
-            print(f"  Base role: {role['name']}")
-            result = api_get(f"RetrieveRolePrivilegesRole(RoleId={role['roleid']})")
-            base_privileges = []
-            for privilege in result.get("RolePrivileges", []):
-                privilege_id = privilege.get("PrivilegeId") or privilege.get("privilegeid") or privilege.get("privilegeId")
-                if privilege_id:
-                    base_privileges.append(
-                        {
-                            "PrivilegeId": privilege_id,
-                            "Depth": normalize_depth(privilege.get("Depth", "Local")),
-                        }
-                    )
-            print(f"  Base privilege count: {len(base_privileges)}")
-            return base_privileges
-    raise RuntimeError("Basic User role was not found in the root business unit")
-
-
 def ensure_role(role_def: dict[str, Any], root_bu_id: str) -> str:
     role_name = role_def["name"]
     escaped = role_name.replace("'", "''")
@@ -298,16 +276,20 @@ def build_role_privileges(
     role_def: dict[str, Any],
     tables: list[dict[str, Any]],
     privilege_map: dict[str, dict[str, str]],
-    base_privileges: list[dict[str, str]],
 ) -> list[dict[str, str]]:
-    privileges = {
-        privilege["PrivilegeId"]: {
-            "PrivilegeId": privilege["PrivilegeId"],
-            "Depth": normalize_depth(privilege.get("Depth", "Local")),
-        }
-        for privilege in base_privileges
-        if privilege.get("PrivilegeId")
-    }
+    """
+    ロールは **DecisionFlow の11テーブル分だけ**を持つ。基盤権限は取り込まない。
+
+    以前はこの環境の `Basic User` を丸ごとコピーして土台にしていた。そのせいでロールが
+    1634件に膨れ、**移送元のベースラインを他テナントへ持ち込む**状態になっていた。
+    深度の可否は環境で違うことがあり（`prvDeleteUserSettings` は MinoruEnv では Basic 可、
+    MinoDev2 では不可）、2026-08-12 のソリューション import が実際にこれで失敗した。
+
+    利用者は `Basic User` を別途保有して基盤権限を得る（Dataverse のロールは加算式）。
+    **このロールだけを割り当てても、アプリは動かない。** 詳細は
+    `docs/UX_ROADMAP.md`「ALM の実測ブロッカー」と、その下の境界表。
+    """
+    privileges: dict[str, dict[str, str]] = {}
 
     for table in tables:
         logical_name = table["logical_name"]
@@ -326,8 +308,14 @@ def build_role_privileges(
 
 
 def set_role_privileges(role_id: str, role_def: dict[str, Any], privileges: list[dict[str, str]]) -> None:
+    """
+    先頭バッチだけ `ReplacePrivilegesRole`、以降は `AddPrivilegesRole`。
+    **1バッチに収まる限り、途中失敗で「一部だけ入ったロール」は生じない。**
+    ベースラインを取り込まなくなったので11テーブル分だけになり、収まる前提。
+    収まらなくなったらテストが落ちる（`tests/test_security_roles.py`）。
+    """
     print(f"\n  Setting privileges: {role_def['name']} ({len(privileges)} total)")
-    batch_size = 100
+    batch_size = PRIVILEGE_BATCH_SIZE
     for index in range(0, len(privileges), batch_size):
         batch = privileges[index : index + batch_size]
         action = "ReplacePrivilegesRole" if index == 0 else "AddPrivilegesRole"
@@ -406,13 +394,13 @@ def main() -> int:
     root_bu_id = get_root_business_unit()
     tables = get_table_metadata()
     privilege_map = get_table_privileges(tables)
-    base_privileges = get_basic_user_privileges(root_bu_id)
 
-    print("\n=== Step 5: Roles and privileges ===")
+    print("\n=== Step 4: Roles and privileges ===")
+    print("  基盤権限は取り込まない。利用者は Basic User を別途保有すること。")
     role_ids: list[tuple[str, str]] = []
     for role_def in ROLE_DEFINITIONS:
         role_id = ensure_role(role_def, root_bu_id)
-        role_privileges = build_role_privileges(role_def, tables, privilege_map, base_privileges)
+        role_privileges = build_role_privileges(role_def, tables, privilege_map)
         set_role_privileges(role_id, role_def, role_privileges)
         role_ids.append((role_id, role_def["name"]))
 
