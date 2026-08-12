@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ExternalLink,
   MessageSquarePlus,
+  Printer,
   Sparkles,
   Trash2,
   UserRoundCog,
@@ -79,6 +80,11 @@ import {
   type TimelineEvent,
   type TimelineEventType,
 } from "@/lib/application-timeline";
+import {
+  buildDecisionRecord,
+  formatDecisionRecordPrintedAt,
+  isDecisionRecordFinal,
+} from "@/lib/decision-record";
 import { useDecisionDraft } from "@/hooks/use-decision-draft";
 import { getOperationErrorMessage } from "@/lib/operation-error";
 import { toast } from "sonner";
@@ -335,6 +341,11 @@ export default function ApplicationDetailPage() {
   const selectedCategory = application._ds_categoryid_value
     ? categoryMap.get(application._ds_categoryid_value)
     : undefined;
+  const decisionRecord = buildDecisionRecord({
+    application,
+    decisions,
+    decisionOptions,
+  });
   const canDecide = canDecideApplication({
     application,
     currentSystemUserId: systemUserId,
@@ -571,16 +582,141 @@ export default function ApplicationDetailPage() {
             )}
           </div>
         </div>
-        {canReassign && (
-          <Button
-            variant="outline"
-            onClick={() => setIsDelegationFormOpen(true)}
-          >
-            <UserRoundCog className="mr-2 h-4 w-4" />
-            担当を変更
+        <div className="flex shrink-0 gap-2 print:hidden">
+          <Button variant="outline" onClick={() => window.print()}>
+            <Printer className="mr-2 h-4 w-4" />
+            判断記録を印刷
           </Button>
-        )}
+          {canReassign && (
+            <Button
+              variant="outline"
+              onClick={() => setIsDelegationFormOpen(true)}
+            >
+              <UserRoundCog className="mr-2 h-4 w-4" />
+              担当を変更
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/*
+        画面には出さず、印刷のときだけ出す1枚。タブは Radix が非アクティブ側を
+        DOM から外すので、`@media print` だけでは全タブを刷れない。
+        印刷対象をここに独立して組み立てる。
+      */}
+      <section className="hidden print:block" aria-hidden="true">
+        <header className="mb-4 border-b pb-2">
+          <h1 className="text-lg font-bold">判断記録</h1>
+          <p className="text-xs">
+            {formatDecisionRecordPrintedAt(new Date())} 時点の内容を印刷
+            {!isDecisionRecordFinal(decisionRecord) &&
+              "（判断は未確定。最新の状態です）"}
+          </p>
+        </header>
+
+        <h2 className="text-base font-semibold">{decisionRecord.title}</h2>
+        <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+          <div>
+            <dt className="inline font-medium">ステージ: </dt>
+            <dd className="inline">{decisionRecord.stageLabel}</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium">カテゴリ: </dt>
+            <dd className="inline">{selectedCategory?.ds_name ?? "未設定"}</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium">判断者: </dt>
+            <dd className="inline">{deciderName || "未割当"}</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium">希望期限: </dt>
+            <dd className="inline">
+              {decisionRecord.dueDate
+                ? new Date(decisionRecord.dueDate).toLocaleDateString("ja-JP")
+                : "未設定"}
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-medium">提出日時: </dt>
+            <dd className="inline">
+              {decisionRecord.submittedAt
+                ? new Date(decisionRecord.submittedAt).toLocaleString("ja-JP")
+                : "未提出"}
+            </dd>
+          </div>
+        </dl>
+
+        <h3 className="mt-4 text-sm font-semibold">申請内容</h3>
+        <p className="whitespace-pre-wrap text-xs leading-5">
+          {decisionRecord.body ?? "（本文なし）"}
+        </p>
+
+        <h3 className="mt-4 text-sm font-semibold">判断</h3>
+        {decisionRecord.decision ? (
+          <div className="text-xs leading-5">
+            <p>
+              <span className="font-medium">判断結果: </span>
+              {decisionRecord.decision.optionName ?? "（選択肢が特定できません）"}
+              {decisionRecord.decision.decidedAt &&
+                ` / ${new Date(
+                  decisionRecord.decision.decidedAt,
+                ).toLocaleString("ja-JP")}`}
+            </p>
+            <p className="whitespace-pre-wrap">
+              {decisionRecord.decision.rationale ?? "（理由の記録なし）"}
+            </p>
+            {decisionRecord.decision.aiSuggestionAtDecision && (
+              <p className="mt-1">
+                <span className="font-medium">判断時点のAI推奨: </span>
+                {decisionRecord.decision.aiSuggestionAtDecision}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs">判断はまだ確定していません。</p>
+        )}
+
+        <h3 className="mt-4 text-sm font-semibold">経緯</h3>
+        {timelineEvents.length === 0 ? (
+          <p className="text-xs">日時が記録された出来事はありません。</p>
+        ) : (
+          <ol className="text-xs leading-5">
+            {timelineEvents.map((event) => (
+              <li key={`print-${event.id}`} className="mb-1">
+                <span className="font-medium">{event.title}</span>
+                {" / "}
+                {new Date(event.at).toLocaleString("ja-JP")}
+                {event.actorUserId && userMap.get(event.actorUserId)
+                  ? ` / ${userMap.get(event.actorUserId)}`
+                  : ""}
+                {event.delegation &&
+                  (() => {
+                    const previous =
+                      event.delegation.previousUserId &&
+                      userMap.get(event.delegation.previousUserId);
+                    const next =
+                      event.delegation.newUserId &&
+                      userMap.get(event.delegation.newUserId);
+                    if (!previous && !next) return null;
+                    return (
+                      <span>
+                        {" / "}
+                        {previous && next
+                          ? `${previous} → ${next}`
+                          : `変更先: ${next || previous}`}
+                      </span>
+                    );
+                  })()}
+                {event.detail && (
+                  <span className="block whitespace-pre-wrap pl-4">
+                    {event.detail}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       <Tabs
         value={tabValue}

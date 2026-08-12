@@ -229,3 +229,37 @@
     scroll-margin-top: 6rem; /* ヘッダー高さ (64px) + 余白 (32px) = 96px = 6rem */
   }
 }
+
+/*
+  判断記録の印刷。アプリは Power Apps の iframe の中で動くので、ページ全体の
+  Ctrl+P ではなく、アプリ内の「判断記録を印刷」ボタン（frame 内の window.print()）を
+  正規の入口とする。
+
+  タブは Radix が非アクティブ側を DOM から外すため、印刷対象は
+  application-detail の `print:block` セクションに独立して組み立ててある。
+  ここでは画面用の枠（サイドバー、ヘッダー、タブ、パネル）を落とすだけにする。
+*/
+@media print {
+  /* 画面の枠を落とす。印刷用セクションは配下に無いので巻き添えにならない */
+  aside,
+  header,
+  [data-slot="tabs"],
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+
+  /* 余白・影・背景を落として紙に寄せる */
+  * {
+    box-shadow: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* 経緯の各行が改ページで割れないようにする */
+  li {
+    break-inside: avoid;
+  }
+}
