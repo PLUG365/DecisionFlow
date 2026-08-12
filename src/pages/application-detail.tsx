@@ -70,8 +70,24 @@ import {
   formatAiDecisionUpdatedAt,
   parseAiDecisionBasis,
 } from "@/lib/ai-decision";
+import {
+  buildApplicationTimeline,
+  summarizeApplicationTimeline,
+  TIMELINE_STALLED_THRESHOLD_DAYS,
+  type TimelineEventType,
+} from "@/lib/application-timeline";
 import { getOperationErrorMessage } from "@/lib/operation-error";
 import { toast } from "sonner";
+
+const timelineDotClassName: Record<TimelineEventType, string> = {
+  created: "bg-slate-400",
+  submitted: "bg-sky-500",
+  "ai-decision": "bg-violet-500",
+  participant: "bg-amber-500",
+  resource: "bg-teal-500",
+  message: "bg-slate-300",
+  decision: "bg-emerald-500",
+};
 
 export default function ApplicationDetailPage() {
   const { id } = useParams();
@@ -109,6 +125,7 @@ export default function ApplicationDetailPage() {
   const [requestedDeciderId, setRequestedDeciderId] = useState("");
   const tabValue = [
     "summary",
+    "timeline",
     "thread",
     "resources",
     "people",
@@ -194,6 +211,30 @@ export default function ApplicationDetailPage() {
         ]),
       ),
     [decisionOptions],
+  );
+
+  const timelineEvents = useMemo(
+    () =>
+      application
+        ? buildApplicationTimeline({
+            application,
+            messages,
+            participants,
+            resources,
+            decisions,
+            decisionOptions,
+          })
+        : [],
+    [application, messages, participants, resources, decisions, decisionOptions],
+  );
+  const timelineSummary = useMemo(
+    () =>
+      summarizeApplicationTimeline({
+        events: timelineEvents,
+        stage: application?.ds_stage,
+        now: new Date(),
+      }),
+    [timelineEvents, application?.ds_stage],
   );
 
   if (isApplicationLoading) {
@@ -492,8 +533,9 @@ export default function ApplicationDetailPage() {
         }
         className="min-w-0"
       >
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="summary">概要</TabsTrigger>
+          <TabsTrigger value="timeline">経緯</TabsTrigger>
           <TabsTrigger value="thread">会話</TabsTrigger>
           <TabsTrigger value="resources">資料</TabsTrigger>
           <TabsTrigger value="people">関係者</TabsTrigger>
@@ -572,6 +614,75 @@ export default function ApplicationDetailPage() {
                   </p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="timeline" className="space-y-4">
+          {timelineSummary.isStalled && (
+            <Card className="border-amber-500/60">
+              <CardHeader>
+                <CardTitle className="text-base">
+                  この申請は停滞しています
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                <p>
+                  最後の動きから {timelineSummary.daysSinceLastEvent} 日が
+                  経過しています（停滞とみなす目安は{" "}
+                  {TIMELINE_STALLED_THRESHOLD_DAYS} 日）。
+                </p>
+                <p className="text-muted-foreground">
+                  会話タブで確認事項を投げるか、判断タブで判断を確定してください。
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">経緯</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {timelineEvents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  日時が記録された出来事がまだありません。
+                </p>
+              ) : (
+                <ol className="space-y-0">
+                  {timelineEvents.map((event, index) => (
+                    <li key={event.id} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <span
+                          className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${timelineDotClassName[event.type]}`}
+                        />
+                        {index < timelineEvents.length - 1 && (
+                          <span className="w-px flex-1 bg-border" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 pb-4">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="text-sm font-medium">
+                            {event.title}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(event.at).toLocaleString("ja-JP")}
+                          </span>
+                          {event.actorUserId && userMap.get(event.actorUserId) && (
+                            <Badge variant="outline" className="text-[10px]">
+                              {userMap.get(event.actorUserId)}
+                            </Badge>
+                          )}
+                        </div>
+                        {event.detail && (
+                          <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+                            {event.detail}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
