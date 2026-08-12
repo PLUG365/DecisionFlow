@@ -76,6 +76,7 @@ import {
   buildApplicationTimeline,
   summarizeApplicationTimeline,
   TIMELINE_STALLED_THRESHOLD_DAYS,
+  type TimelineEvent,
   type TimelineEventType,
 } from "@/lib/application-timeline";
 import { getOperationErrorMessage } from "@/lib/operation-error";
@@ -91,6 +92,32 @@ const timelineDotClassName: Record<TimelineEventType, string> = {
   decision: "bg-emerald-500",
   delegation: "bg-indigo-500",
 };
+
+/**
+ * 担当変更の「変更前 → 変更先」。
+ *
+ * **拒否された履歴には `ds_previousdeciderid` が入らない**（`scripts/deploy_delegation_flow.py` の
+ * `include_previous_decider=False`）。フローが記録しなかっただけなのに「未割当 →」と書くと、
+ * 変更前の担当がいなかったように読める。条件3が空の担当を弾く以上、**変更前の欠落は
+ * 「未記録」であって「未割当」ではない**ので、分からないものは書かない。
+ */
+function renderDelegationChange(
+  delegation: NonNullable<TimelineEvent["delegation"]>,
+  userMap: Map<string, string>,
+) {
+  const previousName =
+    delegation.previousUserId && userMap.get(delegation.previousUserId);
+  const newName = delegation.newUserId && userMap.get(delegation.newUserId);
+  if (!newName && !previousName) return null;
+
+  return (
+    <p className="mt-1 text-sm text-muted-foreground">
+      {previousName && newName
+        ? `${previousName} → ${newName}`
+        : `変更先: ${newName || previousName}`}
+    </p>
+  );
+}
 
 export default function ApplicationDetailPage() {
   const { id } = useParams();
@@ -700,17 +727,8 @@ export default function ApplicationDetailPage() {
                             </Badge>
                           )}
                         </div>
-                        {event.delegation && (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {(event.delegation.previousUserId &&
-                              userMap.get(event.delegation.previousUserId)) ||
-                              "未割当"}
-                            {" → "}
-                            {(event.delegation.newUserId &&
-                              userMap.get(event.delegation.newUserId)) ||
-                              "未割当"}
-                          </p>
-                        )}
+                        {event.delegation &&
+                          renderDelegationChange(event.delegation, userMap)}
                         {event.detail && (
                           <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
                             {event.detail}
