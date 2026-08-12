@@ -79,6 +79,7 @@ import {
   type TimelineEvent,
   type TimelineEventType,
 } from "@/lib/application-timeline";
+import { useDecisionDraft } from "@/hooks/use-decision-draft";
 import { getOperationErrorMessage } from "@/lib/operation-error";
 import { toast } from "sonner";
 
@@ -158,7 +159,8 @@ export default function ApplicationDetailPage() {
   const [messageBody, setMessageBody] = useState("");
   const [mentionTargetUserId, setMentionTargetUserId] = useState("");
   const [decisionOptionId, setDecisionOptionId] = useState("");
-  const [rationale, setRationale] = useState("");
+  const decisionDraft = useDecisionDraft({ systemUserId, applicationId: id });
+  const rationale = decisionDraft.text;
   const [isParticipantFormOpen, setIsParticipantFormOpen] = useState(false);
   const [participantUserId, setParticipantUserId] = useState("");
   const [participantToDelete, setParticipantToDelete] =
@@ -435,7 +437,7 @@ export default function ApplicationDetailPage() {
       {
         onSuccess: () => {
           toast.success("判断を確定しました");
-          setRationale("");
+          decisionDraft.clear();
           setDecisionOptionId("");
         },
         onError: (error) =>
@@ -981,9 +983,30 @@ export default function ApplicationDetailPage() {
                     </Select>
                     <Textarea
                       value={rationale}
-                      onChange={(event) => setRationale(event.target.value)}
+                      onChange={(event) =>
+                        decisionDraft.update(event.target.value)
+                      }
                       placeholder="判断理由"
                     />
+                    {decisionDraft.savedAt && (
+                      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span>
+                          下書きを保存しました（
+                          {new Date(decisionDraft.savedAt).toLocaleString(
+                            "ja-JP",
+                          )}
+                          ）。この端末にのみ残ります。
+                        </span>
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="h-auto shrink-0 p-0 text-xs"
+                          onClick={decisionDraft.clear}
+                        >
+                          下書きを破棄
+                        </Button>
+                      </div>
+                    )}
                     <Button
                       className="w-full"
                       onClick={handleDecision}
