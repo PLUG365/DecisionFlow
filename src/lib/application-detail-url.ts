@@ -85,10 +85,15 @@ export type QueueShortcutDirection = "previous" | "next";
  * 書きかけが視界から消える（C4 の下書き保存はローカルにあるが、消えたように見える）。
  * IME 変換中（`isComposing`）も同様に外す。日本語入力では確定前のキーが届く。
  *
- * **モーダルが開いている間も発火させない。** 申請詳細はルートが同じまま `id` だけ
- * 変わるため、コンポーネントが再マウントされず**モーダルの開閉状態と入力値が
- * 次の申請へ持ち越される**。ボタンはオーバーレイに隠れて押せないが、キーボードは
- * そこを素通りしてしまう。
+ * **重なりものが開いている間も発火させない。** 対象はモーダルと**選択リスト**の両方。
+ *
+ * - モーダル: 申請詳細はルートが同じまま `id` だけ変わるため、コンポーネントが
+ *   再マウントされず**開閉状態と入力値が次の申請へ持ち越される**。ボタンは
+ *   オーバーレイに隠れて押せないが、キーボードはそこを素通りする
+ * - 選択リスト: Radix の `Select` を開くと**焦点は `div[role="option"]` に載る**。
+ *   入力欄ではないので編集中の判定に引っかからない。実測で
+ *   `listbox: 1 / dialog: 0 / activeRole: option` を確認しており、
+ *   **判断選択肢を選んでいる最中に次の申請へ飛ぶ**経路が実在した（2026-08-12）
  *
  * 修飾キー付きは全部見送る。ブラウザや OS の割り当てを奪わないため。
  */
@@ -100,14 +105,14 @@ export function getQueueShortcutDirection(source: {
   shiftKey?: boolean;
   isComposing?: boolean;
   isEditableTarget?: boolean;
-  isDialogOpen?: boolean;
+  isOverlayOpen?: boolean;
 }): QueueShortcutDirection | null {
   if (source.altKey || source.ctrlKey || source.metaKey || source.shiftKey) {
     return null;
   }
   if (source.isComposing) return null;
   if (source.isEditableTarget) return null;
-  if (source.isDialogOpen) return null;
+  if (source.isOverlayOpen) return null;
 
   if (source.key === "[") return "previous";
   if (source.key === "]") return "next";
@@ -115,10 +120,14 @@ export function getQueueShortcutDirection(source: {
 }
 
 /**
- * モーダルが開いているか。Radix の Dialog / AlertDialog はどちらも
- * `role` を出すので、個々のモーダルの state を数え上げずに一括で見る。
+ * 画面に重なっているものが開いているか。個々の state を数え上げずに一括で見る。
+ *
+ * **どれも閉じるとDOMから消えることを実測で確認済み**（2026-08-12・公開版）。
+ * 閉じても残る作りだと、このセレクタが一致し続けてショートカットが永久に死ぬ。
+ * `forceMount` を使うときはここを見直すこと。
  */
-export const OPEN_DIALOG_SELECTOR = '[role="dialog"],[role="alertdialog"]';
+export const OPEN_OVERLAY_SELECTOR =
+  '[role="dialog"],[role="alertdialog"],[role="listbox"]';
 
 /** 入力欄・テキストエリア・リッチテキストのどれかに焦点があるか。 */
 export function isEditableElement(element: unknown): boolean {

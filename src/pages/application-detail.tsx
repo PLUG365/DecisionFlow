@@ -98,7 +98,7 @@ import {
   buildQueueSiblingPath,
   getQueueShortcutDirection,
   isEditableElement,
-  OPEN_DIALOG_SELECTOR,
+  OPEN_OVERLAY_SELECTOR,
   parseApplicationDetailTab,
   toApplicationDetailTab,
 } from "@/lib/application-detail-url";
@@ -359,8 +359,8 @@ export default function ApplicationDetailPage() {
         shiftKey: event.shiftKey,
         isComposing: event.isComposing,
         isEditableTarget: isEditableElement(event.target),
-        isDialogOpen: Boolean(
-          document.querySelector(OPEN_DIALOG_SELECTOR),
+        isOverlayOpen: Boolean(
+          document.querySelector(OPEN_OVERLAY_SELECTOR),
         ),
       });
       if (!direction) return;

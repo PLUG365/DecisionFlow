@@ -4,6 +4,7 @@ import {
   buildQueueSiblingPath,
   getQueueShortcutDirection,
   isEditableElement,
+  OPEN_OVERLAY_SELECTOR,
   parseApplicationDetailTab,
   toApplicationDetailTab,
 } from "./application-detail-url";
@@ -125,13 +126,16 @@ describe("getQueueShortcutDirection", () => {
   /**
    * 申請詳細は `id` が変わっても再マウントされず、モーダルの開閉状態と入力値が
    * 次の申請へ持ち越される。ボタンはオーバーレイに隠れるがキーは届いてしまう。
+   *
+   * 選択リストも同じ扱い。Radix の `Select` を開くと焦点は `div[role="option"]` に
+   * 載るので、入力欄の判定では止まらない（2026-08-12 に実測で確認）。
    */
-  it("モーダルが開いている間は発火しない", () => {
+  it("モーダル・選択リストが開いている間は発火しない", () => {
     expect(
-      getQueueShortcutDirection({ key: "]", isDialogOpen: true }),
+      getQueueShortcutDirection({ key: "]", isOverlayOpen: true }),
     ).toBeNull();
     expect(
-      getQueueShortcutDirection({ key: "[", isDialogOpen: true }),
+      getQueueShortcutDirection({ key: "[", isOverlayOpen: true }),
     ).toBeNull();
   });
 
@@ -140,6 +144,18 @@ describe("getQueueShortcutDirection", () => {
     expect(getQueueShortcutDirection({ key: "]", metaKey: true })).toBeNull();
     expect(getQueueShortcutDirection({ key: "]", altKey: true })).toBeNull();
     expect(getQueueShortcutDirection({ key: "]", shiftKey: true })).toBeNull();
+  });
+});
+
+describe("OPEN_OVERLAY_SELECTOR", () => {
+  /**
+   * 焦点が `div[role="option"]` に載る Radix Select を止められるかは、
+   * このセレクタが listbox を含むかどうかで決まる。
+   */
+  it("モーダルと選択リストの両方を覆う", () => {
+    expect(OPEN_OVERLAY_SELECTOR).toContain('[role="dialog"]');
+    expect(OPEN_OVERLAY_SELECTOR).toContain('[role="alertdialog"]');
+    expect(OPEN_OVERLAY_SELECTOR).toContain('[role="listbox"]');
   });
 });
 
