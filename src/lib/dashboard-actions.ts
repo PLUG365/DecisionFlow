@@ -1,3 +1,4 @@
+import { calendarDateKey, currentCalendarDateKey } from "@/lib/calendar-date";
 import { normalizeGuid } from "@/lib/decisionflow-utils";
 import {
   ApplicationStage,
@@ -18,35 +19,6 @@ export type DashboardActionInput = {
   now: Date;
 };
 
-function calendarDateKey(value: string): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)?)?$/.exec(
-    value,
-  );
-  if (!match) return null;
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const parsed = new Date(year, month - 1, day);
-  if (
-    parsed.getFullYear() !== year ||
-    parsed.getMonth() !== month - 1 ||
-    parsed.getDate() !== day
-  ) {
-    return null;
-  }
-
-  return year * 10000 + month * 100 + day;
-}
-
-function currentCalendarDateKey(now: Date): number {
-  return (
-    now.getFullYear() * 10000 +
-    (now.getMonth() + 1) * 100 +
-    now.getDate()
-  );
-}
-
 function comparableGuid(value: string | null | undefined): string | null {
   return normalizeGuid(value)?.replace(/^\{|\}$/g, "") ?? null;
 }
@@ -63,9 +35,7 @@ export function groupDashboardActionApplications({
 
   const today = currentCalendarDateKey(now);
   applications.forEach((application) => {
-    const dueDate = application.ds_duedate
-      ? calendarDateKey(application.ds_duedate)
-      : null;
+    const dueDate = calendarDateKey(application.ds_duedate);
     if (dueDate === null || dueDate >= today) return;
 
     if (application.ds_stage === ApplicationStage.Draft) {
