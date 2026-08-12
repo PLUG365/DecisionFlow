@@ -53,6 +53,11 @@ import {
   validateApplicationInput,
 } from "@/lib/decisionflow-utils";
 import {
+  appendTemplateToBody,
+  canInsertTemplate,
+  getApplicationTemplate,
+} from "@/lib/application-template";
+import {
   ApplicationStage,
   stageMeta,
   type Application,
@@ -267,6 +272,7 @@ export default function ApplicationsPage() {
     categories,
     formCategoryId,
   );
+  const applicationTemplate = getApplicationTemplate(categories, formCategoryId);
   const aiResultDialogConfig = aiResultDialog
     ? getAiResultDialogConfig(aiResultDialog.mode)
     : null;
@@ -618,7 +624,23 @@ export default function ApplicationsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="application-body">申請本文 *</Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor="application-body">申請本文 *</Label>
+                {canInsertTemplate(formBody, applicationTemplate) && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs"
+                    onClick={() =>
+                      setFormBody(
+                        appendTemplateToBody(formBody, applicationTemplate),
+                      )
+                    }
+                  >
+                    このカテゴリのテンプレートを挿入
+                  </Button>
+                )}
+              </div>
               <Textarea
                 id="application-body"
                 value={formBody}
