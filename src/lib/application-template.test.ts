@@ -4,6 +4,8 @@ import {
   appendTemplateToBody,
   canInsertTemplate,
   getApplicationTemplate,
+  getBodyPlaceholder,
+  TEMPLATE_AVAILABLE_PLACEHOLDER,
 } from "./application-template";
 
 const categories = [
@@ -62,6 +64,21 @@ describe("appendTemplateToBody", () => {
 
   it("leaves the body untouched when there is no template", () => {
     expect(appendTemplateToBody("先に書いた内容", null)).toBe("先に書いた内容");
+  });
+});
+
+describe("getBodyPlaceholder", () => {
+  it("points at the insert action when the category has a template", () => {
+    // テンプレート本文をそのままゴースト文字にすると、挿入前と挿入後で画面の文字が
+    // 同じになり、押しても何も起きていないように見える。
+    expect(getBodyPlaceholder("既定の文言", "1. 目的")).toBe(
+      TEMPLATE_AVAILABLE_PLACEHOLDER,
+    );
+    expect(getBodyPlaceholder("既定の文言", "1. 目的")).not.toContain("1. 目的");
+  });
+
+  it("keeps the default guidance when there is no template", () => {
+    expect(getBodyPlaceholder("既定の文言", null)).toBe("既定の文言");
   });
 });
 

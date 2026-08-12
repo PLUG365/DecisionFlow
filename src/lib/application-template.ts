@@ -49,3 +49,20 @@ export function canInsertTemplate(
   if (!template) return false;
   return !currentBody.includes(template);
 }
+
+export const TEMPLATE_AVAILABLE_PLACEHOLDER =
+  "右上の「このカテゴリのテンプレートを挿入」で書式を入れられます";
+
+/**
+ * テンプレートがあるカテゴリでは、**テンプレート本文をプレースホルダに出さない**。
+ *
+ * B1 はテンプレートをそのままゴースト文字にしていた。挿入できるようになると、
+ * 挿入前と挿入後で画面の文字が同じになり、**押しても何も起きていないように見える**
+ * （2026-08-12 の実機確認で判明）。挿入という操作があることを示す文言に替える。
+ */
+export function getBodyPlaceholder(
+  defaultPlaceholder: string,
+  template: string | null,
+): string {
+  return template ? TEMPLATE_AVAILABLE_PLACEHOLDER : defaultPlaceholder;
+}

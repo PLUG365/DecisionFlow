@@ -56,6 +56,7 @@ import {
   appendTemplateToBody,
   canInsertTemplate,
   getApplicationTemplate,
+  getBodyPlaceholder,
 } from "@/lib/application-template";
 import {
   ApplicationStage,
@@ -273,6 +274,10 @@ export default function ApplicationsPage() {
     formCategoryId,
   );
   const applicationTemplate = getApplicationTemplate(categories, formCategoryId);
+  const bodyPlaceholder = getBodyPlaceholder(
+    applicationBodyPlaceholder,
+    applicationTemplate,
+  );
   const aiResultDialogConfig = aiResultDialog
     ? getAiResultDialogConfig(aiResultDialog.mode)
     : null;
@@ -646,7 +651,7 @@ export default function ApplicationsPage() {
                 value={formBody}
                 onChange={(event) => setFormBody(event.target.value)}
                 rows={7}
-                placeholder={applicationBodyPlaceholder}
+                placeholder={bodyPlaceholder}
               />
             </div>
           </FormSection>
