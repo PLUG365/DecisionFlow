@@ -39,3 +39,10 @@ export function currentCalendarDateKey(now: Date): number {
     now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate()
   );
 }
+
+/**
+ * 経過時間を「日」で数えるための長さ。**上の暦日の鍵とは別の用途**で、
+ * 「最後の活動から何日経ったか」「下書きの保持期限を過ぎたか」に使う。
+ * 暦をまたいだかどうかを見たいときは `calendarDateKey` の比較を使うこと。
+ */
+export const DAY_IN_MS = 24 * 60 * 60 * 1000;

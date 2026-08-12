@@ -1,3 +1,4 @@
+import { DAY_IN_MS } from "./calendar-date";
 import { normalizeGuid } from "./decisionflow-utils";
 
 /**
@@ -19,7 +20,7 @@ export type DecisionDraft = {
  */
 export const DECISION_DRAFT_TTL_DAYS = 30;
 
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
 
 /**
  * 利用者ごとに分ける。ブラウザのプロファイルを共有している場合に、

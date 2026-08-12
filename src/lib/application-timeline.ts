@@ -14,6 +14,7 @@ import {
   type Participant,
   type ParticipantRoleValue,
 } from "@/types/decisionflow";
+import { DAY_IN_MS } from "./calendar-date";
 import { normalizeApplicationStage, normalizeGuid } from "./decisionflow-utils";
 
 export type TimelineEventType =
@@ -58,7 +59,7 @@ const messageKindLabels: Record<MessageKindValue, string> = {
  */
 export const TIMELINE_STALLED_THRESHOLD_DAYS = 3;
 
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
 
 function parseTimestamp(value: string | null | undefined): number | null {
   const trimmed = value?.trim();
