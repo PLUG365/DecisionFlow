@@ -34,9 +34,9 @@
 - Create: `.mcp.json`
 - Test: `tests/ai-tooling.node.mjs`
 
-- [ ] Write a failing Node test requiring the `pac-cli` MCP server and forbidding environment-specific Dataverse URLs, secret-like fields, or FlowStudio.
-- [ ] Add `.mcp.json` with the PAC MCP stdio server only; use `dv-connect` for each developer's Dataverse endpoint.
-- [ ] Run `node --test tests/ai-tooling.node.mjs` and confirm it passes.
+- [x] Write a failing Node test requiring the `pac-cli` MCP server and forbidding environment-specific Dataverse URLs, secret-like fields, or FlowStudio.
+- [x] Add `.mcp.json` with the PAC MCP stdio server only; use `dv-connect` for each developer's Dataverse endpoint.
+- [x] Run `node --test tests/ai-tooling.node.mjs` and confirm it passes.
 
 ### Task 2: Add tool routing and safety guidance
 
@@ -44,9 +44,9 @@
 - Create: `docs/AI_DEVELOPMENT_TOOLING.md`
 - Modify: `.github/skills/power-automate/SKILL.md`
 
-- [ ] Document Claude Code and GitHub Copilot CLI marketplace installation commands for the official Power Automate, Dataverse, and Power CAT plugins.
-- [ ] Add mandatory FlowAgent review, validation, stopped-state creation, and explicit publish approval rules to the local Power Automate skill.
-- [ ] Document that existing DecisionFlow flows remain script-managed until a reviewed migration is deliberately approved.
+- [x] Document Claude Code and GitHub Copilot CLI marketplace installation commands for the official Power Automate, Dataverse, and Power CAT plugins.
+- [x] Add mandatory FlowAgent review, validation, stopped-state creation, and explicit publish approval rules to the local Power Automate skill.
+- [x] Document that existing DecisionFlow flows remain script-managed until a reviewed migration is deliberately approved.
 
 ### Task 3: Provide a repeatable local configuration check
 
@@ -54,24 +54,24 @@
 - Modify: `package.json`
 - Test: `tests/ai-tooling.node.mjs`
 
-- [ ] Add `test:ai-tooling` using Node's built-in test runner outside Vitest's `*.test.*` discovery pattern.
-- [ ] Verify the script succeeds independently of generated Dataverse SDK files.
+- [x] Add `test:ai-tooling` using Node's built-in test runner outside Vitest's `*.test.*` discovery pattern.
+- [x] Verify the script succeeds independently of generated Dataverse SDK files.
 
 ### Task 4: Configure developer-machine plugins
 
 **Files:**
 - No repository files required
 
-- [ ] Install the Microsoft Power Platform and Dataverse plugins for Claude Code.
-- [ ] Install GitHub Copilot CLI, then register the Microsoft Power Platform and Power CAT marketplaces and install their supported plugins.
-- [ ] Register PAC MCP in Claude Code at user scope.
-- [ ] Do not authenticate to GitHub, Azure, Power Platform, or Dataverse automatically. Report any interactive login requirement for the user to complete.
+- [x] Install the Microsoft Power Platform and Dataverse plugins for Claude Code.
+- [x] Install GitHub Copilot CLI, then register the Microsoft Power Platform and Power CAT marketplaces and install their supported plugins.
+- [x] Register PAC MCP in Claude Code at user scope.
+- [x] Do not authenticate to GitHub, Azure, Power Platform, or Dataverse automatically. Report any interactive login requirement for the user to complete.
 
 ### Task 5: Verify and report
 
 **Files:**
 - Verify: `.mcp.json`, `docs/AI_DEVELOPMENT_TOOLING.md`, `.github/skills/power-automate/SKILL.md`, `package.json`, `tests/ai-tooling.node.mjs`
 
-- [ ] Run `node --test tests/ai-tooling.node.mjs` and JSON parse validation for `.mcp.json`.
-- [ ] Confirm FlowStudio, tenant identifiers, tokens, and connection IDs are absent from the diff.
-- [ ] Run the existing test suite and report its known generated-SDK baseline failure separately from these changes.
+- [x] Run `node --test tests/ai-tooling.node.mjs` and JSON parse validation for `.mcp.json`.
+- [x] Confirm FlowStudio, tenant identifiers, tokens, and connection IDs are absent from the diff.
+- [x] Run the existing test suite and report its known generated-SDK baseline failure separately from these changes.

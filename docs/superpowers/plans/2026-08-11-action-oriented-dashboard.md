@@ -35,7 +35,7 @@
 - Consumes: `Application` and `ApplicationStage` from `@/types/decisionflow`; `normalizeGuid` from `@/lib/decisionflow-utils`.
 - Produces: `DashboardActionScope`, `DashboardActionGroups`, and `groupDashboardActionApplications(input)` for `dashboard.tsx`.
 
-- [ ] **Step 1: Write the failing classification tests**
+- [x] **Step 1: Write the failing classification tests**
 
 Create `src/lib/dashboard-actions.test.ts` with fixtures that cover date boundaries, stages, ownership, GUID formatting, and unresolved identity:
 
@@ -169,7 +169,7 @@ describe("groupDashboardActionApplications", () => {
 });
 ```
 
-- [ ] **Step 2: Run the targeted test and verify the red state**
+- [x] **Step 2: Run the targeted test and verify the red state**
 
 Run:
 
@@ -179,7 +179,7 @@ npm test -- src/lib/dashboard-actions.test.ts
 
 Expected: FAIL because `./dashboard-actions` does not exist.
 
-- [ ] **Step 3: Implement the minimal pure classifier**
+- [x] **Step 3: Implement the minimal pure classifier**
 
 Create `src/lib/dashboard-actions.ts`:
 
@@ -275,7 +275,7 @@ export function groupDashboardActionApplications({
 }
 ```
 
-- [ ] **Step 4: Run the targeted test and verify the green state**
+- [x] **Step 4: Run the targeted test and verify the green state**
 
 Run:
 
@@ -285,7 +285,7 @@ npm test -- src/lib/dashboard-actions.test.ts
 
 Expected: 1 test file and 5 tests pass, with 0 failures.
 
-- [ ] **Step 5: Run local type and lint gates for the new module**
+- [x] **Step 5: Run local type and lint gates for the new module**
 
 Run:
 
@@ -296,7 +296,7 @@ npm run lint
 
 Expected: both commands exit 0.
 
-- [ ] **Step 6: Commit the classifier and tests**
+- [x] **Step 6: Commit the classifier and tests**
 
 ```powershell
 git add src/lib/dashboard-actions.ts src/lib/dashboard-actions.test.ts
@@ -315,7 +315,7 @@ git commit -m "feat: classify dashboard action items"
 - Consumes: `DashboardActionScope` and `groupDashboardActionApplications` from Task 1; `useCurrentSystemUser()` from `src/hooks/use-decisionflow.ts`.
 - Produces: a dashboard action section with a shared `mine`/`all` scope and two `ListTable` instances.
 
-- [ ] **Step 1: Add the dashboard state and classifier imports**
+- [x] **Step 1: Add the dashboard state and classifier imports**
 
 Change the React import to include `useState`, add `useCurrentSystemUser`, and import the Task 1 API:
 
@@ -353,7 +353,7 @@ import {
 } from "@/types/decisionflow";
 ```
 
-- [ ] **Step 2: Replace the combined stalled filter with scoped action groups**
+- [x] **Step 2: Replace the combined stalled filter with scoped action groups**
 
 Inside `DashboardPage`, add the scope and current-user query next to the existing hooks:
 
@@ -389,7 +389,7 @@ const isMineIdentityUnavailable =
   (isCurrentUserError || !systemUserId);
 ```
 
-- [ ] **Step 3: Replace the two existing lower tables with the action section**
+- [x] **Step 3: Replace the two existing lower tables with the action section**
 
 Replace the bottom `xl:grid-cols-2` block with a section that owns one shared scope switch and both lists:
 
@@ -489,7 +489,7 @@ Replace the bottom `xl:grid-cols-2` block with a section that owns one shared sc
 </section>
 ```
 
-- [ ] **Step 4: Run the classifier regression test, build, and lint**
+- [x] **Step 4: Run the classifier regression test, build, and lint**
 
 Run:
 
@@ -501,7 +501,7 @@ npm run lint
 
 Expected: 5 targeted tests pass; build and lint exit 0.
 
-- [ ] **Step 5: Commit the dashboard UI**
+- [x] **Step 5: Commit the dashboard UI**
 
 ```powershell
 git add src/pages/dashboard.tsx
@@ -519,7 +519,7 @@ git commit -m "feat: add personal dashboard action scope"
 - Consumes: existing latest-decision card, decision form, and AI-decision card.
 - Produces: a responsive 40/60 decision-tab grid without changing child behavior.
 
-- [ ] **Step 1: Change only the decision grid and width-safety classes**
+- [x] **Step 1: Change only the decision grid and width-safety classes**
 
 Replace the equal two-column wrapper and its direct child classes with:
 
@@ -536,7 +536,7 @@ Add `className="min-w-0"` to the direct AI decision `Card`:
 
 Do not change card order, conditions, form state, button behavior, or AI decision rendering.
 
-- [ ] **Step 2: Run build and lint**
+- [x] **Step 2: Run build and lint**
 
 Run:
 
@@ -547,7 +547,7 @@ npm run lint
 
 Expected: both commands exit 0.
 
-- [ ] **Step 3: Commit the responsive layout**
+- [x] **Step 3: Commit the responsive layout**
 
 ```powershell
 git add src/pages/application-detail.tsx
@@ -565,7 +565,7 @@ git commit -m "style: widen decision reading area"
 - Consumes: the completed Task 1-3 implementation and the repository's documented gate commands.
 - Produces: current, evidence-backed D1/D4 status and the next-work pointer.
 
-- [ ] **Step 1: Run every mechanical gate from the roadmap**
+- [x] **Step 1: Run every mechanical gate from the roadmap**
 
 Run:
 
@@ -581,7 +581,7 @@ py -m unittest discover -s tests -p "test_*.py"
 
 Expected: every command exits 0; Vitest reports no failed test files or tests; Python ends with `OK`, not `FAILED` or an import error.
 
-- [ ] **Step 2: Start the local Power Apps development host**
+- [x] **Step 2: Start the local Power Apps development host**
 
 Run:
 
@@ -604,7 +604,7 @@ Confirm all of the following in the running app:
 7. Clicking a row opens that application's detail page.
 8. A due-today row does not appear as overdue.
 
-- [ ] **Step 4: Verify D4 at desktop and narrow widths**
+- [x] **Step 4: Verify D4 at desktop and narrow widths**
 
 Confirm all of the following in the judgment tab of an application with generated AI content:
 
@@ -614,7 +614,7 @@ Confirm all of the following in the judgment tab of an application with generate
 4. Below the `lg` breakpoint, the cards form one column and the left area no longer sticks.
 5. Decision controls and AI-refresh behavior are unchanged.
 
-- [ ] **Step 5: Update `docs/UX_ROADMAP.md` using only observed results**
+- [x] **Step 5: Update `docs/UX_ROADMAP.md` using only observed results**
 
 Make these concrete updates after Steps 1-4:
 
@@ -626,7 +626,7 @@ Make these concrete updates after Steps 1-4:
 - Move `次にやること` to Phase 3 investigation in the documented F-b → F-a → F-d order.
 - Record the actual Vitest and Python test counts from Step 1; do not copy earlier counts.
 
-- [ ] **Step 6: Check the final documentation diff**
+- [x] **Step 6: Check the final documentation diff**
 
 Run:
 
@@ -638,7 +638,7 @@ git status --short
 
 Expected: `git diff --check` exits 0; the roadmap claims only results observed in Steps 1-4; no generated Visual Companion or Playwright files are tracked.
 
-- [ ] **Step 7: Commit the verified roadmap state**
+- [x] **Step 7: Commit the verified roadmap state**
 
 ```powershell
 git add docs/UX_ROADMAP.md

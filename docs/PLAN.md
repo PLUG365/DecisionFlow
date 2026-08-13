@@ -186,7 +186,7 @@
 - [x] デモデータの個人情報・社内固有名詞を `example.com` / 架空名に置換
 - [ ] `git secrets` または GitHub の Push Protection でシークレット流出を防止
 - [ ] 過去コミットに機密情報が含まれていないか確認
-- [ ] LICENSE を明記（MIT）
+- [x] LICENSE を明記（MIT）
 
 ### 5.3 テンプレートファイル方針
 
