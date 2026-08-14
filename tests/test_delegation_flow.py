@@ -69,18 +69,44 @@ class DelegationFlowDefinitionTests(unittest.TestCase):
             rejected["Update_request_rejected"]["inputs"]["host"]["operationId"],
             "UpdateOnlyRecord",
         )
+        # 要求行 `ds_delegationrequest` 側は今回のスコープ外。据え置き。
         self.assertNotIn(
             "ds_previousdeciderid@odata.bind",
             rejected["Update_request_rejected"]["inputs"]["parameters"]["item"],
         )
-        self.assertEqual(
-            rejected["Create_rejected_history"]["inputs"]["parameters"]["item"]["ds_result"],
-            flow.HISTORY_REJECTED,
-        )
-        self.assertNotIn(
-            "ds_previousdeciderid@odata.bind",
-            rejected["Create_rejected_history"]["inputs"]["parameters"]["item"],
-        )
+
+    def test_rejected_history_keeps_previous_decider_only_when_it_is_known(self):
+        """変更前担当が空のときだけ bind を落とす。空でないなら証跡に残す。
+
+        空のまま `@concat('/systemusers(', '', ')')` を書くと bind が壊れ、
+        拒否履歴の作成ごと失敗する。だからといって常に落とすと、
+        **担当が実在した拒否**（実測4件はすべてこれ）の証跡まで捨てることになる。
+        """
+        rejected = definition()["actions"]["If_request_is_authorized_and_valid"]["else"]["actions"]
+        gate = rejected["If_previous_decider_is_known"]
+        self.assertEqual(gate["type"], "If")
+        self.assertEqual(gate["runAfter"], {"Update_request_rejected": ["Succeeded"]})
+        self.assertIn("_ds_deciderid_value", json.dumps(gate["expression"], ensure_ascii=False))
+
+        known = gate["actions"]["Create_rejected_history"]["inputs"]["parameters"]["item"]
+        unknown = gate["else"]["actions"]["Create_rejected_history_without_previous"]["inputs"]["parameters"]["item"]
+        self.assertIn("ds_previousdeciderid@odata.bind", known)
+        self.assertNotIn("ds_previousdeciderid@odata.bind", unknown)
+        for item in (known, unknown):
+            self.assertEqual(item["ds_result"], flow.HISTORY_REJECTED)
+            self.assertIn("ds_actorid@odata.bind", item)
+            self.assertIn("ds_newdeciderid@odata.bind", item)
+
+    def test_rejected_branch_never_reassigns_or_notifies(self):
+        """実測4件が担保していた不変条件。分岐を組み替えても壊さない。
+
+        2026-08-12 の拒否4件は「申請の担当は不変・メール送信なし」で通っている。
+        else 分岐に担当更新やメール送信が紛れ込めば、ここが落ちる。
+        """
+        rejected = definition()["actions"]["If_request_is_authorized_and_valid"]["else"]
+        raw = json.dumps(rejected, ensure_ascii=False)
+        self.assertNotIn("ds_deciderid@odata.bind", raw)
+        self.assertNotIn("SendEmailV2", raw)
 
     def test_connection_references_are_solution_embedded(self):
         clientdata = json.loads(flow.build_delegation_flow_clientdata())

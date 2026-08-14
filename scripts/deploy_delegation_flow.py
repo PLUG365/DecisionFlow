@@ -172,11 +172,38 @@ def build_delegation_flow_clientdata(
             f"{prefix}_resultmessage": rejected_detail,
         },
     )
-    create_rejected_history = create_record_action(
-        f"{prefix}_delegationhistories",
-        _history_item(prefix, HISTORY_REJECTED, rejected_detail, include_previous_decider=False),
-        {"Update_request_rejected": ["Succeeded"]},
-    )
+    # 変更前担当が空のまま bind すると `@concat('/systemusers(', '', ')')` が
+    # `/systemusers()` になり、**拒否履歴の作成ごと落ちる**。
+    # ただし空になり得るのは1ケースだけである。`If_request_is_authorized_and_valid` の
+    # runAfter は `Get_application` を含む全アクションの Succeeded を要求するので、
+    # else へ来た時点で申請は取れている。空なのは条件3が偽のとき＝担当未割当だけ。
+    # そこだけ bind を落とし、**担当が実在した拒否では証跡を残す**。
+    rejected_history_gate = {
+        "If_previous_decider_is_known": {
+            "type": "If",
+            "runAfter": {"Update_request_rejected": ["Succeeded"]},
+            "expression": {"not": {"equals": [f"@coalesce({previous_decider_id},'')", ""]}},
+            "actions": {
+                "Create_rejected_history": create_record_action(
+                    f"{prefix}_delegationhistories",
+                    _history_item(prefix, HISTORY_REJECTED, rejected_detail),
+                ),
+            },
+            "else": {
+                "actions": {
+                    "Create_rejected_history_without_previous": create_record_action(
+                        f"{prefix}_delegationhistories",
+                        _history_item(
+                            prefix,
+                            HISTORY_REJECTED,
+                            rejected_detail,
+                            include_previous_decider=False,
+                        ),
+                    ),
+                }
+            },
+        }
+    }
 
     actions = {
         "Get_application": _get_record_action(
@@ -262,7 +289,7 @@ def build_delegation_flow_clientdata(
             "else": {
                 "actions": {
                     "Update_request_rejected": update_request_rejected,
-                    "Create_rejected_history": create_rejected_history,
+                    **rejected_history_gate,
                 }
             },
         },
