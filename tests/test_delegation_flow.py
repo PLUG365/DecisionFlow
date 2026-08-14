@@ -8,6 +8,33 @@ def definition() -> dict:
     return json.loads(flow.build_delegation_flow_clientdata())["properties"]["definition"]
 
 
+def _walk(node):
+    """入れ子になった action を全部たどる。トップレベルの key だけ見ると内側を見落とす。"""
+    if isinstance(node, dict):
+        yield node
+        for value in node.values():
+            yield from _walk(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _walk(value)
+
+
+def _connectors(node) -> set[str]:
+    return {
+        host["connectionName"]
+        for item in _walk(node)
+        if isinstance(host := item.get("host"), dict) and "connectionName" in host
+    }
+
+
+def _written_entities(node) -> set[str]:
+    return {
+        params["entityName"]
+        for item in _walk(node)
+        if isinstance(params := item.get("parameters"), dict) and "entityName" in params
+    }
+
+
 class DelegationFlowDefinitionTests(unittest.TestCase):
     def test_trigger_is_serialized_create_only_webhook(self):
         trigger = definition()["triggers"]["When_delegation_request_created"]
@@ -82,16 +109,24 @@ class DelegationFlowDefinitionTests(unittest.TestCase):
         拒否履歴の作成ごと失敗する。だからといって常に落とすと、
         **担当が実在した拒否**（実測4件はすべてこれ）の証跡まで捨てることになる。
         """
-        rejected = definition()["actions"]["If_request_is_authorized_and_valid"]["else"]["actions"]
-        gate = rejected["If_previous_decider_is_known"]
+        outer = definition()["actions"]["If_request_is_authorized_and_valid"]
+        gate = outer["else"]["actions"]["If_previous_decider_is_known"]
         self.assertEqual(gate["type"], "If")
         self.assertEqual(gate["runAfter"], {"Update_request_rejected": ["Succeeded"]})
+
+        # ゲート式は検証条件そのものでなければならない。文字列の出現を見るだけだと
+        # `not` を外して反転させても緑のまま通る（監査で実証された）。
+        # 6条件のいずれかと**構造ごと一致**することを要求して、向きの取り違えを塞ぐ。
+        self.assertIn(gate["expression"], outer["expression"]["and"])
         self.assertIn("_ds_deciderid_value", json.dumps(gate["expression"], ensure_ascii=False))
+        self.assertIn("not", gate["expression"])
 
         known = gate["actions"]["Create_rejected_history"]["inputs"]["parameters"]["item"]
         unknown = gate["else"]["actions"]["Create_rejected_history_without_previous"]["inputs"]["parameters"]["item"]
         self.assertIn("ds_previousdeciderid@odata.bind", known)
         self.assertNotIn("ds_previousdeciderid@odata.bind", unknown)
+        # 評価時点の不変条件: 履歴作成時に取り直さず、条件判定に使ったのと同じ出力を使う。
+        self.assertIn("outputs('Get_application')", known["ds_previousdeciderid@odata.bind"])
         for item in (known, unknown):
             self.assertEqual(item["ds_result"], flow.HISTORY_REJECTED)
             self.assertIn("ds_actorid@odata.bind", item)
@@ -105,8 +140,15 @@ class DelegationFlowDefinitionTests(unittest.TestCase):
         """
         rejected = definition()["actions"]["If_request_is_authorized_and_valid"]["else"]
         raw = json.dumps(rejected, ensure_ascii=False)
+        # else が入れ子になったので、トップレベルの key だけを見ると内側をすり抜ける。
+        self.assertNotIn("Update_application_decider", raw)
         self.assertNotIn("ds_deciderid@odata.bind", raw)
-        self.assertNotIn("SendEmailV2", raw)
+
+        # 「メールを送らない」を `SendEmailV2` という1文字列で見ると、v1 や Teams 投稿が
+        # すり抜ける。**使ってよいコネクタは Dataverse だけ**という形で覆う。
+        self.assertEqual(_connectors(rejected), {"shared_commondataserviceforapps"})
+        # 申請テーブルへ書く action が1つも無いこと（bind 文字列ではなく操作対象で見る）。
+        self.assertNotIn("ds_applications", _written_entities(rejected))
 
     def test_connection_references_are_solution_embedded(self):
         clientdata = json.loads(flow.build_delegation_flow_clientdata())

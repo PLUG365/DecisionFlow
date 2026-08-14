@@ -123,10 +123,16 @@ const timelineDotClassName: Record<TimelineEventType, string> = {
 /**
  * 担当変更の「変更前 → 変更先」。
  *
- * **拒否された履歴には `ds_previousdeciderid` が入らない**（`scripts/deploy_delegation_flow.py` の
- * `include_previous_decider=False`）。フローが記録しなかっただけなのに「未割当 →」と書くと、
- * 変更前の担当がいなかったように読める。条件3が空の担当を弾く以上、**変更前の欠落は
- * 「未記録」であって「未割当」ではない**ので、分からないものは書かない。
+ * **変更前担当が欠けることがあるので、欠けたものは書かない。**
+ * 欠落の意味は履歴がいつ書かれたかで変わり、**画面からは区別できない**。
+ *
+ * - 2026-08-14 の変更より前の拒否履歴: フローが `ds_previousdeciderid` を一切書いていない。
+ *   担当は実在したのに**未記録**（`scripts/deploy_delegation_flow.py` の旧 `include_previous_decider=False`）
+ * - それ以降の拒否履歴: 既知なら書く。欠けているのは**本当に担当が未割当**だったケース
+ *   （検証条件3が偽＝`If_previous_decider_is_known` の else 側）
+ *
+ * どちらも「未割当 →」と書けば誤読を生む（前者は嘘、後者も矢印が変更の発生を示唆する）ため、
+ * **分からないものは書かず `変更先:` だけを出す**。この方針は両方の時代に対して正しい。
  */
 function renderDelegationChange(
   delegation: NonNullable<TimelineEvent["delegation"]>,

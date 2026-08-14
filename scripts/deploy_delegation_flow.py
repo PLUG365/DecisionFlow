@@ -68,7 +68,18 @@ def _strip_explicit_authentication(value):
     return value
 
 
-def _history_item(prefix: str, result: int, detail: str, include_previous_decider: bool = True) -> dict:
+def _previous_decider_is_known(previous_decider_id: str) -> dict:
+    """変更前担当が非空か。
+
+    **検証条件3と拒否分岐のゲートは、同じ式でなければならない。**
+    片方だけ変わると、空のときに bind を書いて履歴ごと落とすか、
+    既知のときに証跡を捨てるかのどちらかになる。両方がこの関数を呼び、
+    テストが「ゲート式が6条件のいずれかと一致すること」で固定している。
+    """
+    return {"not": {"equals": [f"@coalesce({previous_decider_id},'')", ""]}}
+
+
+def _history_item(prefix: str, result: int, detail: str, *, include_previous_decider: bool = True) -> dict:
     request_id = "triggerOutputs()?['body/{0}_delegationrequestid']".format(prefix)
     application_id = "triggerOutputs()?['body/_{0}_applicationid_value']".format(prefix)
     actor_id = "triggerOutputs()?['body/_createdby_value']"
@@ -110,7 +121,7 @@ def build_delegation_flow_clientdata(
         "and": [
             {"equals": [f"@triggerOutputs()?['body/{prefix}_status']", PENDING]},
             {"equals": [f"@outputs('Get_application')?['body/{prefix}_stage']", SUBMITTED]},
-            {"not": {"equals": [f"@coalesce({previous_decider_id},'')", ""]}},
+            _previous_decider_is_known(previous_decider_id),
             {
                 "not": {
                     "equals": [
@@ -182,7 +193,7 @@ def build_delegation_flow_clientdata(
         "If_previous_decider_is_known": {
             "type": "If",
             "runAfter": {"Update_request_rejected": ["Succeeded"]},
-            "expression": {"not": {"equals": [f"@coalesce({previous_decider_id},'')", ""]}},
+            "expression": _previous_decider_is_known(previous_decider_id),
             "actions": {
                 "Create_rejected_history": create_record_action(
                     f"{prefix}_delegationhistories",
