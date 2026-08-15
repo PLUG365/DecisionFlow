@@ -64,9 +64,20 @@ load_dotenv()
 TENANT_ID: str = os.getenv("TENANT_ID", "")
 DATAVERSE_URL: str = os.getenv("DATAVERSE_URL", "").rstrip("/")
 
-# AuthenticationRecord の保存先（プロジェクトルートの .auth_record.json）
+# AuthenticationRecord の保存先（既定はプロジェクトルートの .auth_record.json）
+#
+# `PP_AUTH_RECORD_PATH` と `PP_TOKEN_CACHE_NAME` で退避先を差し替えられる。
+# **既定は変えていない。** 別テナント（MinoDev2 など）へ向けるときに、
+# 主環境の認証レコードとトークンキャッシュを上書きしないための逃げ道。
+# 2つセットで差し替えること。片方だけだと、別テナントのトークンが
+# 同じキャッシュ名に混ざる。
 _PROJECT_ROOT = Path(__file__).resolve().parent
-AUTH_RECORD_PATH: Path = _PROJECT_ROOT / ".auth_record.json"
+AUTH_RECORD_PATH: Path = Path(
+    os.getenv("PP_AUTH_RECORD_PATH") or (_PROJECT_ROOT / ".auth_record.json")
+)
+_TOKEN_CACHE_NAME: str = (
+    os.getenv("PP_TOKEN_CACHE_NAME") or "power_platform_token_cache_v3"
+)
 
 # Dataverse Web API のデフォルトスコープ
 _DEFAULT_SCOPE = f"{DATAVERSE_URL}/.default" if DATAVERSE_URL else ""
@@ -109,7 +120,7 @@ def _build_credential() -> DeviceCodeCredential:
 
     if use_persistent_cache:
         cache_options = TokenCachePersistenceOptions(
-            name="power_platform_token_cache_v3",
+            name=_TOKEN_CACHE_NAME,
             allow_unencrypted_storage=True,
         )
         kwargs["cache_persistence_options"] = cache_options

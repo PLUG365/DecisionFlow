@@ -90,56 +90,53 @@ class AgentYamlInstructionsTests(unittest.TestCase):
         self.assertIn("できるふりをしない", self.instructions)
 
 
-class AgentYamlTopicTests(unittest.TestCase):
-    """会話投稿トピックの実行者束縛が、push される YAML に入っていることを守る。"""
+class AgentCannotPostToConversationTests(unittest.TestCase):
+    """会話への投稿が**エージェントから消えたまま**であることを守る。
+
+    経緯: 2026-08-10 にツール登録を消して実行者の束縛をトピックへ寄せ、
+    2026-08-15 にそのトピックごと削除した（MinoDev2 で公開が通らず、
+    トピックが直書きの flowId でフローを参照していたため）。
+
+    **このクラスは「束縛が正しいこと」ではなく「機能が無いこと」を守る。**
+    トピックやツール登録が戻ると、なりすまして投稿できる経路も戻る。
+
+    2026-08-16 追記: トピックを消したとき Instructions の
+    `## 会話への投稿` 節を消し忘れ、**存在しないトピックへ回そうとして
+    Escalate に落ちる**という実害が出た。片方だけ消せないことを守る。
+    """
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.topic = (
-            ROOT / "copilot" / "DecisionFlowAssistant" / "topics" / "postApplicationMessage.mcs.yml"
-        ).read_text(encoding="utf-8")
+        agent_dir = ROOT / "copilot" / "DecisionFlowAssistant"
+        cls.topic_yaml = agent_dir / "topics" / "postApplicationMessage.mcs.yml"
+        cls.action_yaml = agent_dir / "actions" / "post_application_message.mcs.yml"
+        cls.instructions = (agent_dir / "agent.mcs.yml").read_text(encoding="utf-8")
 
-    def test_actor_is_bound_from_authenticated_user_variables(self):
-        # ここがモデルの出力や会話本文から埋まると、他人として投稿できてしまう。
-        self.assertIn("variable: Topic.actorUpn", self.topic)
-        self.assertIn("value: =System.User.PrincipalName", self.topic)
-        self.assertIn("variable: Topic.actorAadObjectId", self.topic)
-        self.assertIn("value: =System.User.Id", self.topic)
-
-    def test_actor_is_not_declared_as_a_topic_input(self):
-        # inputType に actor を置くと、生成オーケストレーションが埋めてしまう。
-        inputs = self.topic.split("inputType:", 1)[1]
-        self.assertNotIn("actorUpn", inputs)
-        self.assertNotIn("actorAadObjectId", inputs)
-
-    def test_topic_invokes_the_post_application_message_flow(self):
-        self.assertIn("flowId: 3dfc08d1-7e92-f111-b8db-7c1e524a54ce", self.topic)
-        self.assertIn("body: =Topic.messageBody", self.topic)
+    def test_the_topic_is_gone(self):
+        self.assertFalse(
+            self.topic_yaml.exists(),
+            "会話投稿トピックを戻すと、直書きの flowId で移送先の公開が落ちる。",
+        )
 
     def test_the_flow_is_not_registered_as_an_agent_tool(self):
         """ツール登録があると、生成オーケストレーションがトピックを迂回して直接呼ぶ。
 
         2026-08-08 に実測で確認済み: ツール登録があった状態では、トピックの
-        SetVariable を通らず actorUpn をモデルが埋めていた。この YAML を
-        置き直すと（ポータルでツール登録し直して pull した場合を含む）、
-        実行者の束縛が再び迂回される。
+        SetVariable を通らず actorUpn をモデルが埋めていた。
         """
-        action_yaml = (
-            ROOT / "copilot" / "DecisionFlowAssistant" / "actions" / "post_application_message.mcs.yml"
-        )
-
         self.assertFalse(
-            action_yaml.exists(),
-            "post_application_message をツール登録すると、専用トピックの実行者束縛が迂回される。",
+            self.action_yaml.exists(),
+            "post_application_message をツール登録すると、実行者の束縛が迂回される。",
         )
 
-    def test_the_topic_confirms_before_posting(self):
-        # ツール登録を外したことで、Instructions が担っていた投稿前の同意取得が
-        # 効かなくなる。トピック側で取り直す。
-        self.assertIn("kind: Question", self.topic)
-        self.assertIn("BooleanPrebuiltEntity", self.topic)
-        self.assertIn("init:Topic.postConfirmed", self.topic)
-        self.assertIn("=Topic.postConfirmed = false", self.topic)
+    def test_instructions_do_not_route_to_the_removed_topic(self):
+        # 消したトピックへ回す手順が残ると、利用者には Escalate の案内が出る。
+        self.assertNotIn("## 会話への投稿", self.instructions)
+        self.assertNotIn("下の「会話への投稿」", self.instructions)
+
+    def test_instructions_say_posting_is_not_possible(self):
+        self.assertIn("会話へのコメント投稿はできない", self.instructions)
+        self.assertIn("会話タブ", self.instructions)
 
 
 class AgentYamlDecisionTopicTests(unittest.TestCase):
