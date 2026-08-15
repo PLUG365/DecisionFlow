@@ -25,7 +25,9 @@ import {
   getSelectedCategoryRegulationText,
   isApplicationReturnedForRevision,
   isIgnorableParticipantRevokeFailure,
+  buildApplicationListRow,
   canManageApplicationResources,
+  filterApplicationsByScope,
   filterRowsForCurrentUser,
   isApplicantSelectableStage,
   shouldShowMasterManagementNavigation,
@@ -47,6 +49,69 @@ describe("master management access", () => {
     expect(canEditMasterData({ isAdmin: true, isDecider: false })).toBe(true);
     expect(canEditMasterData({ isAdmin: false, isDecider: true })).toBe(true);
     expect(canEditMasterData({ isAdmin: false, isDecider: false })).toBe(false);
+  });
+});
+
+describe("filterApplicationsByScope", () => {
+  const rows = [
+    { id: "1", _createdby_value: "USER-A" },
+    { id: "2", _createdby_value: "USER-B" },
+    { id: "3", _createdby_value: undefined },
+  ];
+
+  it("returns every row that reached the client when scope is all", () => {
+    // 読めない申請はそもそも来ないので、ここで絞るのは画面の都合でしかない。
+    expect(filterApplicationsByScope(rows, "all", "user-a")).toEqual(rows);
+  });
+
+  it("keeps only rows created by the current user when scope is mine", () => {
+    expect(filterApplicationsByScope(rows, "mine", "user-a")).toEqual([rows[0]]);
+  });
+
+  it("still returns everything for scope all when the user is unresolved", () => {
+    // 本人が引けないときに「全体」まで空にすると、何も見えない画面になる。
+    expect(filterApplicationsByScope(rows, "all", null)).toEqual(rows);
+    expect(filterApplicationsByScope(rows, "mine", null)).toEqual([]);
+  });
+});
+
+describe("buildApplicationListRow", () => {
+  const userName = (id: string | null | undefined) =>
+    id === "DECIDER" ? "Archie Grady" : id === "APPLICANT" ? "Diego" : "";
+
+  it("puts display names on the row so search and sort see text, not GUIDs", () => {
+    const row = buildApplicationListRow(
+      {
+        _ds_deciderid_value: "DECIDER",
+        _createdby_value: "APPLICANT",
+        ds_submittedat: "2026-08-16T00:00:00Z",
+        createdon: "2026-08-01T00:00:00Z",
+      },
+      userName,
+    );
+
+    expect(row.deciderName).toBe("Archie Grady");
+    expect(row.applicantName).toBe("Diego");
+  });
+
+  it("labels an unassigned decider instead of leaving it blank", () => {
+    const row = buildApplicationListRow({ _ds_deciderid_value: null }, userName);
+    expect(row.deciderName).toBe("未割当");
+  });
+
+  it("falls back to createdon when the application is not submitted yet", () => {
+    expect(
+      buildApplicationListRow(
+        { ds_submittedat: null, createdon: "2026-08-01T00:00:00Z" },
+        userName,
+      ).appliedAt,
+    ).toBe("2026-08-01T00:00:00Z");
+    expect(
+      buildApplicationListRow(
+        { ds_submittedat: "2026-08-16T00:00:00Z", createdon: "2026-08-01T00:00:00Z" },
+        userName,
+      ).appliedAt,
+    ).toBe("2026-08-16T00:00:00Z");
   });
 });
 

@@ -268,6 +268,55 @@ export function getApplicationDecisionDetailPath(
   return `/applications/${normalizedApplicationId}?tab=decision`;
 }
 
+export const APPLICATION_LIST_SCOPES = ["mine", "all"] as const;
+export type ApplicationListScope = (typeof APPLICATION_LIST_SCOPES)[number];
+
+/**
+ * 申請リストの表示範囲。
+ *
+ * **`all` は「全部見せる」ではなく「取得できたものを全部見せる」。**
+ * 本当の境界は Dataverse のロールで、読めない申請はそもそもクライアントへ来ない
+ * （2026-08-16 に MinoDev2 で実測。申請者には自分の分と共有された分だけが届く）。
+ * ここでの絞り込みは**画面の都合**であって、安全のためのものではない。
+ */
+export function filterApplicationsByScope<
+  T extends { _createdby_value?: string | null },
+>(
+  applications: T[],
+  scope: ApplicationListScope,
+  currentSystemUserId: string | null | undefined,
+): T[] {
+  if (scope === "all") return applications;
+  return filterRowsForCurrentUser(
+    applications as (T & Record<string, unknown>)[],
+    currentSystemUserId,
+    "_createdby_value",
+  );
+}
+
+/**
+ * 検索とソートのために、行へ**表示名の文字列**を持たせる。
+ *
+ * `ListTable` の検索もソートも `item[key]` の生の値を見るので、
+ * 判断者や申請者を lookup の GUID のまま置くと**GUID を検索することになる**。
+ */
+export function buildApplicationListRow<
+  T extends {
+    _ds_deciderid_value?: string | null;
+    _createdby_value?: string | null;
+    ds_submittedat?: string | null;
+    createdon?: string | null;
+  },
+>(application: T, userName: (id: string | null | undefined) => string) {
+  return {
+    ...application,
+    deciderName: userName(application._ds_deciderid_value) || "未割当",
+    applicantName: userName(application._createdby_value),
+    // 提出済みなら提出日時、まだなら作成日時。並べ替えの基準を1つにする。
+    appliedAt: application.ds_submittedat ?? application.createdon ?? "",
+  };
+}
+
 export function validateCategoryRegulationInput(
   regulationText: string | null | undefined,
 ): ValidationResult {

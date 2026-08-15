@@ -41,7 +41,9 @@ import {
   applicantSelectableStageValues,
   canEditApplication,
   canReturnApplicationToDraft,
-  filterRowsForCurrentUser,
+  buildApplicationListRow,
+  filterApplicationsByScope,
+  type ApplicationListScope,
   getAiCheckWaitState,
   getAiResultDialogConfig,
   getApplicationBodyPlaceholder,
@@ -126,10 +128,25 @@ export default function ApplicationsPage() {
     return map;
   }, [users]);
 
-  const myApplications = useMemo(
+  /**
+   * 既定は「自分」。判断者は `Read=Global` なので「全体」にすると一気に全件並び、
+   * 判断キューとの違いが分からなくなる。開いた瞬間の見え方は今までどおりにする。
+   */
+  const [listScope, setListScope] = useState<ApplicationListScope>("mine");
+
+  const scopedApplications = useMemo(
+    () => filterApplicationsByScope(applications, listScope, systemUserId),
+    [applications, listScope, systemUserId],
+  );
+
+  const applicationRows = useMemo(
     () =>
-      filterRowsForCurrentUser(applications, systemUserId, "_createdby_value"),
-    [applications, systemUserId],
+      scopedApplications.map((application) =>
+        buildApplicationListRow(application, (id) =>
+          id ? (userMap.get(id) ?? "") : "",
+        ),
+      ),
+    [scopedApplications, userMap],
   );
 
   const getLatestDecisionOptionName = useMemo(
@@ -174,11 +191,22 @@ export default function ApplicationsPage() {
       },
     },
     {
-      key: "_ds_deciderid_value",
+      key: "applicantName",
+      label: "申請者",
+      sortable: true,
+    },
+    {
+      key: "deciderName",
       label: "判断者",
+      sortable: true,
+    },
+    {
+      key: "appliedAt",
+      label: "申請日",
+      sortable: true,
       render: (item) => {
-        const value = item._ds_deciderid_value as string | undefined;
-        return value ? (userMap.get(value) ?? "") : "未割当";
+        const value = item.appliedAt as string | undefined;
+        return value ? new Date(value).toLocaleDateString("ja-JP") : "";
       },
     },
     {
@@ -579,21 +607,50 @@ export default function ApplicationsPage() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">申請リスト</h2>
           <p className="text-sm text-muted-foreground">
-            自分が起票した申請の作成、確認、関連資料の追加をここから始めます。
+            {listScope === "mine"
+              ? "自分が起票した申請の作成、確認、関連資料の追加をここから始めます。"
+              : "自分が閲覧できる申請をまとめて確認します。編集や削除は自分が起票した申請だけで行えます。"}
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          申請を作成
-        </Button>
+        <div className="flex items-center gap-3">
+          <div
+            className="inline-flex w-fit rounded-md border p-1"
+            role="group"
+            aria-label="申請の表示範囲"
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant={listScope === "mine" ? "default" : "ghost"}
+              aria-pressed={listScope === "mine"}
+              onClick={() => setListScope("mine")}
+            >
+              自分
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={listScope === "all" ? "default" : "ghost"}
+              aria-pressed={listScope === "all"}
+              onClick={() => setListScope("all")}
+            >
+              全体
+            </Button>
+          </div>
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            申請を作成
+          </Button>
+        </div>
       </div>
 
       <ListTable
-        data={myApplications as ApplicationRow[]}
+        data={applicationRows as ApplicationRow[]}
         columns={columns}
         title="申請一覧"
         searchable
-        searchKeys={["ds_name", "ds_body"]}
+        searchPlaceholder="タイトル・本文・申請者・判断者で検索..."
+        searchKeys={["ds_name", "ds_body", "applicantName", "deciderName"]}
         filters={[
           {
             key: "ds_stage",
@@ -601,7 +658,11 @@ export default function ApplicationsPage() {
             options: filterStageOptions,
           },
         ]}
-        emptyMessage="起票した申請はまだありません"
+        emptyMessage={
+          listScope === "mine"
+            ? "起票した申請はまだありません"
+            : "閲覧できる申請はまだありません"
+        }
         onRowClick={(row) => navigate(`/applications/${row.ds_applicationid}`)}
       />
 
