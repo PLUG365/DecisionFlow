@@ -29,6 +29,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 from dotenv import load_dotenv
@@ -36,11 +37,12 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from auth_helper import DATAVERSE_URL, api_get, get_session  # noqa: E402
+from auth_helper import DATAVERSE_URL, api_get, flow_api_call, get_session, get_token  # noqa: E402
 
 load_dotenv()
 
 API = f"{DATAVERSE_URL}/api/data/v9.2"
+POWERAPPS_API = "https://api.powerapps.com"
 SOLUTION_NAME = os.environ.get("SOLUTION_NAME", "DecisionSupport")
 PREFIX = os.environ.get("PUBLISHER_PREFIX", "ds")
 
@@ -74,7 +76,59 @@ def _workflow_definition(actions: dict, triggers: dict) -> dict:
     }
 
 
-def build_clientdata(dataverse_connection_reference: str) -> str:
+def _read_environment_id() -> str:
+    config_path = ROOT / "power.config.json"
+    if config_path.exists():
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        if data.get("environmentId"):
+            return data["environmentId"]
+    envs = flow_api_call("GET", "/providers/Microsoft.ProcessSimple/environments")
+    for env in envs.get("value", []):
+        linked = env.get("properties", {}).get("linkedEnvironmentMetadata", {})
+        if (linked.get("instanceUrl") or "").rstrip("/").lower() == DATAVERSE_URL.lower():
+            return env["name"]
+    raise RuntimeError("環境 ID を解決できませんでした。")
+
+
+def find_sharepoint_connection(environment_id: str) -> str:
+    """SharePoint 接続の名前（ID）を1つ取る。
+
+    **invoker でも設計時の接続名が要る。** 空にすると、フロー側が
+    `.../apis/sharepointonline/connections/` という尻切れの id を組んで
+    `InvalidRequestContent` で有効化に失敗する（2026-08-16 に実測）。
+
+    実行時に使われるのは呼び出した本人の接続で、ここで指定するのは
+    **設計時のプレースホルダー**。`SHAREPOINT_CONN` で固定もできる。
+    """
+    forced = os.environ.get("SHAREPOINT_CONN", "").strip()
+    if forced:
+        return forced
+    encoded_env = quote(environment_id, safe="")
+    token = get_token(scope="https://service.powerapps.com/.default")
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    urls = [
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/apis/{SHAREPOINT_CONNECTOR}/connections?$filter=environment eq '{environment_id}'&api-version=2016-11-01",
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/environments/{encoded_env}/apis/{SHAREPOINT_CONNECTOR}/connections?api-version=2016-11-01",
+    ]
+    for url in urls:
+        try:
+            response = requests.get(url, headers=headers, timeout=120)
+            response.raise_for_status()
+            for connection in response.json().get("value", []):
+                name = connection.get("name") or connection.get("properties", {}).get("connectionName")
+                if name:
+                    return name
+        except Exception as exc:
+            print(f"  SharePoint 接続検索をスキップ: {exc}")
+    raise RuntimeError(
+        "SharePoint 接続が見つかりません。"
+        "`npx power-apps create-connection --api-id shared_sharepointonline` で作成してください。"
+    )
+
+
+def build_clientdata(
+    dataverse_connection_reference: str, sharepoint_connection_name: str
+) -> str:
     """フローの clientdata を組む。
 
     **`runtimeSource` がこの機能の中心。** Dataverse は `embedded`（今までどおり
@@ -90,63 +144,68 @@ def build_clientdata(dataverse_connection_reference: str) -> str:
                     "type": "object",
                     "properties": {
                         "text": {
-                            "title": "resourceUrl",
+                            "title": "siteUrl",
                             "type": "string",
                             "x-ms-content-hint": "TEXT",
                             "x-ms-dynamically-added": True,
-                            "description": "説明文を作りたい関連資料の URL",
-                        }
+                            "description": "SharePoint サイトの URL",
+                        },
+                        "text_1": {
+                            "title": "filePath",
+                            "type": "string",
+                            "x-ms-content-hint": "TEXT",
+                            "x-ms-dynamically-added": True,
+                            "description": "サイト内のファイルパス",
+                        },
                     },
-                    "required": ["text"],
+                    "required": ["text", "text_1"],
                 }
             },
         }
     }
 
     actions = {
-        # 第1段では読み取りそのものは行わず、**誰として動いているか**だけを返す。
-        # invoker が効いていれば呼び出した本人、効いていなければ接続所有者になる。
-        "Who_am_I": {
+        # 第1段は読み取りの成否そのものを返す。**アクセス権で結果が変わる**ので、
+        # これがそのまま身元の判別になる。invoker が効いていれば呼び出した本人の
+        # 権限で判定され、効いていなければ接続所有者（管理者）の権限で通ってしまう。
+        "Read_file_metadata": {
             "type": "OpenApiConnection",
             "runAfter": {},
             "inputs": {
                 "host": {
                     "apiId": _connector_id(SHAREPOINT_CONNECTOR),
                     "connectionName": SHAREPOINT_CONNECTOR,
-                    "operationId": "GetMyProfile_V2",
+                    "operationId": "GetFileMetadataByPath",
                 },
-                "parameters": {"$select": "displayName,mail,userPrincipalName"},
+                "parameters": {
+                    "dataset": "@{triggerBody()?['text']}",
+                    "path": "@{triggerBody()?['text_1']}",
+                },
                 "authentication": "@parameters('$authentication')",
             },
         },
         "Respond": {
             "type": "Response",
             "kind": "PowerApp",
-            "runAfter": {"Who_am_I": ["Succeeded", "Failed"]},
+            # 失敗しても応答を返す。**失敗の仕方こそが知りたい情報**なので握り潰さない。
+            "runAfter": {"Read_file_metadata": ["Succeeded", "Failed", "TimedOut"]},
             "inputs": {
                 "statusCode": 200,
                 "body": {
-                    "actingAs": "@{coalesce(outputs('Who_am_I')?['body/userPrincipalName'], outputs('Who_am_I')?['body/mail'], 'unknown')}",
-                    "displayName": "@{coalesce(outputs('Who_am_I')?['body/displayName'], '')}",
-                    "status": "@{if(equals(outputs('Who_am_I')?['statusCode'], 200), 'succeeded', 'failed')}",
+                    "status": "@{if(equals(outputs('Read_file_metadata')?['statusCode'], 200), 'succeeded', 'failed')}",
+                    "detail": "@{string(coalesce(outputs('Read_file_metadata')?['body'], ''))}",
                 },
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "actingAs": {
-                            "title": "actingAs",
-                            "type": "string",
-                            "x-ms-content-hint": "TEXT",
-                            "x-ms-dynamically-added": True,
-                        },
-                        "displayName": {
-                            "title": "displayName",
-                            "type": "string",
-                            "x-ms-content-hint": "TEXT",
-                            "x-ms-dynamically-added": True,
-                        },
                         "status": {
                             "title": "status",
+                            "type": "string",
+                            "x-ms-content-hint": "TEXT",
+                            "x-ms-dynamically-added": True,
+                        },
+                        "detail": {
+                            "title": "detail",
                             "type": "string",
                             "x-ms-content-hint": "TEXT",
                             "x-ms-dynamically-added": True,
@@ -167,8 +226,10 @@ def build_clientdata(dataverse_connection_reference: str) -> str:
         },
         SHAREPOINT_CONNECTOR: {
             # ここが本体。embedded にすると所有者の資格で読む穴になる。
+            # `connection.name` は**設計時のプレースホルダー**で、実行時は
+            # 呼び出した本人の接続に差し替わる。空にすると有効化が 400 になる。
             "runtimeSource": "invoker",
-            "connection": {},
+            "connection": {"name": sharepoint_connection_name},
             "api": {"name": SHAREPOINT_CONNECTOR},
         },
     }
@@ -298,7 +359,11 @@ def main() -> None:
     dataverse_ref = find_dataverse_connection_reference()
     print(f"Dataverse connection reference: {dataverse_ref}")
 
-    clientdata = build_clientdata(dataverse_ref)
+    environment_id = _read_environment_id()
+    sharepoint_connection = find_sharepoint_connection(environment_id)
+    print(f"SharePoint connection (design-time placeholder): {sharepoint_connection}")
+
+    clientdata = build_clientdata(dataverse_ref, sharepoint_connection)
     existing = find_existing_flow(FLOW_NAME)
     if existing:
         workflow_id = update_flow(
