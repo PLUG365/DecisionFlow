@@ -399,6 +399,32 @@ export const DataverseService = {
     }
   },
 
+  /**
+   * `ds_Applicant` を持っているか。
+   *
+   * 関連資料の作成・削除は `ds_Applicant` と `ds_Admin` だけが持つ（`ds_Decider` は
+   * Read と AppendTo しか無い）。**「判断者ではない」で代用しない。** 判断者と申請者を
+   * 両方持つ利用者を取りこぼす。
+   */
+  async isCurrentUserApplicant(): Promise<boolean> {
+    try {
+      const userId = await this.getCurrentSystemUserId();
+      if (!userId) return false;
+      const matched = requireData(
+        await SystemusersService.getAll({
+          select: ["systemuserid"],
+          filter: `systemuserid eq ${userId} and systemuserroles_association/any(r: r/name eq 'ds_Applicant')`,
+          top: 1,
+        }),
+        "isCurrentUserApplicant",
+      ) as SystemUser[];
+      return matched.length > 0;
+    } catch (error) {
+      console.warn("[DecisionFlow] applicant role check failed", error);
+      return false;
+    }
+  },
+
   async createApplication(application: CreateApplication) {
     const created = requireData(
       await Ds_applicationsService.create(

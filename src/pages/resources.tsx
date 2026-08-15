@@ -13,9 +13,14 @@ import {
   useApplications,
   useCreateResource,
   useDeleteResource,
+  useIsAdmin,
+  useIsApplicant,
   useResources,
 } from "@/hooks/use-decisionflow";
-import { validateResourceInput } from "@/lib/decisionflow-utils";
+import {
+  canManageApplicationResources,
+  validateResourceInput,
+} from "@/lib/decisionflow-utils";
 import { getOperationErrorMessage } from "@/lib/operation-error";
 import { type ApplicationResource } from "@/types/decisionflow";
 import { toast } from "sonner";
@@ -25,6 +30,8 @@ type ResourceRow = ApplicationResource & Record<string, unknown>;
 export default function ResourcesPage() {
   const { data: resources = [] } = useResources();
   const { data: applications = [] } = useApplications();
+  const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
+  const { data: isApplicant, isLoading: isApplicantLoading } = useIsApplicant();
   const createResource = useCreateResource();
   const deleteResource = useDeleteResource();
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -108,6 +115,12 @@ export default function ResourcesPage() {
     });
   };
 
+  if (isAdminLoading || isApplicantLoading) return <div />;
+  const canManageResources = canManageApplicationResources({
+    isAdmin,
+    isApplicant,
+  });
+
   const columns: TableColumn<ResourceRow>[] = [
     { key: "ds_name", label: "タイトル", sortable: true },
     {
@@ -131,24 +144,30 @@ export default function ResourcesPage() {
           </Button>
         ) : null,
     },
-    {
-      key: "actions",
-      label: "操作",
-      render: (item) => (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={(event) => {
-            event.stopPropagation();
-            setResourceToDelete(item);
-          }}
-          aria-label="関連資料リンクを削除"
-        >
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
-      ),
-    },
+    // 削除も作成と同じ権限で閉じる。`ds_Decider` は Delete も持っていないので、
+    // 出したままだと確認ダイアログまで進んで 403 になる。
+    ...(canManageResources
+      ? [
+          {
+            key: "actions",
+            label: "操作",
+            render: (item: ResourceRow) => (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setResourceToDelete(item);
+                }}
+                aria-label="関連資料リンクを削除"
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            ),
+          } satisfies TableColumn<ResourceRow>,
+        ]
+      : []),
   ];
 
   return (
@@ -160,10 +179,12 @@ export default function ResourcesPage() {
             申請に紐づくリンク資料を横断確認します。
           </p>
         </div>
-        <Button onClick={() => setIsFormOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          資料を追加
-        </Button>
+        {canManageResources && (
+          <Button onClick={() => setIsFormOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            資料を追加
+          </Button>
+        )}
       </div>
       <ListTable
         data={resources as ResourceRow[]}

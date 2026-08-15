@@ -25,6 +25,7 @@ import {
   getSelectedCategoryRegulationText,
   isApplicationReturnedForRevision,
   isIgnorableParticipantRevokeFailure,
+  canManageApplicationResources,
   filterRowsForCurrentUser,
   isApplicantSelectableStage,
   shouldShowMasterManagementNavigation,
@@ -46,6 +47,35 @@ describe("master management access", () => {
     expect(canEditMasterData({ isAdmin: true, isDecider: false })).toBe(true);
     expect(canEditMasterData({ isAdmin: false, isDecider: true })).toBe(true);
     expect(canEditMasterData({ isAdmin: false, isDecider: false })).toBe(false);
+  });
+});
+
+describe("canManageApplicationResources", () => {
+  it("allows applicants and admins, who hold Create on ds_applicationresource", () => {
+    expect(
+      canManageApplicationResources({ isAdmin: false, isApplicant: true }),
+    ).toBe(true);
+    expect(
+      canManageApplicationResources({ isAdmin: true, isApplicant: false }),
+    ).toBe(true);
+  });
+
+  it("denies a decider-only user, who has Read and AppendTo but no Create", () => {
+    expect(
+      canManageApplicationResources({ isAdmin: false, isApplicant: false }),
+    ).toBe(false);
+  });
+
+  it("allows a user holding both decider and applicant roles", () => {
+    // 「判断者ではない」で代用すると、この利用者の導線まで消える。
+    expect(canManageApplicationResources({ isApplicant: true })).toBe(true);
+  });
+
+  it("denies when the role flags are still unresolved", () => {
+    expect(canManageApplicationResources({})).toBe(false);
+    expect(
+      canManageApplicationResources({ isAdmin: null, isApplicant: undefined }),
+    ).toBe(false);
   });
 });
 

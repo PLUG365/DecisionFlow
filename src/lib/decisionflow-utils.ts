@@ -89,6 +89,24 @@ export function canEditMasterData(input: {
   return Boolean(input.isAdmin || input.isDecider);
 }
 
+/**
+ * 関連資料を作成・削除できるか。
+ *
+ * `ds_applicationresource` の Create / Delete を持つのは `ds_Applicant` と `ds_Admin` だけ。
+ * **`ds_Decider` は Read と AppendTo しか無い**（2026-08-16 に MinoDev2 の
+ * `roleprivileges` で実測）。判断者に導線を出すと、フォームを全部埋めさせたうえで
+ * 保存時に 403 になる。
+ *
+ * **「判断者ではない」で代用してはならない。** 判断者と申請者を両方持つ利用者は
+ * 作成できるので、その人の導線まで消えてしまう。
+ */
+export function canManageApplicationResources(input: {
+  isAdmin?: boolean | null;
+  isApplicant?: boolean | null;
+}): boolean {
+  return Boolean(input.isAdmin || input.isApplicant);
+}
+
 export function validateResourceInput(input: ResourceInput): ValidationResult {
   const fieldErrors: Record<string, string> = {};
 

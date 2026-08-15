@@ -58,6 +58,14 @@ export function useIsDecider() {
   });
 }
 
+export function useIsApplicant() {
+  return useQuery({
+    queryKey: ["decisionflow", "isApplicant"] as const,
+    queryFn: () => DataverseService.isCurrentUserApplicant(),
+    staleTime: Infinity,
+  });
+}
+
 export function useCurrentSystemUser() {
   const dataQuery = useDecisionFlowData();
   const userIdQuery = useQuery({
