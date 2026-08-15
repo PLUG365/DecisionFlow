@@ -771,16 +771,12 @@ export const DataverseService = {
       ),
       "createDecision",
     ) as Decision;
-    if (decision._ds_applicationid_value && decision.nextApplicationStage) {
-      await this.updateApplication({
-        id: decision._ds_applicationid_value,
-        ds_stage: decision.nextApplicationStage,
-        ds_submittedat:
-          decision.nextApplicationStage === ApplicationStage.Draft
-            ? null
-            : undefined,
-      });
-    }
+    // **申請のステージはここで更新しない。** 判断者は `ds_application` を更新できず
+    // （`ds_Decider` は Read のみ）、ここで書くと実利用者では必ず 403 になって
+    // 呼び出し側の成功ハンドラごと落ちる。2026-08-15 に MinoDev2 で踏んだ。
+    // ステージ更新と差し戻し時の submittedat クリアは `Decision_OnCreated` が持つ。
+    // 反映は非同期になるので、画面側は反映を検知してから表示を切り替えること
+    // （`isDecisionReflectedOnApplication`）。
     return created;
   },
 

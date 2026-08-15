@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -36,6 +37,7 @@ import {
   useApplication,
   useApplications,
   useCategories,
+  queryKeys,
   useCreateDecision,
   useCreateMention,
   useCreateMessage,
@@ -64,8 +66,13 @@ import {
   canDecideApplication,
   canRefreshAiDecisionFromDecisionTab,
   canReassignApplication,
+  DECISION_REFLECTION_POLL_MS,
+  DECISION_REFLECTION_TIMEOUT_MS,
   getAiCheckWaitState,
   getDecisionNextApplicationStage,
+  getDecisionReflectionWaitState,
+  isDecisionReflectedOnApplication,
+  resolveDecisionReflectionPhase,
   isApplicationReturnedForRevision,
   getParticipantDeleteWaitState,
   normalizeApplicationStage,
@@ -184,6 +191,7 @@ export default function ApplicationDetailPage() {
   const createMessage = useCreateMessage();
   const createMention = useCreateMention();
   const createDecision = useCreateDecision();
+  const queryClient = useQueryClient();
   const addParticipant = useAddParticipantWithMention();
   const deleteParticipant = useDeleteParticipant();
   const runAiPreCheck = useRunAiPreCheck();
@@ -205,6 +213,28 @@ export default function ApplicationDetailPage() {
    */
   const [postDecisionTarget, setPostDecisionTarget] =
     useState<PostDecisionTarget | null>(null);
+  /**
+   * 判断確定後、サーバ側の反映を待っている間の状態。
+   *
+   * ステージ更新は `Decision_OnCreated` が行うので反映は非同期になる。
+   * **検知できるまで `postDecisionTarget` を立てない。** 立ててしまうと、
+   * まだ列に残っている＝`queueNavigation.position` が非 null なので、
+   * 「次の申請へ」の表示条件（`!queueNavigation?.position`）が偽のままになり、
+   * 前後移動も導線もどちらも出ない中途半端な状態になる。
+   */
+  const [decisionReflection, setDecisionReflection] = useState<{
+    expectedStage: number;
+    target: PostDecisionTarget | null;
+    startedAt: number;
+  } | null>(null);
+  /**
+   * 反映待ちの再評価を進めるためのカウンタ。
+   *
+   * **これが無いと1回で止まる。** 再取得してもステージが変わらなければ
+   * 依存配列の値は同じままなので effect が再実行されず、次のポーリングも
+   * 打ち切り判定も永久に来ない。
+   */
+  const [reflectionTick, setReflectionTick] = useState(0);
   const tabValue = parseApplicationDetailTab(searchParams);
 
   const categoryMap = useMemo(
@@ -412,6 +442,57 @@ export default function ApplicationDetailPage() {
     [timelineEvents, application?.ds_stage],
   );
 
+  /**
+   * 判断確定後の反映待ち。**待っている間だけ**再取得する。
+   *
+   * `useDecisionFlowData` は全画面が共有する単一クエリなので、ここに恒久的な
+   * `refetchInterval` を付けると全利用者が全データを取り続けることになる。
+   */
+  useEffect(() => {
+    if (!decisionReflection) return;
+
+    const reflected = isDecisionReflectedOnApplication({
+      stage: application?.ds_stage,
+      submittedAt: application?.ds_submittedat,
+      expectedStage: decisionReflection.expectedStage,
+    });
+    const phase = resolveDecisionReflectionPhase({
+      elapsedMs: Date.now() - decisionReflection.startedAt,
+      reflected,
+      timeoutMs: DECISION_REFLECTION_TIMEOUT_MS,
+    });
+
+    if (phase === "reflected") {
+      setDecisionReflection(null);
+      toast.success("判断を確定しました");
+      // 列から出た後に立てる。ここで初めて「次の申請へ」の表示条件が成立する。
+      setPostDecisionTarget(decisionReflection.target);
+      return;
+    }
+
+    if (phase === "timeout") {
+      setDecisionReflection(null);
+      // **失敗とは言わない。** 判断は記録済みで、確認できていないのは反映だけ。
+      // 行き先も立てない（列の情報が古いままなので、案内すると嘘になる）。
+      toast.warning(
+        "判断は記録されました。画面への反映が確認できていません。時間をおいて再読み込みしてください。",
+      );
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.data });
+      setReflectionTick((n) => n + 1);
+    }, DECISION_REFLECTION_POLL_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    decisionReflection,
+    reflectionTick,
+    application?.ds_stage,
+    application?.ds_submittedat,
+    queryClient,
+  ]);
+
   if (isApplicationLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -472,6 +553,9 @@ export default function ApplicationDetailPage() {
     deleteParticipant.isPending,
   );
   const aiCheckWaitState = getAiCheckWaitState(runAiPreCheck.isPending);
+  const decisionReflectionWaitState = getDecisionReflectionWaitState(
+    createDecision.isPending || !!decisionReflection,
+  );
   const aiDecisionBasis = parseAiDecisionBasis(application.ds_aidecisionbasis);
 
   const handleGenerateAiDecision = () => {
@@ -566,10 +650,18 @@ export default function ApplicationDetailPage() {
       },
       {
         onSuccess: () => {
-          toast.success("判断を確定しました");
           decisionDraft.clear();
           setDecisionOptionId("");
-          setPostDecisionTarget(nextTarget);
+          // ここではまだ「確定しました」と言わない。判断は記録されたが、申請の
+          // ステージは Decision_OnCreated が反映するまで変わらない。
+          // 反映を検知してから画面を切り替える（下の useEffect）。
+          setDecisionReflection({
+            expectedStage: getDecisionNextApplicationStage(
+              selectedDecisionOptionName,
+            ),
+            target: nextTarget,
+            startedAt: Date.now(),
+          });
         },
         onError: (error) =>
           toast.error(
@@ -1338,7 +1430,12 @@ export default function ApplicationDetailPage() {
                     <Button
                       className="w-full"
                       onClick={handleDecision}
-                      disabled={!decisionOptionId || !rationale.trim()}
+                      disabled={
+                        !decisionOptionId ||
+                        !rationale.trim() ||
+                        createDecision.isPending ||
+                        !!decisionReflection
+                      }
                     >
                       判断を確定
                     </Button>
@@ -1540,16 +1637,24 @@ export default function ApplicationDetailPage() {
       />
 
       <OperationWaitOverlay
-        open={participantDeleteWaitState.visible || aiCheckWaitState.visible}
+        open={
+          decisionReflectionWaitState.visible ||
+          participantDeleteWaitState.visible ||
+          aiCheckWaitState.visible
+        }
         title={
-          participantDeleteWaitState.visible
-            ? participantDeleteWaitState.title
-            : aiCheckWaitState.title
+          decisionReflectionWaitState.visible
+            ? decisionReflectionWaitState.title
+            : participantDeleteWaitState.visible
+              ? participantDeleteWaitState.title
+              : aiCheckWaitState.title
         }
         description={
-          participantDeleteWaitState.visible
-            ? participantDeleteWaitState.description
-            : aiCheckWaitState.description
+          decisionReflectionWaitState.visible
+            ? decisionReflectionWaitState.description
+            : participantDeleteWaitState.visible
+              ? participantDeleteWaitState.description
+              : aiCheckWaitState.description
         }
       />
     </div>

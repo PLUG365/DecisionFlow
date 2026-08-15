@@ -17,7 +17,10 @@ import {
   getDecisionNextApplicationStage,
   getDeciderQueueApplications,
   getDeciderQueueColumnKey,
+  getDecisionReflectionWaitState,
   getParticipantDeleteWaitState,
+  isDecisionReflectedOnApplication,
+  resolveDecisionReflectionPhase,
   getSelectedCategoryRegulationInfo,
   getSelectedCategoryRegulationText,
   isApplicationReturnedForRevision,
@@ -731,5 +734,86 @@ describe("isIgnorableParticipantRevokeFailure", () => {
       false,
     );
     expect(isIgnorableParticipantRevokeFailure(undefined)).toBe(false);
+  });
+});
+
+describe("判断確定後のサーバ反映待ち", () => {
+  it("反映は「ステージ一致」だけでは足りない。差し戻しは submittedat の消去まで見る", () => {
+    // Decision_OnCreated は差し戻し時に2回書く（ステージ更新 → submittedat クリア）。
+    // ステージだけを見ると、その2回の間で反映済みと誤判定し、submittedat が
+    // 残ったまま画面を進めてしまう。
+    expect(
+      isDecisionReflectedOnApplication({
+        stage: 100000000,
+        submittedAt: "2026-08-15T00:44:32Z",
+        expectedStage: 100000000,
+      }),
+    ).toBe(false);
+    expect(
+      isDecisionReflectedOnApplication({
+        stage: 100000000,
+        submittedAt: null,
+        expectedStage: 100000000,
+      }),
+    ).toBe(true);
+  });
+
+  it("承認・却下は submittedat を消さないので、ステージ一致だけで反映とみなす", () => {
+    expect(
+      isDecisionReflectedOnApplication({
+        stage: 100000004,
+        submittedAt: "2026-08-15T00:44:32Z",
+        expectedStage: 100000004,
+      }),
+    ).toBe(true);
+    expect(
+      isDecisionReflectedOnApplication({
+        stage: 100000001,
+        submittedAt: "2026-08-15T00:44:32Z",
+        expectedStage: 100000004,
+      }),
+    ).toBe(false);
+  });
+
+  it("待機中は「記録済み・反映待ち」と伝える。失敗とは言わない", () => {
+    const waiting = getDecisionReflectionWaitState(true);
+    expect(waiting.visible).toBe(true);
+    expect(waiting.title).toContain("反映");
+    expect(`${waiting.title}${waiting.description}`).not.toContain("失敗");
+    expect(getDecisionReflectionWaitState(false).visible).toBe(false);
+  });
+
+  it("待ち切れなくても失敗ではない。記録済みであることを保ったまま打ち切る", () => {
+    expect(
+      resolveDecisionReflectionPhase({
+        elapsedMs: 0,
+        reflected: false,
+        timeoutMs: 30000,
+      }),
+    ).toBe("waiting");
+    expect(
+      resolveDecisionReflectionPhase({
+        elapsedMs: 5000,
+        reflected: true,
+        timeoutMs: 30000,
+      }),
+    ).toBe("reflected");
+    expect(
+      resolveDecisionReflectionPhase({
+        elapsedMs: 30000,
+        reflected: false,
+        timeoutMs: 30000,
+      }),
+    ).toBe("timeout");
+  });
+
+  it("打ち切り時刻ちょうどでも、反映を検知できていれば反映を優先する", () => {
+    expect(
+      resolveDecisionReflectionPhase({
+        elapsedMs: 999999,
+        reflected: true,
+        timeoutMs: 30000,
+      }),
+    ).toBe("reflected");
   });
 });

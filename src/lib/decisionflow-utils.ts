@@ -512,6 +512,82 @@ export function getParticipantDeleteWaitState(
   };
 }
 
+/**
+ * 判断確定後のサーバ反映待ち。
+ *
+ * **ステージ更新はクライアントではなく `Decision_OnCreated` が行う。**
+ * 判断者は `ds_application` を更新できない（`ds_Decider` は Read のみ）ため、
+ * クライアントから更新しようとすると 403 になり、成功ハンドラに到達しない。
+ * 2026-08-15 に MinoDev2 の実利用者で踏んだ（「C5 第3段は実機で動いていなかった」節）。
+ *
+ * その代わり反映は**非同期**になる（実測 約4秒）。画面は反映を検知するまで
+ * 待機し、**検知できるまで確定済みの表示に切り替えない**。
+ */
+export const DECISION_REFLECTION_POLL_MS = 1500;
+
+/**
+ * 打ち切りまでの時間。実測4秒に対して余裕を大きく取る。
+ * ここを短くすると、フローが少し遅れただけで「反映が確認できていない」を出してしまう。
+ */
+export const DECISION_REFLECTION_TIMEOUT_MS = 30000;
+
+/**
+ * 反映済みか。
+ *
+ * **ステージの一致だけでは足りない。** `Decision_OnCreated` は差し戻しのとき
+ * `Update_application_stage` → `Clear_submitted_at_if_returned_to_draft` の
+ * **2回に分けて書く**ので、ステージだけを見ると2回の間で反映済みと誤判定し、
+ * `ds_submittedat` が残ったまま画面を進めてしまう。
+ */
+export function isDecisionReflectedOnApplication({
+  stage,
+  submittedAt,
+  expectedStage,
+}: {
+  stage: number | null | undefined;
+  submittedAt: string | null | undefined;
+  expectedStage: number;
+}): boolean {
+  if (normalizeApplicationStage(stage) !== expectedStage) return false;
+  // 差し戻しは submittedat の消去まで終わって初めて反映済み。
+  if (expectedStage === ApplicationStage.Draft) return !submittedAt;
+  return true;
+}
+
+export type DecisionReflectionPhase = "waiting" | "reflected" | "timeout";
+
+/**
+ * **反映を検知できていれば、経過時間に関わらず反映を優先する。**
+ * 打ち切りは「まだ確認できていない」を意味するだけで、判断の成否とは無関係。
+ */
+export function resolveDecisionReflectionPhase({
+  elapsedMs,
+  reflected,
+  timeoutMs,
+}: {
+  elapsedMs: number;
+  reflected: boolean;
+  timeoutMs: number;
+}): DecisionReflectionPhase {
+  if (reflected) return "reflected";
+  return elapsedMs >= timeoutMs ? "timeout" : "waiting";
+}
+
+/**
+ * **「失敗」と言わない。** 判断は既に記録されており、待っているのは反映だけである。
+ */
+export function getDecisionReflectionWaitState(
+  isWaiting: boolean,
+): OperationWaitState {
+  if (!isWaiting) return { visible: false, title: "", description: "" };
+  return {
+    visible: true,
+    title: "判断を反映しています",
+    description:
+      "判断は記録されました。申請の状態に反映されるまでお待ちください。",
+  };
+}
+
 export function isIgnorableParticipantRevokeFailure(
   message: string | null | undefined,
 ): boolean {

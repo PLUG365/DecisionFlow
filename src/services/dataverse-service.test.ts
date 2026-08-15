@@ -332,7 +332,13 @@ describe("DataverseService.createDecision", () => {
     });
   });
 
-  it("creates ds_decision and updates ds_application stage for immediate Code Apps feedback", async () => {
+  /**
+   * 2026-08-15 に反転したアサーション。以前は「クライアントもステージを更新する」
+   * ことを固定していたが、**判断者は `ds_application` を更新できない**（`ds_Decider` は
+   * Read のみ）ため、その書き込みは実利用者では必ず 403 になり、成功ハンドラごと
+   * 落としていた。ステージ更新は `Decision_OnCreated` の仕事である。
+   */
+  it("writes only ds_decision and leaves the stage to Decision_OnCreated", async () => {
     const { DataverseService } = await import("./dataverse-service");
 
     await DataverseService.createDecision({
@@ -345,15 +351,10 @@ describe("DataverseService.createDecision", () => {
     });
 
     expect(createDecisionRecord).toHaveBeenCalledTimes(1);
-    expect(updateApplicationRecord).toHaveBeenCalledWith(
-      "application-1",
-      expect.objectContaining({
-        ds_stage: 100000004,
-      }),
-    );
+    expect(updateApplicationRecord).not.toHaveBeenCalled();
   });
 
-  it("clears submittedAt when Code Apps returns an application to draft", async () => {
+  it("does not touch the application when returning it to draft either", async () => {
     const { DataverseService } = await import("./dataverse-service");
 
     await DataverseService.createDecision({
@@ -365,13 +366,9 @@ describe("DataverseService.createDecision", () => {
       nextApplicationStage: 100000000,
     });
 
-    expect(updateApplicationRecord).toHaveBeenCalledWith(
-      "application-1",
-      expect.objectContaining({
-        ds_stage: 100000000,
-        ds_submittedat: null,
-      }),
-    );
+    // 差し戻し時の submittedat クリアも Clear_submitted_at_if_returned_to_draft が持つ。
+    expect(createDecisionRecord).toHaveBeenCalledTimes(1);
+    expect(updateApplicationRecord).not.toHaveBeenCalled();
   });
 });
 
