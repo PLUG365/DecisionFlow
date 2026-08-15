@@ -39,6 +39,7 @@ Thumbs.db
 
 # Authentication cache (auth_helper.py)
 .auth_record.json
+.auth_record.*.json
 
 # Power Platform
 .power/
@@ -47,6 +48,8 @@ Thumbs.db
 # SDK generated (npx power-apps add-data-source で再生成)
 src/generated/
 power.config.json
+# 環境ごとの退避（MinoruEnv / MinoDev2 を切り替えるための控え）
+power.config.*.json
 
 # Python
 __pycache__/
