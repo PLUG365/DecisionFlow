@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ExternalLink,
   MessageSquarePlus,
+  Plus,
   Printer,
   Sparkles,
   Trash2,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { FormModal, FormSection } from "@/components/form-modal";
+import { ResourceFormModal } from "@/components/resource-form-modal";
 import { OperationWaitOverlay } from "@/components/operation-wait-overlay";
 import { StageBadge } from "@/components/stage-badge";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +52,7 @@ import {
   useMentionsByMessage,
   useMessages,
   useIsAdmin,
+  useIsApplicant,
   useIsDecider,
   useParticipants,
   useRunAiPreCheck,
@@ -111,7 +114,10 @@ import {
   parseApplicationDetailTab,
   toApplicationDetailTab,
 } from "@/lib/application-detail-url";
-import { buildLatestDecisionOptionNameLookup } from "@/lib/decisionflow-utils";
+import {
+  buildLatestDecisionOptionNameLookup,
+  canManageApplicationResources,
+} from "@/lib/decisionflow-utils";
 import { useDecisionDraft } from "@/hooks/use-decision-draft";
 import { getOperationErrorMessage } from "@/lib/operation-error";
 import { toast } from "sonner";
@@ -176,6 +182,15 @@ export default function ApplicationDetailPage() {
   const { data: decisions = [] } = useDecisions(id);
   const { data: delegationHistories } = useDelegationHistories(id);
   const { data: isDecider = false } = useIsDecider();
+  const { data: isApplicant = false } = useIsApplicant();
+  /**
+   * 関連資料の作成は `ds_Applicant` / `ds_Admin` だけが持つ。判定は
+   * `canManageApplicationResources` の1箇所にあり、横断ページと同じものを使う。
+   */
+  const canManageResources = canManageApplicationResources({
+    isAdmin,
+    isApplicant,
+  });
   /**
    * ロール表（`scripts/setup_security_roles.py`）で `ds_delegationhistory` を読めるのは
    * `ds_Decider` と `ds_Admin` だけ。読めない利用者に取得失敗を出さないのは体裁の話ではない。
@@ -202,6 +217,7 @@ export default function ApplicationDetailPage() {
   const decisionDraft = useDecisionDraft({ systemUserId, applicationId: id });
   const rationale = decisionDraft.text;
   const [isParticipantFormOpen, setIsParticipantFormOpen] = useState(false);
+  const [isResourceFormOpen, setIsResourceFormOpen] = useState(false);
   const [participantUserId, setParticipantUserId] = useState("");
   const [participantToDelete, setParticipantToDelete] =
     useState<Participant | null>(null);
@@ -393,6 +409,15 @@ export default function ApplicationDetailPage() {
    */
   useEffect(() => {
     setPostDecisionTarget(null);
+  }, [id]);
+
+  /**
+   * 前後移動では**ルートが同じまま `id` だけ変わり、再マウントされない**。
+   * 開いたままのモーダルが次の申請へ持ち越されると、**別の申請に資料が付く**。
+   * C5 第2段で同じ形の穴を塞いだのと同じ理由（`docs/UX_ROADMAP.md`）。
+   */
+  useEffect(() => {
+    setIsResourceFormOpen(false);
   }, [id]);
 
   /**
@@ -1269,6 +1294,14 @@ export default function ApplicationDetailPage() {
         </TabsContent>
 
         <TabsContent value="resources" className="space-y-3">
+          {canManageResources && (
+            <div className="flex justify-end">
+              <Button onClick={() => setIsResourceFormOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                資料を追加
+              </Button>
+            </div>
+          )}
           {resources.map((resource) => (
             <Card key={resource.ds_applicationresourceid}>
               <CardContent className="space-y-2 p-4">
@@ -1588,6 +1621,13 @@ export default function ApplicationDetailPage() {
           </div>
         </FormSection>
       </FormModal>
+
+      {/* 申請は選択済みで固定する。横断ページと同じモーダルを使い回している。 */}
+      <ResourceFormModal
+        open={isResourceFormOpen}
+        onOpenChange={setIsResourceFormOpen}
+        fixedApplicationId={id}
+      />
 
       <FormModal
         open={isParticipantFormOpen}

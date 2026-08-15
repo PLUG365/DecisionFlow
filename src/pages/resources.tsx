@@ -1,26 +1,18 @@
 import { useMemo, useState } from "react";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 
-import { FormModal, FormSection } from "@/components/form-modal";
 import { ListTable, type TableColumn } from "@/components/list-table";
+import { ResourceFormModal } from "@/components/resource-form-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
-import { Combobox } from "@/components/ui/combobox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   useApplications,
-  useCreateResource,
   useDeleteResource,
   useIsAdmin,
   useIsApplicant,
   useResources,
 } from "@/hooks/use-decisionflow";
-import {
-  canManageApplicationResources,
-  validateResourceInput,
-} from "@/lib/decisionflow-utils";
+import { canManageApplicationResources } from "@/lib/decisionflow-utils";
 import { getOperationErrorMessage } from "@/lib/operation-error";
 import { type ApplicationResource } from "@/types/decisionflow";
 import { toast } from "sonner";
@@ -32,15 +24,10 @@ export default function ResourcesPage() {
   const { data: applications = [] } = useApplications();
   const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   const { data: isApplicant, isLoading: isApplicantLoading } = useIsApplicant();
-  const createResource = useCreateResource();
   const deleteResource = useDeleteResource();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [resourceToDelete, setResourceToDelete] =
     useState<ApplicationResource | null>(null);
-  const [formApplicationId, setFormApplicationId] = useState("");
-  const [formTitle, setFormTitle] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  const [formUrl, setFormUrl] = useState("");
   const applicationMap = useMemo(
     () =>
       new Map(
@@ -52,51 +39,6 @@ export default function ResourcesPage() {
     value: application.ds_applicationid,
     label: application.ds_name,
   }));
-
-  const resetForm = () => {
-    setFormApplicationId("");
-    setFormTitle("");
-    setFormDescription("");
-    setFormUrl("");
-  };
-
-  const handleSave = () => {
-    if (!formApplicationId) {
-      toast.error("申請を選択してください");
-      return;
-    }
-    const validation = validateResourceInput({
-      title: formTitle,
-      url: formUrl,
-      description: formDescription,
-    });
-    if (!validation.valid) {
-      toast.error(Object.values(validation.fieldErrors)[0]);
-      return;
-    }
-
-    createResource.mutate(
-      {
-        resource: {
-          ds_name: formTitle.trim(),
-          ds_description: formDescription.trim() || undefined,
-          ds_url: formUrl.trim(),
-          _ds_applicationid_value: formApplicationId,
-        },
-      },
-      {
-        onSuccess: () => {
-          toast.success("関連資料リンクを追加しました");
-          setIsFormOpen(false);
-          resetForm();
-        },
-        onError: (error) =>
-          toast.error(
-            getOperationErrorMessage(error, "関連資料の追加に失敗しました。"),
-          ),
-      },
-    );
-  };
 
   const handleDelete = () => {
     if (!resourceToDelete) return;
@@ -192,64 +134,11 @@ export default function ResourcesPage() {
         searchKeys={["ds_name", "ds_description"]}
       />
 
-      <FormModal
+      <ResourceFormModal
         open={isFormOpen}
-        onOpenChange={(open) => {
-          setIsFormOpen(open);
-          if (!open) resetForm();
-        }}
-        title="関連資料を追加"
-        description="申請の根拠になるリンクを登録します。"
-        onSave={handleSave}
-        saveLabel="追加"
-        isSaving={createResource.isPending}
-      >
-        <div className="space-y-6">
-          <FormSection title="対象申請">
-            <div className="space-y-2">
-              <Label>申請 *</Label>
-              <Combobox
-                options={applicationOptions}
-                value={formApplicationId}
-                onValueChange={setFormApplicationId}
-                placeholder="申請を選択"
-                searchPlaceholder="申請を検索"
-              />
-            </div>
-          </FormSection>
-
-          <FormSection title="リンク情報">
-            <div className="space-y-2">
-              <Label htmlFor="resource-title">タイトル *</Label>
-              <Input
-                id="resource-title"
-                value={formTitle}
-                onChange={(event) => setFormTitle(event.target.value)}
-                placeholder="例: 見積条件の根拠資料"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="resource-url">URL *</Label>
-              <Input
-                id="resource-url"
-                value={formUrl}
-                onChange={(event) => setFormUrl(event.target.value)}
-                placeholder="https://..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="resource-description">説明 *</Label>
-              <Textarea
-                id="resource-description"
-                value={formDescription}
-                onChange={(event) => setFormDescription(event.target.value)}
-                rows={4}
-                placeholder="資料の位置づけ・確認ポイント・判断に必要な要点（AI 判断に活用されます）"
-              />
-            </div>
-          </FormSection>
-        </div>
-      </FormModal>
+        onOpenChange={setIsFormOpen}
+        applicationOptions={applicationOptions}
+      />
 
       <ConfirmDialog
         open={Boolean(resourceToDelete)}
