@@ -26,6 +26,8 @@ import {
   getSelectedCategoryRegulationText,
   isApplicationReturnedForRevision,
   isIgnorableParticipantRevokeFailure,
+  appendGeneratedDescription,
+  resolveDescribeOutcome,
   buildApplicationListRow,
   canManageApplicationResources,
   filterApplicationsByScope,
@@ -928,6 +930,21 @@ describe("parseSharePointLink", () => {
     });
   });
 
+  it("日本語ファイル名がパーセント符号化された実物の URL を解ける", () => {
+    // ブラウザからコピーすると日本語は必ずこの形になる。**実測に使った実物。**
+    // 符号化されたまま SharePoint へ渡すと、二重符号化でファイルが見つからない。
+    expect(
+      parseSharePointLink(
+        "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com/Documents/%E3%83%AC%E3%83%9D%E3%83%BC%E3%83%88%E5%85%B1%E6%9C%89%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6_skill.pptx",
+      ),
+    ).toEqual({
+      kind: "path",
+      siteUrl:
+        "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com",
+      filePath: "/Documents/レポート共有について_skill.pptx",
+    });
+  });
+
   it("チームサイトのパス形式で、サイトの区切りを /sites/<name> にする", () => {
     expect(
       parseSharePointLink(
@@ -974,5 +991,126 @@ describe("parseSharePointLink", () => {
     expect(
       parseSharePointLink("http://contoso.sharepoint.com/sites/S/a.docx"),
     ).toEqual({ kind: "not-sharepoint" });
+  });
+});
+
+describe("appendGeneratedDescription", () => {
+  it("利用者が書いた説明を上書きせず末尾に足す", () => {
+    expect(appendGeneratedDescription("手で書いた要点", "生成された説明")).toBe(
+      "手で書いた要点\n\n生成された説明",
+    );
+  });
+
+  it("説明が空なら生成結果だけを置く（先頭に空行を作らない）", () => {
+    expect(appendGeneratedDescription("", "生成された説明")).toBe(
+      "生成された説明",
+    );
+    expect(appendGeneratedDescription(null, "生成された説明")).toBe(
+      "生成された説明",
+    );
+    expect(appendGeneratedDescription("   \n ", "生成された説明")).toBe(
+      "生成された説明",
+    );
+  });
+
+  it("生成結果が空なら既存の説明を変えない", () => {
+    expect(appendGeneratedDescription("手で書いた要点", "")).toBe(
+      "手で書いた要点",
+    );
+    expect(appendGeneratedDescription("手で書いた要点", "  ")).toBe(
+      "手で書いた要点",
+    );
+    expect(appendGeneratedDescription("手で書いた要点", undefined)).toBe(
+      "手で書いた要点",
+    );
+  });
+
+  it("同じ生成結果を2回押しても重ねない", () => {
+    const once = appendGeneratedDescription("手で書いた要点", "生成された説明");
+    expect(appendGeneratedDescription(once, "生成された説明")).toBe(once);
+  });
+
+  it("末尾の空白は落とすが、途中の改行は保つ", () => {
+    expect(appendGeneratedDescription("一行目\n二行目  \n", "生成")).toBe(
+      "一行目\n二行目\n\n生成",
+    );
+  });
+});
+
+describe("resolveDescribeOutcome", () => {
+  const ok = {
+    actingAs: "i:0#.f|membership|diegos@contoso.onmicrosoft.com",
+    description: "Power BI のレポート共有パターンをまとめた勉強会資料です。",
+    reason: "",
+  };
+
+  it("身元と説明が揃っていれば追記する", () => {
+    expect(resolveDescribeOutcome(ok)).toEqual({
+      kind: "append",
+      description: ok.description,
+    });
+  });
+
+  it("身元が取れないときは権限の問題として伝える", () => {
+    // フローは呼び出した本人の資格で動くので、身元が空 = 本人が読めない。
+    for (const actingAs of ["", "   ", null, undefined]) {
+      expect(resolveDescribeOutcome({ ...ok, actingAs })).toEqual({
+        kind: "error",
+        message: "このファイルを読む権限がありません",
+      });
+    }
+  });
+
+  it("reason ごとに違う文言を返す（直す場所が違うため）", () => {
+    const cases: Array<[string, string]> = [
+      ["unreadable", "ファイルが見つかりませんでした。URL を確認してください"],
+      ["too-large", "ファイルが大きすぎます（25 MB まで）"],
+      ["content-unreadable", "ファイルの中身を読み取れませんでした"],
+      ["extract-failed", "資料からテキストを取り出せませんでした"],
+      ["generation-failed", "説明を生成できませんでした"],
+    ];
+    for (const [reason, message] of cases) {
+      expect(resolveDescribeOutcome({ ...ok, reason })).toEqual({
+        kind: "error",
+        message,
+      });
+    }
+  });
+
+  it("reason が立っていたら、説明文が入っていても追記しない", () => {
+    // 抽出に失敗すると説明文プロンプトは「読み取れませんでした」を返す。
+    // **それを説明欄に足してはいけない。**
+    expect(
+      resolveDescribeOutcome({
+        ...ok,
+        reason: "extract-failed",
+        description: "この資料の内容を読み取れませんでした。",
+      }),
+    ).toEqual({
+      kind: "error",
+      message: "資料からテキストを取り出せませんでした",
+    });
+  });
+
+  it("説明が空なら追記しない", () => {
+    for (const description of ["", "   ", null, undefined]) {
+      expect(resolveDescribeOutcome({ ...ok, description })).toEqual({
+        kind: "error",
+        message: "説明を生成できませんでした",
+      });
+    }
+  });
+
+  it("応答そのものが無いときも落ちない", () => {
+    expect(resolveDescribeOutcome(undefined).kind).toBe("error");
+    expect(resolveDescribeOutcome(null).kind).toBe("error");
+  });
+
+  it("知らない reason は握り潰さず、説明があれば追記する", () => {
+    // フロー側に値が増えたとき、画面が黙って止まるより追記して見せるほうがよい。
+    expect(resolveDescribeOutcome({ ...ok, reason: "something-new" })).toEqual({
+      kind: "append",
+      description: ok.description,
+    });
   });
 });

@@ -9,7 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateResource } from "@/hooks/use-decisionflow";
 import {
+  appendGeneratedDescription,
   parseSharePointLink,
+  resolveDescribeOutcome,
   validateResourceInput,
 } from "@/lib/decisionflow-utils";
 import { getOperationErrorMessage } from "@/lib/operation-error";
@@ -52,12 +54,13 @@ export function ResourceFormModal({
   const [isDescribing, setIsDescribing] = useState(false);
 
   /**
-   * URL 先を読んで説明文を生成する（第1段）。
+   * URL 先を読んで説明文を生成し、**説明欄の末尾に足す**。
    *
-   * **第1段では説明文を書かない。** いま確かめたいのは
-   * 「このフローが**誰の資格で**外部を読むか」で、それが決まらないと
-   * 機能そのものが成立しない（`docs/UX_ROADMAP.md` の境界表）。
-   * フローが返す `actingAs` を出して、呼び出した本人かどうかを見る。
+   * 読むのは**呼び出した本人の資格**（フローの SharePoint 接続が invoker。
+   * 2026-08-16 に実測）。本人が読めないファイルは読めない。
+   *
+   * **上書きしない。** `説明 *` は必須項目なので、生成結果で利用者の文章を潰すと
+   * 書き直しを強いることになる（`docs/UX_ROADMAP.md` の決定）。
    */
   const handleDescribe = async () => {
     const link = parseSharePointLink(url);
@@ -86,18 +89,18 @@ export function ResourceFormModal({
         toast.error(getOperationErrorMessage(result.error, "読み取りに失敗しました"));
         return;
       }
-      // 身元が取れないのは、そのサイトに読む権限が無いとき。
-      // フローは呼び出した本人の資格で動くので（2026-08-16 実測）、
-      // **本人が読めないものは読めない**。それを素直に伝える。
-      if (!result.data?.actingAs?.trim()) {
-        toast.error("このファイルを読む権限がありません");
+      // **どう扱うかの判定は純関数に置いている**（`resolveDescribeOutcome`）。
+      // 分岐が5通りあり、画面の中に散らすと「追記してはいけないときに追記する」
+      // 退行がテストの外で起きる。
+      const outcome = resolveDescribeOutcome(result.data);
+      if (outcome.kind === "error") {
+        toast.error(outcome.message);
         return;
       }
-      if (result.data?.status !== "succeeded") {
-        toast.error("ファイルが見つかりませんでした。URL を確認してください");
-        return;
-      }
-      toast.success("読み取れました");
+      setDescription((current) =>
+        appendGeneratedDescription(current, outcome.description),
+      );
+      toast.success("説明を追記しました");
     } catch (error) {
       toast.error(getOperationErrorMessage(error, "読み取りに失敗しました"));
     } finally {

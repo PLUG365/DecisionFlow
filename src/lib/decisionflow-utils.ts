@@ -128,6 +128,82 @@ export function validateResourceInput(input: ResourceInput): ValidationResult {
   };
 }
 
+/**
+ * 生成した説明文を、利用者が書いた説明の**末尾に付け足す**（G13 第2段）。
+ *
+ * **上書きしない。** `説明 *` は必須項目で、`validateResourceInput` が空を弾く。
+ * 利用者が既に書いた文章を生成結果で潰すと、書き直しを強いることになる。
+ * 追記なら非破壊なので、生成を試してから消す・直すが利用者側でできる
+ * （`docs/UX_ROADMAP.md`「決定: 生成した説明は末尾に付け足す」）。
+ *
+ * 同じ文章を2回押しで重ねない。**押したのに何も起きないように見える**より、
+ * 重複が積まれるほうが直しにくい。
+ */
+export function appendGeneratedDescription(
+  current: string | null | undefined,
+  generated: string | null | undefined,
+): string {
+  const addition = generated?.trim() ?? "";
+  const existing = current?.trimEnd() ?? "";
+  if (!addition) return existing;
+  if (!existing) return addition;
+  if (existing.endsWith(addition)) return existing;
+  return `${existing}\n\n${addition}`;
+}
+
+/**
+ * フローが返す `reason` を利用者向けの文言にする。
+ *
+ * **フローの生の値を画面へ出さない。** `too-large` をそのまま見せても、
+ * 何をすればいいのか分からない。上限のような具体値も文言側に持たせる。
+ */
+const DESCRIBE_FAILURE_MESSAGES: Record<string, string> = {
+  unreadable: "ファイルが見つかりませんでした。URL を確認してください",
+  "too-large": "ファイルが大きすぎます（25 MB まで）",
+  // ファイルは見つかったが中身を取れなかった。抽出・生成の失敗と分けているのは、
+  // **直す場所が違う**から（読み取り / 抽出プロンプト / 説明文プロンプト）。
+  "content-unreadable": "ファイルの中身を読み取れませんでした",
+  "extract-failed": "資料からテキストを取り出せませんでした",
+  "generation-failed": "説明を生成できませんでした",
+};
+
+export type DescribeResult = {
+  actingAs?: string | null;
+  description?: string | null;
+  reason?: string | null;
+};
+
+export type DescribeOutcome =
+  | { kind: "error"; message: string }
+  | { kind: "append"; description: string };
+
+/**
+ * 説明生成フローの応答を、画面がやることに翻訳する。
+ *
+ * **判定をコンポーネントに置かない。** ここが「いつ追記してよいか」の唯一の門で、
+ * 分岐が5通りある。画面の中に散らすと、追記してはいけないときに追記する退行が
+ * テストの外で起きる。
+ */
+export function resolveDescribeOutcome(
+  data: DescribeResult | null | undefined,
+): DescribeOutcome {
+  // 身元が取れないのは、そのサイトを読む権限が無いとき。フローは呼び出した本人の
+  // 資格で動くので（2026-08-16 実測）、**本人が読めないものは読めない**。
+  if (!data?.actingAs?.trim()) {
+    return { kind: "error", message: "このファイルを読む権限がありません" };
+  }
+
+  const failure = DESCRIBE_FAILURE_MESSAGES[data.reason?.trim() ?? ""];
+  if (failure) return { kind: "error", message: failure };
+
+  const description = data.description?.trim() ?? "";
+  if (!description) {
+    return { kind: "error", message: "説明を生成できませんでした" };
+  }
+
+  return { kind: "append", description };
+}
+
 export function validateApplicationInput(
   input: ApplicationInput,
 ): ValidationResult {
