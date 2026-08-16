@@ -89,6 +89,18 @@ GitHub Release に公開されたソリューションZipを使って、Decision
 
 リリースにソリューションZipがない場合は、まだ配布用パッケージが公開されていません。リポジトリ管理者が手動でZipを用意し、Release Assets として添付します。作業用の置き場は [artifacts/solutions/](artifacts/solutions/) です。
 
+> **⚠ 公開されているZipは開発環境より古い状態です（2026-08-16 時点で実測）。**
+>
+> | | バージョン | 日付 |
+> | --- | --- | --- |
+> | GitHub Release `v0.1.0-solution` の Zip | **1.0.0.15** | 2026-05-20 |
+> | 開発環境の実物 | **1.0.0.18** | 2026-08-15 |
+>
+> 差分の3版には、判断確定のアダプティブカード、担当変更要求、関連資料の説明自動生成（G13）などが含まれます。
+> **最新機能を試したい場合はデプロイ版**を使ってください。
+> 配布用Zipの更新は、エクスポートして Release を作り直す作業が別途必要です
+> （手順は [artifacts/solutions/README.md](artifacts/solutions/README.md)）。
+
 ### 3. Power Platform にインポートする
 
 1. [Power Apps](https://make.powerapps.com/) を開き、右上の環境セレクターで導入先環境を選択する
@@ -111,6 +123,9 @@ GitHub Release に公開されたソリューションZipを使って、Decision
 7. Code Apps のアプリを開き、申請作成・提出・判断キュー表示が動くことを確認する
 8. 通知メールにリンクを入れる場合は、ソリューション環境変数 `ds_DecisionFlowAppBaseUrl` / `ds_CopilotTeamsAppId` を導入先環境の値に設定する
 9. Copilot Studio を使う場合は、認証、Dataverse ナレッジ、Teams チャネル公開を環境に合わせて確認する
+10. 関連資料の説明自動生成（G13）を使う場合は、**AI Builder のプロンプト2本を UI で作る**必要があります。ソリューションには含められません（詳細は [docs/DEPLOY_SETUP.md](docs/DEPLOY_SETUP.md) の 8-1）
+
+> **10 は上記の 1.0.0.15 には含まれていません。** G13 は 1.0.0.15 より後の機能です。
 
 リンク用のソリューション環境変数:
 
@@ -134,7 +149,8 @@ GitHub Release に公開されたソリューションZipを使って、Decision
 | 1〜3 | 事前準備（ツール、`.env`、PAC CLI / Python 認証）                      |
 | 4〜6 | Dataverse 構築（事前チェック → テーブル → セキュリティロール）         |
 | 7    | 管理センターで判断者グループチームを手動設定                           |
-| 8    | Power Automate フローのデプロイ（access / notification / ai_decision） |
+| 8    | Power Automate フローのデプロイ（access / notification / ai_decision / delegation / agent_message） |
+| 8-1  | **AI Builder プロンプト2本を UI で作成**（関連資料の説明生成。ここを飛ばすと 8 の残り1本が落ちる） |
 | 9    | Code Apps を対象環境へ初回デプロイ                                     |
 | 10   | Copilot Studio エージェントの構築（任意）                              |
 | 11   | 通知フローのデプロイとリンク用環境変数の設定                           |

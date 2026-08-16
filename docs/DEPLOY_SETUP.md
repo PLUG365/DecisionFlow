@@ -132,7 +132,13 @@ py scripts/setup_security_roles.py
 py scripts/deploy_access_flows.py
 py scripts/deploy_notification_flows.py
 py scripts/deploy_ai_decision.py
+py scripts/deploy_delegation_flow.py --activate
+py scripts/deploy_agent_message_flow.py
 ```
+
+**`deploy_resource_description_flow.py` はここでは実行しません。** 先に AI Builder の
+プロンプトを2本作る必要があります（次の 8-1）。手順を飛ばすと
+`AI Builder プロンプト 'ResourceDescription' が見つかりません` で落ちます。
 
 この順序で問題ありません。ソリューション `DecisionSupport` は [scripts/setup_dataverse.py](../scripts/setup_dataverse.py) が作成するため、Power Automate のデプロイは Code Apps より先に実行できます。
 
@@ -144,6 +150,40 @@ py scripts/deploy_ai_decision.py
 - `deploy_ai_decision.py` は `ds_category.ds_regulationtext` を prompt 入力へ追加し、AI結果は既存の `ds_application` AI列へ最新結果として上書き保存します
 - `deploy_notification_flows.py` の各通知フローはバックグラウンド実行のため、Code Apps 側の `add-flow` は不要です
 - `deploy_access_flows.py` の Revoke フローと `deploy_ai_decision.py` の AI 判断フローは、後続の Code Apps 手順で `npx power-apps add-flow` が必要です
+- `deploy_delegation_flow.py` は担当変更要求フロー `Application_DelegationRequest_OnCreated` を作成します。**`--activate` を付けないと下書きのまま残ります**
+- `deploy_agent_message_flow.py` は Copilot Studio エージェントが会話へ投稿する
+  `post_application_message` を作成します。境界は [docs/AGENT_WRITE_BOUNDARY.md](AGENT_WRITE_BOUNDARY.md)
+
+### 8-1. 関連資料の説明生成に使う AI Builder プロンプトを作る（G13）
+
+**この2本は UI でしか作れません。** `code interpreter` を有効にしたプロンプトは
+プラットフォームが発行する署名（`signature`）を持ち、`AIModelPublish` で再現できないためです
+（潰した経路は `scripts/deploy_resource_description_flow.py` の `find_text_prompt` に残してあります）。
+
+[make.powerapps.com](https://make.powerapps.com) → **AI hub** → **プロンプト** → 独自のプロンプトを作成。
+
+| プロンプト名 | code interpreter | 入力 | 出力 |
+| --- | --- | --- | --- |
+| `ResourceDescription` | **ON** | `File`（画像またはドキュメント） / `FileName`（テキスト） | Text |
+| `ResourceDescriptionText` | **OFF** | `fileName` / `documentText`（どちらもテキスト） | Text |
+
+**指示文はスクリプトに正本があります。** ここへ写すと、次にプロンプトを直したとき
+片方だけ古くなります。次のコマンドが**貼るべき文面をそのまま出力**します。
+
+```powershell
+py scripts/deploy_resource_description_flow.py
+```
+
+プロンプトが無い、入力名が違う、指示文が空、のいずれでも**その場で落ちて理由を表示**します。
+2本とも整ったら同じコマンドがフロー `ApplicationResource_DescribeLink` を配備します。
+
+> **入力名は大文字小文字まで一致させてください。** `ResourceDescription` 側は
+> `File` / `FileName`（先頭が大文字）です。UI の既定名のままにすると自動採番の id に
+> 縛られ、フローが空を渡します。**実行時に静かに失敗する**ので、検査で落としています。
+
+> **Test は押さなくてかまいません。** この環境では未保存プロンプトの Test が
+> `Missing privilege definition: prvWritemsdyn_AIModel` で失敗しますが、
+> **保存は通り、フローからの実行にも影響しません**（2026-08-16 実測）。
 
 ## 9. Code Apps を対象環境へ初回デプロイする
 
@@ -192,11 +232,18 @@ Code Apps から呼び出すフローを追加します。**`add-data-source` �
 
 - `py scripts/deploy_access_flows.py` 実行結果に出た `Participant_PreDelete_RevokeAccess` の `workflowid`
 - `py scripts/deploy_ai_decision.py` 実行結果に出た `Application_GenerateAiDecision` の `workflowid`
+- `py scripts/deploy_resource_description_flow.py` 実行結果に出た `ApplicationResource_DescribeLink` の `workflowid`
 
 ```powershell
 npx power-apps add-flow --flow-id {Participant_PreDelete_RevokeAccess の workflowid} --non-interactive
 npx power-apps add-flow --flow-id {Application_GenerateAiDecision の workflowid} --non-interactive
+npx power-apps add-flow --flow-id {ApplicationResource_DescribeLink の workflowid} --non-interactive
 ```
+
+> **`ApplicationResource_DescribeLink` は SharePoint 接続を使います。** 対象環境に
+> SharePoint 接続が無ければ先に作ってください（`npx power-apps create-connection
+> --api-id shared_sharepointonline` はブラウザでのサインインが開きます）。
+> **この接続は設計時の束ね先で、実行時は利用者ごとの接続が使われます**（次の 9-4 の注記）。
 
 > **2026-08-16 訂正。** ここには「PAC CLI をセッション親として必要とするため
 > `py scripts/run_power_apps_cli.py` を使う」と書いてありましたが、**今は不要です。**
@@ -558,6 +605,17 @@ Copilot Studio のテストパネル（または公開済み Teams チャネル�
 8. Copilot Studio で申請概要を問い合わせできる
 9. Applicant には「マスタ管理」が表示されるがカテゴリ/判断選択肢は読取り専用で、ds_Admin / ds_Decider ではカテゴリを編集できる
 10. Step 12 を実施した場合: Copilot Studio チャットから判断確定でき、`ds_decision` 作成と `ds_application` ステージ更新が反映される
+11. **関連資料の「説明を生成」が動く**（G13）。**申請者ロールの利用者で**、
+    自分が読める Office ファイルの URL を貼って押し、説明欄の**末尾に文章が足される**こと
+
+> **11 は管理者で測っても意味がありません。** このフローは
+> **呼び出した本人の資格**で SharePoint を読みます（`runtimeSource: invoker`）。
+> 管理者は大抵のファイルを読めるので、**配線が壊れていても成功して見えます。**
+> 逆に「本人が読めないファイルで失敗すること」まで見て、初めて確かめたことになります。
+
+> **8-1 を飛ばした場合、ここに来る前に落ちます。** プロンプトが無ければ
+> `deploy_resource_description_flow.py` が配備を拒否するので、
+> **フロー自体が存在せず** Code Apps の `add-flow` もできません。
 
 コード変更を伴う場合の確認コマンド:
 

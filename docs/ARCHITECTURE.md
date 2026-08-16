@@ -1,6 +1,12 @@
 # DecisionFlow アーキテクチャ
 
-> **最終更新**: 2026-05-22
+> **最終更新**: 2026-08-16
+>
+> **2026-08-16 に見直したのはデプロイに関わる範囲だけです。**
+> フロー一覧・AI Builder プロンプト一覧・全体図を、MinoDev2 の実環境
+> （`workflow` / `msdyn_aimodel` を直接照会）と突き合わせて直しました。
+> **データモデル、セキュリティロール、Copilot Studio のトピック設計、
+> 移送まわりの節は今回見ていません。** それらが実装と合っているかは未確認です。
 
 ---
 
@@ -14,7 +20,7 @@
 | **Code Apps**                  | 申請者UI / 判断者UI / 経営ダッシュボード     | 判断キュー・スレッドUI・負荷チャート等カスタムビジュアルが必要 |
 | **Power Automate**             | イベント駆動の通知・リマインド・AI 判断生成  | 確定的フロー処理                                               |
 | **Copilot Studio**             | DecisionFlow Assistant                       | 判断待ち一覧 / 申請概要 / 類似案件 / 判断ドラフト              |
-| **AI Builder (AI プロンプト)** | `DecisionRecommendation` による AI 判断生成  | フローから再利用 + 構造化 JSON 出力                            |
+| **AI Builder (AI プロンプト)** | `DecisionRecommendation` による AI 判断生成、`ResourceDescription` / `ResourceDescriptionText` による関連資料の説明生成 | フローから再利用 + 構造化 JSON 出力                            |
 
 ### 1.2 全体アーキテクチャ
 
@@ -46,6 +52,7 @@ flowchart TB
         F3["③判断確定通知"]
         F4["④メンション通知"]
         F5["⑤AI判断生成<br/>提出時/手動更新"]
+        F6["⑥資料の説明生成<br/>説明を生成ボタン"]
     end
 
     subgraph CS["Copilot Studio - DecisionFlow Assistant"]
@@ -57,11 +64,14 @@ flowchart TB
 
     subgraph AI["AI Builder Prompts"]
         P2["DecisionRecommendation<br/>AI判断"]
+        P3["ResourceDescription<br/>資料の抽出"]
+        P4["ResourceDescriptionText<br/>資料の説明文"]
     end
 
     subgraph EXT["外部チャネル"]
         E1["Teams"]
         E2["Outlook<br/>メール"]
+        E3["SharePoint /<br/>OneDrive"]
     end
 
     UI -->|SDK postMessage| DV
@@ -85,6 +95,12 @@ flowchart TB
 
     F5 --> P2
     P2 -->|AI判断結果| T1
+
+    UI -->|説明を生成| F6
+    F6 -->|呼び出した本人の資格<br/>invoker| E3
+    F6 --> P3
+    P3 -->|抽出テキスト| P4
+    P4 -->|説明文| UI
 
     CS -->|ナレッジ参照| DV
     CS -->|判断確定ツール| DV
@@ -383,6 +399,8 @@ erDiagram
 | `Application_StalledReminder`        | 期限超過または停滞申請を判断者へリマインドする     | Recurrence: 毎朝 9:00 JST                                                 |
 | `Application_GenerateAiDecision`     | 申請の AI 判断を生成・更新する                     | Power Apps V2: Code Apps の Submitted 保存時 / 「AI判断更新」ボタン       |
 | `Application_DelegationRequest_OnCreated` | Submitted申請の判断担当を安全に変更する       | Dataverse: `ds_delegationrequest` 行追加                                  |
+| `ApplicationResource_DescribeLink`   | 関連資料の URL を読んで説明文を生成する（G13）     | Power Apps V2: Code Apps の「説明を生成」ボタン                           |
+| `post_application_message`           | エージェントが申請の会話へ投稿する                 | Copilot Studio エージェントのツール呼び出し                               |
 
 <!-- markdownlint-enable MD060 -->
 
@@ -400,6 +418,8 @@ erDiagram
 | `Application_StalledReminder`        | `ds_stage` が Submitted、希望期限超過または `ds_submittedat` から 3 日以上経過。`modifiedon` は使わない | 対象申請ごとに判断者を取得し、Outlook メールで通知。Teams チャネル設定がある場合はチャネルにも投稿                                                                                                                                                                                                                      | Dataverse, Office 365 Outlook, Microsoft Teams |
 | `Application_GenerateAiDecision`     | 対象申請が Submitted。提出直後は会話履歴が空でもよい。類似過去案件は初回提出時から検索対象にする。      | 申請、関連資料、会話履歴、過去類似案件、判断選択肢を取得し、AI Builder `DecisionRecommendation` を実行。申請概要・会話概要・推奨判断・コメント・根拠を `ds_application` に保存し、Code Apps 呼び出し時は結果を返す。                                                                                                    | Dataverse, AI Builder                          |
 | `Application_DelegationRequest_OnCreated` | 要求がPending、申請がSubmitted、実行者が現在担当または`ds_Admin`、変更先が有効な`DecisionFlow-Deciders` | `createdby`を実行者として再評価し、判断者を1名へ更新。要求と専用履歴へ結果を残し、成功後に新旧担当者と申請者へメール通知する。トリガー同時実行数は1。 | Dataverse, Office 365 Outlook |
+| `ApplicationResource_DescribeLink` | サイト URL とファイルの指し方（パス、または共有リンクを符号化した `u!…`）が渡される | **呼び出した本人の資格で** SharePoint を読む。共有リンクは `_api/v2.0/shares` で解決し、25 MB 以下なら中身を取得。AI Builder `ResourceDescription` でテキストを抽出し、`ResourceDescriptionText` で説明文を書く。生成した説明は Code Apps 側で**説明欄の末尾に追記**する（上書きしない） | SharePoint（**invoker**）, Dataverse, AI Builder |
+| `post_application_message` | 実行者が systemuser として解決でき、本文が空でなく、申請が存在する | エージェントの発話ではなく**認証済みユーザー変数**から渡された実行者で `ds_message` を作成する。境界は [AGENT_WRITE_BOUNDARY.md](AGENT_WRITE_BOUNDARY.md) | Dataverse |
 
 <!-- markdownlint-enable MD060 -->
 
@@ -486,10 +506,30 @@ Phase 2.5 実装前に、対象環境で以下の接続を Power Automate UI か
 | プロンプト                           | 入力                                                       | 出力 (JSON)                                                                                                        |
 | ------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | **DecisionRecommendation**（AI判断） | 申請 + 関連資料一覧 + 会話履歴 + 過去類似案件 + 判断選択肢 | `{applicationSummary, conversationSummary, recommendedOption, comment, risks: [{category, detail}], similarCases}` |
+| **ResourceDescription**（資料の抽出） | `File`（ドキュメント） + `FileName` | テキスト（抽出した全文、または `EXTRACT_FAILED`） |
+| **ResourceDescriptionText**（説明文） | `fileName` + `documentText` | テキスト（2〜4文の説明文） |
 
 <!-- markdownlint-enable MD060 -->
 
 `IssueExtraction`（論点抽出）は将来候補。2026-05-03 時点では作成・デプロイしていない。
+
+### 5.1 資料の説明生成を2本に分けている理由
+
+**code interpreter を有効にすると、生成された Python の戻り値がそのまま出力になり、
+モデルが文章を書く段が消える。** 2026-08-16 に実測した。
+
+| プロンプト | code interpreter | 消費クレジット | 何をしているか |
+| --- | --- | --- | --- |
+| `ResourceDescription` | ON | **0** | 署名済みの Python を走らせるだけ。**モデルを呼んでいない** |
+| `ResourceDescriptionText` | OFF | 7.5 | 言語モデルが説明文を書く |
+
+Office ファイル（`.pptx` / `.docx` / `.xlsx`）をドキュメント入力として扱うには
+code interpreter が要る。だが入れるとモデルが黙る。**この2つを1本で両立できない。**
+
+**この2本は UI でしか作成・編集できない。** code interpreter 付きのプロンプトは
+プラットフォームが発行する署名を持ち、`AIModelPublish` で再現できない。
+`scripts/deploy_resource_description_flow.py` は検査だけを行い、
+形が違えば**貼るべき指示文を出力して落ちる**（潰した経路は同スクリプトの docstring）。
 
 `DecisionRecommendation` の出力例:
 
