@@ -2,13 +2,18 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { FormModal, FormSection } from "@/components/form-modal";
+import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateResource } from "@/hooks/use-decisionflow";
-import { validateResourceInput } from "@/lib/decisionflow-utils";
+import {
+  parseSharePointLink,
+  validateResourceInput,
+} from "@/lib/decisionflow-utils";
 import { getOperationErrorMessage } from "@/lib/operation-error";
+import { ApplicationResource_DescribeLinkService } from "@/generated/services/ApplicationResource_DescribeLinkService";
 
 type ApplicationOption = { value: string; label: string };
 
@@ -44,6 +49,54 @@ export function ResourceFormModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
+  const [isDescribing, setIsDescribing] = useState(false);
+
+  /**
+   * URL 先を読んで説明文を生成する（第1段）。
+   *
+   * **第1段では説明文を書かない。** いま確かめたいのは
+   * 「このフローが**誰の資格で**外部を読むか」で、それが決まらないと
+   * 機能そのものが成立しない（`docs/UX_ROADMAP.md` の境界表）。
+   * フローが返す `actingAs` を出して、呼び出した本人かどうかを見る。
+   */
+  const handleDescribe = async () => {
+    const link = parseSharePointLink(url);
+    if (link.kind === "not-sharepoint") {
+      toast.error("SharePoint / OneDrive の URL を入れてください");
+      return;
+    }
+    if (link.kind === "sharing-link") {
+      toast.error(
+        "共有リンクはまだ読めません。ファイルを開いた状態のアドレスを貼ってください",
+      );
+      return;
+    }
+    if (link.kind === "unsupported") {
+      toast.error("この URL からはファイルを特定できませんでした");
+      return;
+    }
+
+    setIsDescribing(true);
+    try {
+      const result = await ApplicationResource_DescribeLinkService.Run({
+        text: link.siteUrl,
+        text_1: link.filePath,
+      });
+      if (!result.success) {
+        toast.error(getOperationErrorMessage(result.error, "読み取りに失敗しました"));
+        return;
+      }
+      const actingAs = result.data?.actingAs?.trim() || "(不明)";
+      const status = result.data?.status ?? "(不明)";
+      toast.info(`実行者: ${actingAs} / 読み取り: ${status}`, {
+        duration: 15000,
+      });
+    } catch (error) {
+      toast.error(getOperationErrorMessage(error, "読み取りに失敗しました"));
+    } finally {
+      setIsDescribing(false);
+    }
+  };
 
   // 申請詳細では `id` だけ変わって再マウントされないことがあるので、
   // 固定の申請が変わったら追従させる。
@@ -134,12 +187,22 @@ export function ResourceFormModal({
           </div>
           <div className="space-y-2">
             <Label htmlFor="resource-url">URL *</Label>
-            <Input
-              id="resource-url"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-              placeholder="https://..."
-            />
+            <div className="flex gap-2">
+              <Input
+                id="resource-url"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://..."
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleDescribe}
+                disabled={isDescribing || !url.trim()}
+              >
+                {isDescribing ? "読み取り中..." : "説明を生成"}
+              </Button>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="resource-description">説明 *</Label>

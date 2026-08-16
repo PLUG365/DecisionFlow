@@ -224,8 +224,29 @@ Code Apps 公式ドキュメントの制約表が、利用者側の要件とし�
 >
 > — [Add Power Automate flows to a code app](https://learn.microsoft.com/power-apps/developer/code-apps/how-to/add-flows)
 
-本リポジトリの `ds_Applicant` / `ds_Decider` / `ds_Admin` は App Opener 相当の権限を含むため、
-**9-2 でロールを割り当てていれば追加の設定は要りません。**
+本リポジトリの `ds_Applicant` / `ds_Decider` / `ds_Admin` は App Opener 相当の権限を含みます。
+
+> **2026-08-16 再訂正。ロールだけでは足りませんでした。**
+> 上の引用のとおり Learn の制約表に Run only users は出てきませんが、**実測は逆でした。**
+>
+> | フロー | Run only users | 利用者からの呼び出し |
+> | --- | --- | --- |
+> | `Participant_PreDelete_RevokeAccess` / `Application_GenerateAiDecision` | 設定済み | 動く |
+> | `ApplicationResource_DescribeLink`（新規） | **未設定** | `Microsoft.Dynamics.CRM.install` が **403**、`connectivity/apis/shared_logicflows/connections/...` が **404**、呼び出し失敗 |
+>
+> **「公式ドキュメントに書いていない」を「不要」の根拠にしたのが誤り。**
+> 記述の不在は仕様の否定ではない。`docs/UX_ROADMAP.md` の
+> 「弾かれたら、そのとき初めてポータルで追加する」に従って実測で決める。
+
+したがって、**Code Apps から呼ぶフローには Run only users を設定してください。**
+Power Automate の各フロー詳細画面で、DecisionFlow 利用者グループ、または
+Applicant / Decider を含むグループを追加します。編集権限（Owner）は開発・運用担当者に限定します。
+
+対象フロー:
+
+- `Participant_PreDelete_RevokeAccess`
+- `Application_GenerateAiDecision`
+- `ApplicationResource_DescribeLink`
 
 > **2026-08-16 訂正。** ここには以前「Run only users 権限が必要」と書いてありましたが、
 > **出典の無い推測でした**（「インスタントフローの共有は run-only」という Power Automate 一般論を、

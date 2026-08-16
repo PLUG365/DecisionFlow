@@ -664,3 +664,69 @@ export function isIgnorableParticipantRevokeFailure(
     normalized.includes("principalid:")
   );
 }
+
+/**
+ * SharePoint / OneDrive の URL を、コネクタが要求する「サイト URL」と
+ * 「サイト内のファイルパス」へ分解した結果。
+ *
+ * `sharing-link` を独立した種別にしているのは、**利用者が実際に貼るのが
+ * ほとんどこの形**だから。`:p:/g/personal/.../IQC...` の末尾は暗号化された
+ * トークンで、パスを含まない。パス形式と同じ扱いにすると「壊れたパス」として
+ * 読みに行き、権限エラーと区別できない失敗になる。
+ */
+export type SharePointLink =
+  | { kind: "path"; siteUrl: string; filePath: string }
+  | { kind: "sharing-link" }
+  | { kind: "unsupported" }
+  | { kind: "not-sharepoint" };
+
+/** 共有リンクの種別プレフィックス（`:p:` = PowerPoint、`:w:` = Word など）。 */
+const SHARING_LINK_PREFIX = /^:[a-z]:$/;
+
+export function parseSharePointLink(
+  rawUrl: string | null | undefined,
+): SharePointLink {
+  const trimmed = rawUrl?.trim() ?? "";
+  if (!trimmed) return { kind: "not-sharepoint" };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { kind: "not-sharepoint" };
+  }
+
+  if (parsed.protocol !== "https:") return { kind: "not-sharepoint" };
+  const host = parsed.hostname.toLowerCase();
+  if (!host.endsWith(".sharepoint.com")) return { kind: "not-sharepoint" };
+
+  const segments = parsed.pathname
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => decodeURIComponent(segment));
+  if (segments.length === 0) return { kind: "unsupported" };
+
+  if (SHARING_LINK_PREFIX.test(segments[0])) return { kind: "sharing-link" };
+
+  // `_layouts/15/Doc.aspx?sourcedoc={GUID}` 形式もパスを持たない。
+  if (segments.some((segment) => segment.toLowerCase() === "_layouts")) {
+    return { kind: "unsupported" };
+  }
+
+  // サイトの区切りは `/personal/<user>`、`/sites/<name>`、`/teams/<name>`。
+  // どれでもなければテナントのルートサイト。
+  const scoped = ["personal", "sites", "teams"].includes(
+    segments[0].toLowerCase(),
+  );
+  const siteSegments = scoped ? segments.slice(0, 2) : [];
+  const pathSegments = scoped ? segments.slice(2) : segments;
+
+  if (scoped && segments.length < 2) return { kind: "unsupported" };
+  if (pathSegments.length === 0) return { kind: "unsupported" };
+
+  return {
+    kind: "path",
+    siteUrl: [parsed.origin, ...siteSegments].join("/"),
+    filePath: `/${pathSegments.join("/")}`,
+  };
+}

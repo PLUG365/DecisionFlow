@@ -165,12 +165,39 @@ def build_clientdata(
     }
 
     actions = {
-        # 第1段は読み取りの成否そのものを返す。**アクセス権で結果が変わる**ので、
-        # これがそのまま身元の判別になる。invoker が効いていれば呼び出した本人の
-        # 権限で判定され、効いていなければ接続所有者（管理者）の権限で通ってしまう。
-        "Read_file_metadata": {
+        # **身元を推測せず、名乗らせる。**
+        # `_api/web/currentUser` は「この接続が誰として動いているか」を直接返す。
+        # invoker が効いていれば呼び出した本人、効いていなければ接続所有者（管理者）。
+        #
+        # 当初はアクセス権の差（読めた/読めなかった）から身元を推測する A/B 対照を
+        # 組む予定だったが、それは間接証拠でしかない。Learn が
+        # 「This action may execute any SharePoint REST API **you have access to**」
+        # と書いているとおり、この操作は接続の資格で動くので、そのまま身元の直接証拠になる。
+        "Probe_identity": {
             "type": "OpenApiConnection",
             "runAfter": {},
+            "inputs": {
+                "host": {
+                    "apiId": _connector_id(SHAREPOINT_CONNECTOR),
+                    "connectionName": SHAREPOINT_CONNECTOR,
+                    "operationId": "HttpRequest",
+                },
+                "parameters": {
+                    "dataset": "@{triggerBody()?['text']}",
+                    "parameters/method": "GET",
+                    "parameters/uri": "_api/web/currentUser",
+                    "parameters/headers": {
+                        "accept": "application/json;odata=nometadata"
+                    },
+                },
+                "authentication": "@parameters('$authentication')",
+            },
+        },
+        # 読み取りの成否も併せて返す。**アクセス権で結果が変わる**ので、
+        # 上の直接証拠に対する裏取りになる。両方が同じ結論を指すことを確認する。
+        "Read_file_metadata": {
+            "type": "OpenApiConnection",
+            "runAfter": {"Probe_identity": ["Succeeded", "Failed", "TimedOut"]},
             "inputs": {
                 "host": {
                     "apiId": _connector_id(SHAREPOINT_CONNECTOR),
@@ -194,6 +221,8 @@ def build_clientdata(
                 "body": {
                     "status": "@{if(equals(outputs('Read_file_metadata')?['statusCode'], 200), 'succeeded', 'failed')}",
                     "detail": "@{string(coalesce(outputs('Read_file_metadata')?['body'], ''))}",
+                    # ここが go/no-go。呼び出した本人の UPN が返れば invoker が効いている。
+                    "actingAs": "@{string(coalesce(outputs('Probe_identity')?['body']?['LoginName'], outputs('Probe_identity')?['body']?['Email'], outputs('Probe_identity')?['body'], ''))}",
                 },
                 "schema": {
                     "type": "object",
@@ -206,6 +235,12 @@ def build_clientdata(
                         },
                         "detail": {
                             "title": "detail",
+                            "type": "string",
+                            "x-ms-content-hint": "TEXT",
+                            "x-ms-dynamically-added": True,
+                        },
+                        "actingAs": {
+                            "title": "actingAs",
                             "type": "string",
                             "x-ms-content-hint": "TEXT",
                             "x-ms-dynamically-added": True,

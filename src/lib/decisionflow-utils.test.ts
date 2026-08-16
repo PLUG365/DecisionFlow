@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseSharePointLink,
   applicantSelectableStageValues,
   buildLatestDecisionOptionNameLookup,
   canDecideApplication,
@@ -910,5 +911,68 @@ describe("判断確定後のサーバ反映待ち", () => {
         timeoutMs: 30000,
       }),
     ).toBe("reflected");
+  });
+});
+
+describe("parseSharePointLink", () => {
+  it("個人用 OneDrive のパス形式をサイトとパスに割る", () => {
+    expect(
+      parseSharePointLink(
+        "https://contoso-my.sharepoint.com/personal/admin_contoso_onmicrosoft_com/Documents/plan.pptx",
+      ),
+    ).toEqual({
+      kind: "path",
+      siteUrl:
+        "https://contoso-my.sharepoint.com/personal/admin_contoso_onmicrosoft_com",
+      filePath: "/Documents/plan.pptx",
+    });
+  });
+
+  it("チームサイトのパス形式で、サイトの区切りを /sites/<name> にする", () => {
+    expect(
+      parseSharePointLink(
+        "https://contoso.sharepoint.com/sites/Sales/Shared%20Documents/q3.docx",
+      ),
+    ).toEqual({
+      kind: "path",
+      siteUrl: "https://contoso.sharepoint.com/sites/Sales",
+      filePath: "/Shared Documents/q3.docx",
+    });
+  });
+
+  it("共有リンクをパス形式と混同しない", () => {
+    // ここを path として扱うと、トークンをパスとして読みに行き、
+    // 権限エラーと区別できない失敗になる。**利用者が貼るのはほぼこの形。**
+    expect(
+      parseSharePointLink(
+        "https://contoso-my.sharepoint.com/:p:/g/personal/admin_contoso_onmicrosoft_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR",
+      ),
+    ).toEqual({ kind: "sharing-link" });
+  });
+
+  it("sourcedoc 形式のようなパスを持たない URL を弾く", () => {
+    expect(
+      parseSharePointLink(
+        "https://contoso.sharepoint.com/sites/Sales/_layouts/15/Doc.aspx?sourcedoc=%7Bguid%7D",
+      ),
+    ).toEqual({ kind: "unsupported" });
+  });
+
+  it("サイトだけでファイルを指していない URL を弾く", () => {
+    expect(
+      parseSharePointLink("https://contoso.sharepoint.com/sites/Sales"),
+    ).toEqual({ kind: "unsupported" });
+  });
+
+  it("SharePoint 以外や壊れた URL を種別で区別する", () => {
+    expect(parseSharePointLink("https://example.com/a/b.docx")).toEqual({
+      kind: "not-sharepoint",
+    });
+    expect(parseSharePointLink("not a url")).toEqual({ kind: "not-sharepoint" });
+    expect(parseSharePointLink("")).toEqual({ kind: "not-sharepoint" });
+    // http は SharePoint Online では成立しない。
+    expect(
+      parseSharePointLink("http://contoso.sharepoint.com/sites/S/a.docx"),
+    ).toEqual({ kind: "not-sharepoint" });
   });
 });

@@ -415,11 +415,13 @@ erDiagram
 - `AppendToAccess`: 共有された申請を Lookup 先としてメッセージや関連リンクなどの従属レコードを作成できるようにするため
 
 `Participant_PreDelete_RevokeAccess` は、関係者削除前に Code Apps から明示的に呼び出す。
-Code Apps から呼ばれるフローの実行に必要なのは **Dataverse のセキュリティロール**（App Opener 相当）であり、
-`ds_Applicant` / `ds_Decider` / `ds_Admin` がこれを満たす（`docs/DEPLOY_SETUP.md` 9-4）。
-編集権限（Owner）は開発・運用担当者に限定する。
+Code Apps から呼ばれるフローの実行には、**Dataverse のセキュリティロール**（App Opener 相当。
+`ds_Applicant` / `ds_Decider` / `ds_Admin` が満たす）**と Power Automate の Run only users の両方**が要る
+（`docs/DEPLOY_SETUP.md` 9-4）。編集権限（Owner）は開発・運用担当者に限定する。
 
-> 2026-08-16 訂正: ここには「run-only 実行権限を付与する」と書いてあったが、出典の無い推測だった。
+> 2026-08-16: 一度「run-only は不要」と訂正したが、**実測で覆った**。
+> Learn の制約表に記載が無いことを「不要」の根拠にしたのが誤りで、
+> 実行専用ユーザー未設定のフローは `install` が 403 になり呼び出せなかった。
 
 `Decision_OnCreated` は、判断結果 `ds_decision` が作成されたタイミングで当該判断レコードへの `ReadAccess` を申請者と関係者へ付与する。`ds_decision` は判断者が作成する子レコードのため、申請者が親申請を所有していても判断レコード自体は自動では読めない。通知メールを送る前に `GrantAccess` を実行し、申請者・関係者がリンク先の申請詳細で最新判断結果を読めるようにする。
 
@@ -459,7 +461,7 @@ Code Apps から呼ばれるフローの実行に必要なのは **Dataverse の
 
 - Code Apps で申請が Submitted になった保存時点で自動実行する。
 - Code Apps の判断タブにある「AI判断更新」ボタンから手動再実行できる。
-- `Application_GenerateAiDecision` は Power Apps V2 のインスタントフロー。Code Apps 利用者には Dataverse のセキュリティロール（App Opener 相当。`ds_Applicant` / `ds_Decider` / `ds_Admin` が満たす）が必要で、Power Automate の run-only 共有は要らない（`docs/DEPLOY_SETUP.md` 9-4。2026-08-16 に訂正）。編集権限（Owner）は開発・運用担当者に限定する。
+- `Application_GenerateAiDecision` は Power Apps V2 のインスタントフロー。Code Apps 利用者には Dataverse のセキュリティロール（App Opener 相当。`ds_Applicant` / `ds_Decider` / `ds_Admin` が満たす）と Power Automate の run-only 実行権限の**両方**が要る（`docs/DEPLOY_SETUP.md` 9-4）。編集権限（Owner）は開発・運用担当者に限定する。
 - Applicant は自分がアクセスできる Submitted 申請の AI 判断生成を実行できる。Decider は判断対象申請の AI 判断を手動更新できる。フローを所有者接続で実行する場合は、Code Apps から渡された申請 ID に対して呼び出しユーザーが申請者・判断者・関係者のいずれかであることをフロー側で検証する。
 - 初回提出時は会話履歴が空でも実行し、過去類似案件は初回提出時から検索対象にする。
 - 過去案件候補はトークン消費を抑えるため、同一カテゴリの判断済み案件を最大 30 件、補助候補として直近判断済み案件を最大 10 件に制限する。
