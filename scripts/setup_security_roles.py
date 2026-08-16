@@ -272,7 +272,7 @@ def build_role_privileges(
 
     利用者は `Basic User` を別途保有して基盤権限を得る（Dataverse のロールは加算式）。
     **このロールだけを割り当てても、アプリは動かない。** 詳細は
-    `docs/UX_ROADMAP.md`「ALM の実測ブロッカー」と、その下の境界表。
+    開発メモ（非公開）「ALM の実測ブロッカー」と、その下の境界表。
     """
     privileges: dict[str, dict[str, str]] = {}
     unresolved: list[str] = []

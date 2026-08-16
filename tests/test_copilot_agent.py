@@ -144,7 +144,7 @@ class AgentYamlDecisionTopicTests(unittest.TestCase):
 
     守るのは YAML の形だけで、**ルーティングが直ったことは守らない**。
     生成オーケストレーションがこのトピックを選ぶかどうかは、テストパネルで
-    実際に発話して確かめるしかない（docs/UX_ROADMAP.md）。
+    実際に発話して確かめるしかない（開発メモ（非公開））。
     """
 
     @classmethod

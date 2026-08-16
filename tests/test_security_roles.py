@@ -179,7 +179,7 @@ class RolePrivilegeCompositionTest(unittest.TestCase):
 
     取り込むと移送元のベースラインを他テナントへ持ち込むことになり、深度の可否が
     環境で違う権限（`prvDeleteUserSettings` など）でソリューション import が落ちる。
-    詳細は docs/UX_ROADMAP.md「ALM の実測ブロッカー」。
+    詳細は 開発メモ（非公開）「ALM の実測ブロッカー」。
     """
 
     def _built(self, role_name: str) -> dict[str, str]:

@@ -134,7 +134,7 @@ export function validateResourceInput(input: ResourceInput): ValidationResult {
  * **上書きしない。** `説明 *` は必須項目で、`validateResourceInput` が空を弾く。
  * 利用者が既に書いた文章を生成結果で潰すと、書き直しを強いることになる。
  * 追記なら非破壊なので、生成を試してから消す・直すが利用者側でできる
- * （`docs/UX_ROADMAP.md`「決定: 生成した説明は末尾に付け足す」）。
+ * （開発メモ（非公開）「決定: 生成した説明は末尾に付け足す」）。
  *
  * 同じ文章を2回押しで重ねない。**押したのに何も起きないように見える**より、
  * 重複が積まれるほうが直しにくい。

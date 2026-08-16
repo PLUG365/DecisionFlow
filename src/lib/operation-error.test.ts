@@ -45,7 +45,7 @@ describe("getOperationErrorMessage", () => {
 
 describe("isPermissionDeniedError", () => {
   it.each([
-    // G2 の実測で実際に返ってきた形（docs/UX_ROADMAP.md「G2 拒否系 実測」）
+    // G2 の実測で実際に返ってきた形（開発メモ（非公開）「G2 拒否系 実測」）
     [
       {
         status: 403,

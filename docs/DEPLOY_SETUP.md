@@ -94,10 +94,9 @@ py scripts/setup_security_roles.py
 > アプリは動きません。** 利用者には `Basic User`（または `Common Data Service User`）を
 > 必ず併せて割り当ててください。Dataverse のロールは加算式です。
 >
-> 以前はロール作成時に環境の `Basic User` を丸ごとコピーして取り込んでいましたが、
-> **移送元のベースラインを他テナントへ持ち込む**ことになり、権限の深度の可否が環境で違う場合に
-> ソリューション import が失敗します（2026-08-12 に実測）。詳細は
-> [UX_ROADMAP.md](UX_ROADMAP.md) の「ALM の実測ブロッカー」。
+> **`ds_Xxx` ロールに環境の `Basic User` を取り込まないでください。**
+> 移送元のベースラインを他テナントへ持ち込むことになり、権限の深度の可否が
+> 環境で違う場合にソリューション import が失敗します。
 
 ロール権限の概要:
 
@@ -193,9 +192,9 @@ py scripts/deploy_resource_description_flow.py
 > `File` / `FileName`（先頭が大文字）です。UI の既定名のままにすると自動採番の id に
 > 縛られ、フローが空を渡します。**実行時に静かに失敗する**ので、検査で落としています。
 
-> **Test は押さなくてかまいません。** この環境では未保存プロンプトの Test が
-> `Missing privilege definition: prvWritemsdyn_AIModel` で失敗しますが、
-> **保存は通り、フローからの実行にも影響しません**（2026-08-16 実測）。
+> **Test は押さなくてかまいません。** 未保存プロンプトの Test が
+> `Missing privilege definition: prvWritemsdyn_AIModel` で失敗することがありますが、
+> **保存は通り、フローからの実行にも影響しません。**
 
 ## 9. Code Apps を対象環境へ初回デプロイする
 
@@ -257,11 +256,10 @@ npx power-apps add-flow --flow-id {ApplicationResource_DescribeLink の workflow
 > --api-id shared_sharepointonline` はブラウザでのサインインが開きます）。
 > **この接続は設計時の束ね先で、実行時は利用者ごとの接続が使われます**（次の 9-4 の注記）。
 
-> **2026-08-16 訂正。** ここには「PAC CLI をセッション親として必要とするため
-> `py scripts/run_power_apps_cli.py` を使う」と書いてありましたが、**今は不要です。**
-> ラッパーは `auth_helper` のトークンを流し込む仕組みで、**別テナントを相手にすると
-> 無言でハングします**（MinoDev2 で踏みました）。CLI 自身のログイン
-> （`npx power-apps` の MSAL キャッシュ）が対象環境を向いていれば直接叩けます。
+> **`npx power-apps` を直接使ってください。** `scripts/run_power_apps_cli.py`
+> （トークンを流し込むラッパー）は使いません。別テナントを相手にすると無言でハングします。
+> CLI 自身のログイン（`npx power-apps` の MSAL キャッシュ）が対象環境を向いていれば
+> そのまま実行できます。
 
 **注意: `power.config.json` を手で編集しないこと。** 接続参照のキーは CLI が採番する
 不透明な GUID で、規則から導出できません。手書きしたキーがあると `add-flow` はそれを
@@ -291,36 +289,17 @@ npx power-apps add-flow --flow-id {ApplicationResource_DescribeLink の workflow
 - `Application_GenerateAiDecision`
 - `ApplicationResource_DescribeLink`
 
-> **本数ではなくトリガーで判断してください。** フローを足したら、
-> トリガーが Power Apps V2 かどうかを見て、この一覧に加えるかを決めます。
+> **フローを追加したときは、トリガーの種別で判断してください。**
+> Power Apps V2 トリガーなら、この一覧に加えて Run only users を設定します。
 > Dataverse トリガー（`OpenApiConnectionWebhook`）、Recurrence、
 > Copilot Studio の `Skills` トリガーは**対象外**です。
 >
-> 実環境で確認するには `workflow` の `clientdata` を引き、
-> `properties.definition.triggers` の `kind` が `PowerAppV2` のものを拾います
-> （2026-08-16 に MinoDev2 で照合し、上の3本と一致）。
+> 対象を機械的に確認するには、`workflow` の `clientdata` を引いて
+> `properties.definition.triggers` の `kind` が `PowerAppV2` のものを拾います。
 
-#### 経緯: 「公式ドキュメントに書いていない」を「不要」の根拠にした
-
-この節は**2回訂正しています。** 同じ誤りを繰り返さないために経緯を残します。
-
-Code Apps 公式ドキュメントの制約表は、利用者側の要件としてこれだけを挙げています。
-
-> **Dataverse permissions required** — End users need sufficient Dataverse permissions to
-> invoke the flow. Assign the **App Opener** security role or an equivalent role.
->
-> — [Add Power Automate flows to a code app](https://learn.microsoft.com/power-apps/developer/code-apps/how-to/add-flows)
-
-ここに Run only users が出てこないことを根拠に、一度「不要」と書き換えました。
-**実測が逆でした。**
-
-| フロー | Run only users | 利用者からの呼び出し |
-| --- | --- | --- |
-| `Participant_PreDelete_RevokeAccess` / `Application_GenerateAiDecision` | 設定済み | 動く |
-| `ApplicationResource_DescribeLink`（当時新規） | **未設定** | `Microsoft.Dynamics.CRM.install` が **403**、`connectivity/apis/shared_logicflows/connections/…` が **404**、呼び出し失敗 |
-
-**記述の不在は仕様の否定ではありません。** 制約表に無いことは「要らない」を意味しません。
-迷ったら設定せずに動かしてみて、**弾かれたら追加する**という順で実測に決めさせます。
+設定を忘れると、利用者からの呼び出しが
+`Microsoft.Dynamics.CRM.install` の **403**、または
+`connectivity/apis/shared_logicflows/connections/…` の **404** で失敗します。
 
 #### 別件として混同しないこと
 
@@ -432,12 +411,11 @@ Copilot Studio 側の定義は `pac copilot clone` で取り込んだ YAML が�
 
 `intent:` に `triggerQueries` を足すのは**最後の手段**です。トリガーノードが
 `User says a phrase` 側に倒れ、プランナーの候補からトピックごと消える恐れがあります。
-根拠と実測は [UX_ROADMAP.md](UX_ROADMAP.md) の「次の作業」を参照してください。
 
 `workflows/` の写しが古いと、VS Code 拡張が実在するバインドを
 「見つかりません」と赤で出します。トピック側を書き換える前に `pull` してください。
 
-### トピック YAML の書き方（2026-08-08 に実機で確定）
+### トピック YAML の書き方
 
 | やりたいこと | 書き方 |
 | --- | --- |
@@ -553,7 +531,7 @@ py scripts/deploy_adaptive_card_decision_confirmation.py
 
 | フロー名              | 役割                                                                                                                                                                        |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `issue_decision_card` | 判断カード発行。実行者が systemuser として解決でき、`ds_application` が `Submitted` で、実行者が割り当て判断者であることを確認したうえで、`ds_decisioncard` を `Issued` で作成し `cardInstanceId` と `status: issued` を返す。検証に落ちたときは行を作らない。実行者が解決できない・判断者でない場合は `forbidden`、提出済みでない場合は `invalid_target` を返す。**不正または不存在の `applicationId` と、判断者が未割当ての申請では status を返さずフローがエラー終了する**（`confirm_decision` と同じ挙動）。2026-08-09 に検証を追加。それ以前は無検証だった |
+| `issue_decision_card` | 判断カード発行。実行者が systemuser として解決でき、`ds_application` が `Submitted` で、実行者が割り当て判断者であることを確認したうえで、`ds_decisioncard` を `Issued` で作成し `cardInstanceId` と `status: issued` を返す。検証に落ちたときは行を作らない。実行者が解決できない・判断者でない場合は `forbidden`、提出済みでない場合は `invalid_target` を返す。**不正または不存在の `applicationId` と、判断者が未割当ての申請では status を返さずフローがエラー終了する**（`confirm_decision` と同じ挙動） |
 | `confirm_decision`    | Adaptive Card submit を検証し、`ds_decision` を作成して `ds_decisioncard` を `Consumed` に更新。`status: succeeded / already_processed / forbidden / invalid_target` を返す |
 
 入出力契約は [specs/001-confirm-adaptive-card/contracts/adaptive-card-decision-confirmation.md](../specs/001-confirm-adaptive-card/contracts/adaptive-card-decision-confirmation.md) を参照してください。
@@ -564,7 +542,7 @@ py scripts/deploy_adaptive_card_decision_confirmation.py
 
 ツール登録すると、生成オーケストレーションが「判断確定」トピックを経由せずフローを直接呼べるようになります。その経路ではトリガー引数の実行者をモデルが埋めるため、**他人の名前で判断を確定できます**。2 本とも登録されていると、作文した実行者でカードを発行し同じ実行者で確定する連鎖が成立し、`Validate_actor_is_decider` も `Validate_current_issued_card` も通過します。
 
-トピックから呼ぶのにツール登録は不要です。`InvokeFlowAction` に `flowId` を直接書けば動きます（2026-08-08 に会話投稿フローで実測）。
+トピックから呼ぶのにツール登録は不要です。`InvokeFlowAction` に `flowId` を直接書けば動きます。
 
 既にツール登録されている場合は、`copilot/DecisionFlowAssistant/actions/` の該当 YAML を削除して push すると、クラウド側の登録も消えます。詳細は [docs/AGENT_WRITE_BOUNDARY.md](AGENT_WRITE_BOUNDARY.md)。
 

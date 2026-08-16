@@ -28,7 +28,7 @@ function getErrorText(
 
 /**
  * Dataverse のテーブル権限不足。`0x80040220` と `prvReadds_xxx` の形は
- * G2 の実測で実際に返ってきた形（`docs/UX_ROADMAP.md` の「G2 拒否系 実測」）。
+ * G2 の実測で実際に返ってきた形（開発メモ（非公開） の「G2 拒否系 実測」）。
  */
 const PERMISSION_DENIED_PATTERN =
   /\b403\b|forbidden|access denied|privilege|\bprv[a-z_]+\b|0x80040220|permission|権限/;

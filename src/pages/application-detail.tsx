@@ -414,7 +414,7 @@ export default function ApplicationDetailPage() {
   /**
    * 前後移動では**ルートが同じまま `id` だけ変わり、再マウントされない**。
    * 開いたままのモーダルが次の申請へ持ち越されると、**別の申請に資料が付く**。
-   * C5 第2段で同じ形の穴を塞いだのと同じ理由（`docs/UX_ROADMAP.md`）。
+   * C5 第2段で同じ形の穴を塞いだのと同じ理由（開発メモ（非公開））。
    */
   useEffect(() => {
     setIsResourceFormOpen(false);

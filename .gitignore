@@ -92,3 +92,6 @@ tsconfig.tsbuildinfo
 
 # Local git worktrees
 .worktrees/
+
+# 開発メモ（実測ログ・個人名やテナント情報を含むため公開しない）
+docs/UX_ROADMAP.md

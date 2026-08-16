@@ -559,7 +559,7 @@ git commit -m "style: widen decision reading area"
 ### Task 4: Verify the app and update the roadmap with observed evidence
 
 **Files:**
-- Modify: `docs/UX_ROADMAP.md:1-457`
+- Modify: `開発メモ（非公開）:1-457`
 
 **Interfaces:**
 - Consumes: the completed Task 1-3 implementation and the repository's documented gate commands.
@@ -614,7 +614,7 @@ Confirm all of the following in the judgment tab of an application with generate
 4. Below the `lg` breakpoint, the cards form one column and the left area no longer sticks.
 5. Decision controls and AI-refresh behavior are unchanged.
 
-- [x] **Step 5: Update `docs/UX_ROADMAP.md` using only observed results**
+- [x] **Step 5: Update 開発メモ（非公開） using only observed results**
 
 Make these concrete updates after Steps 1-4:
 
@@ -632,7 +632,7 @@ Run:
 
 ```powershell
 git diff --check
-git diff -- docs/UX_ROADMAP.md
+git diff -- 開発メモ（非公開）
 git status --short
 ```
 
@@ -641,6 +641,6 @@ Expected: `git diff --check` exits 0; the roadmap claims only results observed i
 - [x] **Step 7: Commit the verified roadmap state**
 
 ```powershell
-git add docs/UX_ROADMAP.md
+git add 開発メモ（非公開）
 git commit -m "docs: record dashboard UX verification"
 ```
