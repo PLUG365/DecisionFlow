@@ -407,8 +407,19 @@ erDiagram
 | `Application_DelegationRequest_OnCreated` | Submitted申請の判断担当を安全に変更する       | Dataverse: `ds_delegationrequest` 行追加                                  |
 | `ApplicationResource_DescribeLink`   | 関連資料の URL を読んで説明文を生成する（G13）     | Power Apps V2: Code Apps の「説明を生成」ボタン                           |
 | `post_application_message`           | エージェントが申請の会話へ投稿する                 | Copilot Studio エージェントのツール呼び出し                               |
+| `issue_decision_card`                | 判断確定用の Adaptive Card を発行する              | Copilot Studio エージェントのツール呼び出し                               |
+| `confirm_decision`                   | カードの submit を受けて `ds_decision` を作成する  | Copilot Studio エージェントのツール呼び出し                               |
+| `Get_ApplicationDetailUrl`           | 申請詳細の URL を環境変数から組み立てて返す        | Copilot Studio エージェントのツール呼び出し（`Skills` トリガー）          |
 
 <!-- markdownlint-enable MD060 -->
+
+**この表が正本。** 下3本は Copilot Studio 用の agent flow で、設計の詳細は 6.3 にある。
+
+> **本数を書かない。** 環境には他に、プラットフォームが環境作成時に入れる
+> マネージドの下書きフロー（`SLAInstanceMonitoringWarningAndExpiryFlow` など）も存在する。
+> 数を書くと、**プラットフォームが1本足した瞬間に嘘になる。**
+> 実環境と突き合わせるときは `workflow` を `category = 5 and statecode = 1` で引き、
+> **上の名前と照合する**（2026-08-16 に MinoDev2 で照合し、全13本が一致）。
 
 ### 4.2 フロー設計詳細
 

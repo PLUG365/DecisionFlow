@@ -141,7 +141,7 @@ Power Pages と Generative Pages は現在の DecisionFlow の対象外であり
 | 開発作業 | 第一候補 | 制約 |
 | --- | --- | --- |
 | フローの設計・新規生成・接続調査・失敗診断 | 公式 Power Automate プラグイン（FlowAgent） | 探索・試作は開発環境の新規フローを停止状態で扱う。採用後は定義を正本へ昇格し、公開は明示承認後 |
-| 現行 7 フローの変更 | リポジトリの Python デプロイスクリプト | 採用・運用の正本。FlowAgent の出力をレビューしてから、再現可能なソース変更へ反映する |
+| 現行フローの変更 | リポジトリの Python デプロイスクリプト | 採用・運用の正本。FlowAgent の出力をレビューしてから、再現可能なソース変更へ反映する |
 | Dataverse メタデータ・レコードの確認 | `dv-query` / Dataverse MCP | 読取りが既定。探索・試作の新規・一時的な資産だけ変更可。既存資産、削除、ロール、環境変更は明示承認後 |
 | Canvas Apps の設計・作成・編集 | 公式 Canvas Apps プラグイン / Canvas Authoring MCP | 探索・試作は開発環境の新規 coauthoring セッションだけ。既存アプリ、公開、採用は正本のレビュー後 |
 | Code Apps のデザイン・静的評価 | `powercat-code-apps` / `powercat-procode-eval` | 評価結果はレビュー対象。自動修正しない |

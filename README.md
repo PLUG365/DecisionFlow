@@ -17,7 +17,7 @@ DecisionFlow は、申請者が判断者へ意思決定を依頼し、会話・�
 | --------------- | ------------------------------------------------------------------------------------------------- |
 | フロントエンド  | Power Apps Code Apps（TypeScript + React + Vite、Tailwind CSS + shadcn/ui、TanStack React Query） |
 | データ          | Microsoft Dataverse（Power Apps Code SDK 経由）                                                   |
-| バックエンド    | Power Automate（7 フロー）、AI Builder（`DecisionRecommendation` プロンプト）                     |
+| バックエンド    | Power Automate（フロー一覧は [ARCHITECTURE 4.1](docs/ARCHITECTURE.md#41-フロー一覧)）、AI Builder（`DecisionRecommendation` / `ResourceDescription` / `ResourceDescriptionText`） |
 | AI エージェント | Copilot Studio `DecisionFlow Assistant`（生成オーケストレーション）                               |
 | デプロイ自動化  | Python スクリプト群（`scripts/`）、PAC CLI、Power Apps Code Apps SDK                              |
 

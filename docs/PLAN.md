@@ -50,7 +50,7 @@
 | 1     | Dataverse 構築           | テーブル / リレーション / マスタ / デモデータ                          | ✅完了 |
 | 1.5   | セキュリティロール構築   | `ds_Applicant` / `ds_Decider` / `ds_Admin` + M365 グループチーム紐付け | ✅完了 |
 | 2     | Code Apps（設計 → 実装） | 7 画面 + Dataverse 接続 + 主要フォーム/マスタ永続化                    | ✅完了 |
-| 2.5   | Power Automate           | 7 フロー（アクセス制御フロー含む）                                     | ✅完了 |
+| 2.5   | Power Automate           | 通知・アクセス制御フロー（一覧は [ARCHITECTURE 4.1](ARCHITECTURE.md#41-フロー一覧)） | ✅完了 |
 | 3     | Copilot Studio           | DecisionFlow Assistant                                                 | ✅完了 |
 | 4     | AI Builder               | `DecisionRecommendation`（実装済み）+ 追加プロンプト検討               | ✅完了 |
 | 5     | Adaptive Card 判断確定   | 専用 Topic + agent flow 2 本 + `ds_decisioncard`                       | 実装中 |
