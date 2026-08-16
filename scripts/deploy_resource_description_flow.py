@@ -10,20 +10,33 @@
 そこで SharePoint 接続だけ `runtimeSource: "invoker"` にする。Dataverse 側は `embedded`
 のままでよい。**同じフローの中で混在させられる**のが要点。
 
-段の構成:
+段の構成（**入口だけが違い、その先は同じ**）:
 
-    GetFileMetadataByPath  (SharePoint / invoker)  … 存在とサイズを見る
+    Read_source            If(共有リンク)
+        Read_share         `_api/v2.0/shares/{u!…}/driveItem`  (SharePoint / invoker)
+      else
+        Read_file_metadata GetFileMetadataByPath               (SharePoint / invoker)
       → 25 MB を超えていたらここで止める（AI Builder の上限）
-    GetFileContentByPath   (SharePoint / invoker)  … 中身を取る
-    aibuilderpredict_customprompt (Dataverse / embedded) … 説明文を作る
+    Fetch_content          If(共有リンク)
+        Get_share_content  `@content.downloadUrlNoAuth`        (SharePoint / invoker)
+      else
+        Get_file_content   GetFileContentByPath                (SharePoint / invoker)
+    Extract_text           ResourceDescription     (Dataverse / embedded) … テキスト抽出
+    Write_description      ResourceDescriptionText (Dataverse / embedded) … 説明文
 
 **OCR も PDF 変換も挟まない。** AI Builder のプロンプトは code interpreter を有効に
 すると Office ファイルをドキュメント入力としてそのまま受け取れる。
 
-**プロンプトはこのスクリプトでは作れない。** code interpreter 付きのプロンプトは
-`code`（生成された Python）と `signature`（プラットフォームが発行する整合性トークン）を
-持ち、署名を手元で作れないため。名前で引いて、無ければ落とす。作成は AI Hub の UI で行う
-（`docs/UX_ROADMAP.md`「第2段の構成」）。形は `scripts/capture_prompt_config.py` で読める。
+**プロンプトを2本に割っているのは設計の必然。** code interpreter を有効にすると
+生成コードの戻り値がそのまま出力になり、**モデルが文章を書く段が消える**
+（抽出側の消費クレジットは 0。実測）。Office を読むには code interpreter が要り、
+入れるとモデルが黙るので、1本では両立できない。
+
+**どちらのプロンプトもこのスクリプトでは作れない。** 署名を手元で作れず、
+既存プロンプトの更新経路も全部塞がっている（`_require_prompt` の docstring）。
+名前で引いて形を検め、違えば**貼るべき指示文を出力して落ちる**。
+作成は AI Hub の UI で行う（`docs/DEPLOY_SETUP.md` 8-1）。
+保存された形は `scripts/capture_prompt_config.py` で読める。
 
 使い方（MinoDev2 へ向ける場合）:
 
@@ -108,7 +121,7 @@ EXTRACT_PROMPT_INSTRUCTIONS = """
 #   ResourceDescriptionText  … 抽出テキストを読んで説明文を書く（text 専用）
 #
 # **どちらも UI でしか書けない。** 当初は後者をスクリプトから作る／更新する前提で
-# 割ったが、この環境ではその経路が全部塞がっていた（`find_text_prompt` の docstring）。
+# 割ったが、この環境ではその経路が全部塞がっていた（`_require_prompt` の docstring）。
 # 割ったこと自体は無駄になっていない。抽出は決定的な処理で一度固めれば動き続け、
 # 文章の質だけを別プロンプトとして扱える。
 AI_TEXT_PROMPT_NAME = "ResourceDescriptionText"

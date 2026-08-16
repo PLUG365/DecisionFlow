@@ -117,7 +117,7 @@ GitHub Release に公開されたソリューションZipを使って、Decision
 1. Power Automate でインポートされたフローを開き、接続エラーがないことを確認する
 2. 必要なフローがオフになっている場合はオンにする
 3. Code Apps のアプリを一度開き、初期カテゴリ、各カテゴリの初期レギュレーション、固定判断選択肢が自動作成されることを確認する
-4. `Participant_PreDelete_RevokeAccess` と `Application_GenerateAiDecision` の Power Automate 詳細画面で **Run only users** に DecisionFlow 利用者グループ、または Applicant/Decider を含むグループを追加する
+4. **Code Apps から呼ぶフロー**（`Participant_PreDelete_RevokeAccess` / `Application_GenerateAiDecision` / `ApplicationResource_DescribeLink`）の Power Automate 詳細画面で、**Run only users** に DecisionFlow 利用者グループ、または Applicant/Decider を含むグループを追加する。**Dataverse のセキュリティロールだけでは呼び出せません**（詳細は [docs/DEPLOY_SETUP.md](docs/DEPLOY_SETUP.md) の 9-4）
 5. Power Platform 管理センターで `DecisionFlow-Deciders` グループチームを作成・関連付けし、`ds_Decider` ロールを割り当てる
 6. 利用者に `ds_Applicant`、管理者に `ds_Admin` を割り当てる
 7. Code Apps のアプリを開き、申請作成・提出・判断キュー表示が動くことを確認する

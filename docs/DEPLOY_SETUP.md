@@ -158,7 +158,7 @@ py scripts/deploy_agent_message_flow.py
 
 **この2本は UI でしか作れません。** `code interpreter` を有効にしたプロンプトは
 プラットフォームが発行する署名（`signature`）を持ち、`AIModelPublish` で再現できないためです
-（潰した経路は `scripts/deploy_resource_description_flow.py` の `find_text_prompt` に残してあります）。
+（潰した経路は `scripts/deploy_resource_description_flow.py` の `_require_prompt` の docstring に残してあります）。
 
 [make.powerapps.com](https://make.powerapps.com) → **AI hub** → **プロンプト** → 独自のプロンプトを作成。
 
@@ -274,49 +274,63 @@ npx power-apps add-flow --flow-id {ApplicationResource_DescribeLink の workflow
 
 ### 9-4. Code Apps から呼び出すフローを実行できるようにする
 
-**利用者に必要なのは Dataverse のセキュリティロールです。Power Automate の Run only users 共有ではありません。**
+**利用者には2つとも要ります。片方だけでは呼び出せません。**
 
-Code Apps 公式ドキュメントの制約表が、利用者側の要件として挙げているのはこれだけです。
+| 要るもの | 内容 |
+| --- | --- |
+| Dataverse のセキュリティロール | App Opener 相当。`ds_Applicant` / `ds_Decider` / `ds_Admin` が満たす |
+| Power Automate の **Run only users** | 各フローの詳細画面で、DecisionFlow 利用者グループ、または Applicant / Decider を含むグループを追加 |
+
+編集権限（Owner）は開発・運用担当者に限定します。
+
+#### 対象フロー
+
+**Code Apps から呼ぶフロー、つまり Power Apps V2 トリガーを持つフローが対象です。**
+
+- `Participant_PreDelete_RevokeAccess`
+- `Application_GenerateAiDecision`
+- `ApplicationResource_DescribeLink`
+
+> **本数ではなくトリガーで判断してください。** フローを足したら、
+> トリガーが Power Apps V2 かどうかを見て、この一覧に加えるかを決めます。
+> Dataverse トリガー（`OpenApiConnectionWebhook`）、Recurrence、
+> Copilot Studio の `Skills` トリガーは**対象外**です。
+>
+> 実環境で確認するには `workflow` の `clientdata` を引き、
+> `properties.definition.triggers` の `kind` が `PowerAppV2` のものを拾います
+> （2026-08-16 に MinoDev2 で照合し、上の3本と一致）。
+
+#### 経緯: 「公式ドキュメントに書いていない」を「不要」の根拠にした
+
+この節は**2回訂正しています。** 同じ誤りを繰り返さないために経緯を残します。
+
+Code Apps 公式ドキュメントの制約表は、利用者側の要件としてこれだけを挙げています。
 
 > **Dataverse permissions required** — End users need sufficient Dataverse permissions to
 > invoke the flow. Assign the **App Opener** security role or an equivalent role.
 >
 > — [Add Power Automate flows to a code app](https://learn.microsoft.com/power-apps/developer/code-apps/how-to/add-flows)
 
-本リポジトリの `ds_Applicant` / `ds_Decider` / `ds_Admin` は App Opener 相当の権限を含みます。
+ここに Run only users が出てこないことを根拠に、一度「不要」と書き換えました。
+**実測が逆でした。**
 
-> **2026-08-16 再訂正。ロールだけでは足りませんでした。**
-> 上の引用のとおり Learn の制約表に Run only users は出てきませんが、**実測は逆でした。**
->
-> | フロー | Run only users | 利用者からの呼び出し |
-> | --- | --- | --- |
-> | `Participant_PreDelete_RevokeAccess` / `Application_GenerateAiDecision` | 設定済み | 動く |
-> | `ApplicationResource_DescribeLink`（新規） | **未設定** | `Microsoft.Dynamics.CRM.install` が **403**、`connectivity/apis/shared_logicflows/connections/...` が **404**、呼び出し失敗 |
->
-> **「公式ドキュメントに書いていない」を「不要」の根拠にしたのが誤り。**
-> 記述の不在は仕様の否定ではない。`docs/UX_ROADMAP.md` の
-> 「弾かれたら、そのとき初めてポータルで追加する」に従って実測で決める。
+| フロー | Run only users | 利用者からの呼び出し |
+| --- | --- | --- |
+| `Participant_PreDelete_RevokeAccess` / `Application_GenerateAiDecision` | 設定済み | 動く |
+| `ApplicationResource_DescribeLink`（当時新規） | **未設定** | `Microsoft.Dynamics.CRM.install` が **403**、`connectivity/apis/shared_logicflows/connections/…` が **404**、呼び出し失敗 |
 
-したがって、**Code Apps から呼ぶフローには Run only users を設定してください。**
-Power Automate の各フロー詳細画面で、DecisionFlow 利用者グループ、または
-Applicant / Decider を含むグループを追加します。編集権限（Owner）は開発・運用担当者に限定します。
+**記述の不在は仕様の否定ではありません。** 制約表に無いことは「要らない」を意味しません。
+迷ったら設定せずに動かしてみて、**弾かれたら追加する**という順で実測に決めさせます。
 
-対象フロー:
+#### 別件として混同しないこと
 
-- `Participant_PreDelete_RevokeAccess`
-- `Application_GenerateAiDecision`
-- `ApplicationResource_DescribeLink`
+**「実行専用ユーザーが接続を提供」（`runtimeSource: invoker`）は別物です。**
+ポータルでは run-only users と同じパネルに出ますが、**利用者の実行権限ではなく
+フロー側の接続属性**で、呼び出した本人の資格で外部サービスを読ませたいフローだけが使います。
+`ApplicationResource_DescribeLink` の SharePoint 接続がこれに当たります
+（設計は [ARCHITECTURE.md](ARCHITECTURE.md) の 8.6）。
 
-> **2026-08-16 訂正。** ここには以前「Run only users 権限が必要」と書いてありましたが、
-> **出典の無い推測でした**（「インスタントフローの共有は run-only」という Power Automate 一般論を、
-> Code Apps 経由の呼び出しに当てはめてしまったもの）。上記の制約表は
-> 「Code App からフローを呼ぶときの制約」を列挙する場所そのもので、そこに run-only users はありません。
-> ミノの指摘で一次情報に当たり直しました。
 
-**別件として混同しないこと**: 「**実行専用ユーザーが接続を提供**」（エクスポート時の
-`runtimeSource: invoker`）は、ポータルでは run-only users のパネル内にありますが、
-**利用者の実行権限ではなくフロー側の接続属性**です。呼び出した本人の資格で
-外部サービスを読ませたいフローだけが使います（`docs/UX_ROADMAP.md` の G13）。
 
 ### 9-5. ビルドして push する
 
