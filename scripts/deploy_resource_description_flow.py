@@ -221,8 +221,12 @@ def build_clientdata(
                 "body": {
                     "status": "@{if(equals(outputs('Read_file_metadata')?['statusCode'], 200), 'succeeded', 'failed')}",
                     "detail": "@{string(coalesce(outputs('Read_file_metadata')?['body'], ''))}",
-                    # ここが go/no-go。呼び出した本人の UPN が返れば invoker が効いている。
-                    "actingAs": "@{string(coalesce(outputs('Probe_identity')?['body']?['LoginName'], outputs('Probe_identity')?['body']?['Email'], outputs('Probe_identity')?['body'], ''))}",
+                    # 呼び出した本人の UPN。**取れなかったときは空**にする。
+                    # 生のエラー本文をここへ落とすと、利用者のトーストに
+                    # JSON がそのまま出る（2026-08-16 に実機で確認した粗さ）。
+                    # 権限で弾かれた事実は status / detail が運ぶので、
+                    # ここは身元だけを持たせる。
+                    "actingAs": "@{string(coalesce(outputs('Probe_identity')?['body']?['LoginName'], outputs('Probe_identity')?['body']?['Email'], ''))}",
                 },
                 "schema": {
                     "type": "object",

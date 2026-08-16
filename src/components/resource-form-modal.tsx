@@ -86,11 +86,18 @@ export function ResourceFormModal({
         toast.error(getOperationErrorMessage(result.error, "読み取りに失敗しました"));
         return;
       }
-      const actingAs = result.data?.actingAs?.trim() || "(不明)";
-      const status = result.data?.status ?? "(不明)";
-      toast.info(`実行者: ${actingAs} / 読み取り: ${status}`, {
-        duration: 15000,
-      });
+      // 身元が取れないのは、そのサイトに読む権限が無いとき。
+      // フローは呼び出した本人の資格で動くので（2026-08-16 実測）、
+      // **本人が読めないものは読めない**。それを素直に伝える。
+      if (!result.data?.actingAs?.trim()) {
+        toast.error("このファイルを読む権限がありません");
+        return;
+      }
+      if (result.data?.status !== "succeeded") {
+        toast.error("ファイルが見つかりませんでした。URL を確認してください");
+        return;
+      }
+      toast.success("読み取れました");
     } catch (error) {
       toast.error(getOperationErrorMessage(error, "読み取りに失敗しました"));
     } finally {
