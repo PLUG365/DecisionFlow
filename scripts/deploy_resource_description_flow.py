@@ -218,18 +218,44 @@ def build_clientdata(
         }
     }
 
-    actions = {
-        # **身元を推測せず、名乗らせる。**
-        # `_api/web/currentUser` は「この接続が誰として動いているか」を直接返す。
-        # invoker が効いていれば呼び出した本人、効いていなければ接続所有者（管理者）。
-        #
-        # 当初はアクセス権の差（読めた/読めなかった）から身元を推測する A/B 対照を
-        # 組む予定だったが、それは間接証拠でしかない。Learn が
-        # 「This action may execute any SharePoint REST API **you have access to**」
-        # と書いているとおり、この操作は接続の資格で動くので、そのまま身元の直接証拠になる。
-        "Probe_identity": {
+    # 共有リンクは `text_1` に `u!…`（base64url 符号化した共有 URL）で入ってくる。
+    # **トリガーの引数を増やしていない。** `text_1` は元々「ファイルの指し方」で、
+    # パスかトークンかの違いでしかない。増やすと生成物の作り直しが要る。
+    # 式の中に埋める形（`@` 無し）と、単独で評価する形（`@` 付き）の2つが要る。
+    sharing_test = "startsWith(coalesce(triggerBody()?['text_1'], ''), 'u!')"
+    is_sharing_link = f"@{sharing_test}"
+
+    # 共有リンクとパス形式で**入口だけが違い、その先は同じ**。
+    # 名前・サイズ・中身が取れれば、抽出も説明文も分岐しない。
+    # 分岐を下流まで引きずると、`reason` の判定が組み合わせ爆発する。
+    share = "body('Read_share')"
+    file_size = (
+        f"int(coalesce({share}?['size'],"
+        " outputs('Read_file_metadata')?['body/Size'], 0))"
+    )
+    file_name = (
+        f"coalesce({share}?['name'],"
+        " outputs('Read_file_metadata')?['body/Name'], triggerBody()?['text_1'])"
+    )
+    # バイナリ出力は Logic Apps では `{$content-type, $content}`。`$content` が base64。
+    content_base64 = (
+        "coalesce(outputs('Get_share_content')?['body']?['$content'],"
+        " outputs('Get_file_content')?['body']?['$content'])"
+    )
+    source_ok = (
+        "or(equals(outputs('Read_share')?['statusCode'], 200),"
+        " equals(outputs('Read_file_metadata')?['statusCode'], 200))"
+    )
+
+    def sharepoint_http(uri: str, run_after: dict | None = None) -> dict:
+        """SharePoint の REST を本人の資格で叩く。
+
+        **`Prefer` ヘッダーを付けない。** `redeemSharingLink` を送ると
+        共有リンクを引き換えて恒久的なアクセス権を与えてしまう。
+        """
+        return {
             "type": "OpenApiConnection",
-            "runAfter": {},
+            "runAfter": run_after or {},
             "inputs": {
                 "host": {
                     "apiId": _connector_id(SHAREPOINT_CONNECTOR),
@@ -239,25 +265,22 @@ def build_clientdata(
                 "parameters": {
                     "dataset": "@{triggerBody()?['text']}",
                     "parameters/method": "GET",
-                    "parameters/uri": "_api/web/currentUser",
-                    "parameters/headers": {
-                        "accept": "application/json;odata=nometadata"
-                    },
+                    "parameters/uri": uri,
+                    "parameters/headers": {"accept": "application/json"},
                 },
                 "authentication": "@parameters('$authentication')",
             },
-        },
-        # 読み取りの成否も併せて返す。**アクセス権で結果が変わる**ので、
-        # 上の直接証拠に対する裏取りになる。両方が同じ結論を指すことを確認する。
-        # 第2段ではここが**サイズの門番**も兼ねる（`Size` は SPBlobMetadataResponse の int64）。
-        "Read_file_metadata": {
+        }
+
+    def sharepoint_file(operation_id: str, run_after: dict | None = None) -> dict:
+        return {
             "type": "OpenApiConnection",
-            "runAfter": {"Probe_identity": ["Succeeded", "Failed", "TimedOut"]},
+            "runAfter": run_after or {},
             "inputs": {
                 "host": {
                     "apiId": _connector_id(SHAREPOINT_CONNECTOR),
                     "connectionName": SHAREPOINT_CONNECTOR,
-                    "operationId": "GetFileMetadataByPath",
+                    "operationId": operation_id,
                 },
                 "parameters": {
                     "dataset": "@{triggerBody()?['text']}",
@@ -265,48 +288,81 @@ def build_clientdata(
                 },
                 "authentication": "@parameters('$authentication')",
             },
+        }
+
+    actions = {
+        # **身元を推測せず、名乗らせる。**
+        # `_api/web/currentUser` は「この接続が誰として動いているか」を直接返す。
+        # invoker が効いていれば呼び出した本人、効いていなければ接続所有者（管理者）。
+        "Probe_identity": sharepoint_http("_api/web/currentUser"),
+        # ここが入口の分岐。**共有リンクは Graph 互換の `shares` で解決する。**
+        #
+        # `_api/v2.0/shares/{u!…}/driveItem` は SharePoint コネクタ越しに 200 を返し、
+        # `name` / `size` / `@content.downloadUrl` を持って戻る（2026-08-16 実測）。
+        # **パスを組み立て直す必要が無い**ので、`_layouts` 形式の webUrl を
+        # 解析するような脆い処理を入れずに済む。
+        #
+        # 解決は invoker の資格で行われるので、**本人が未受諾のリンクはここで失敗する。
+        # それが正しい挙動**（フローが権限を与える装置になってはいけない）。
+        "Read_source": {
+            "type": "If",
+            "runAfter": {"Probe_identity": ["Succeeded", "Failed", "TimedOut"]},
+            "expression": {"equals": [is_sharing_link, True]},
+            "actions": {
+                "Read_share": sharepoint_http(
+                    "_api/v2.0/shares/@{triggerBody()?['text_1']}/driveItem"
+                ),
+            },
+            "else": {
+                "actions": {
+                    "Read_file_metadata": sharepoint_file("GetFileMetadataByPath"),
+                }
+            },
         },
         # **中身を取りに行く前に**サイズで止める。25 MB を超えるとプロンプト側で
-        # 失敗するが、そこまで行くと「読み取りに失敗しました」に埋もれて、
-        # 利用者にも我々にも理由が分からない失敗になる。
+        # 失敗するが、そこまで行くと理由の分からない失敗になる。
         "Describe_if_within_limit": {
             "type": "If",
-            "runAfter": {"Read_file_metadata": ["Succeeded"]},
+            "runAfter": {"Read_source": ["Succeeded", "Failed", "TimedOut"]},
             "expression": {
-                "lessOrEquals": [
-                    "@int(coalesce(outputs('Read_file_metadata')?['body/Size'], 0))",
-                    MAX_FILE_BYTES,
+                "and": [
+                    {"equals": [f"@{source_ok}", True]},
+                    {"lessOrEquals": [f"@{file_size}", MAX_FILE_BYTES]},
                 ]
             },
             "actions": {
-                "Get_file_content": {
-                    "type": "OpenApiConnection",
+                # 中身の取り方も入口ごとに違う。ここから先は同じ。
+                "Fetch_content": {
+                    "type": "If",
                     "runAfter": {},
-                    "inputs": {
-                        "host": {
-                            "apiId": _connector_id(SHAREPOINT_CONNECTOR),
-                            "connectionName": SHAREPOINT_CONNECTOR,
-                            "operationId": "GetFileContentByPath",
-                        },
-                        "parameters": {
-                            "dataset": "@{triggerBody()?['text']}",
-                            "path": "@{triggerBody()?['text_1']}",
-                        },
-                        "authentication": "@parameters('$authentication')",
+                    "expression": {"equals": [is_sharing_link, True]},
+                    "actions": {
+                        # **`downloadUrlNoAuth` を使う。** 認証トークン付きの
+                        # `downloadUrl` ではなく、呼び出し側の資格で解決される方。
+                        # サイト相対にして invoker の接続で取りに行く。
+                        "Get_share_content": sharepoint_http(
+                            "@{replace(body('Read_share')?['@content.downloadUrlNoAuth'],"
+                            " concat(triggerBody()?['text'], '/'), '')}"
+                        ),
+                    },
+                    "else": {
+                        "actions": {
+                            "Get_file_content": sharepoint_file("GetFileContentByPath"),
+                        }
                     },
                 },
                 # ファイルを**そのまま**プロンプトへ渡す。OCR も PDF 変換も挟まない。
                 #
                 # 値の形は推測していない。`PredictionSchema` が
-                # `File: {required: [base64Encoded], properties: {base64Encoded: {type: string, format: byte}}}`
-                # と返したので、そのとおりに入れ子で渡す。
-                # バイナリ出力は Logic Apps では `{$content-type, $content}` になり、
-                # `$content` が base64（2026-08-16 の初回実行で 147,604 文字が届くのを確認）。
+                # `File: {required: [base64Encoded], …}` と返したのでそのとおり入れ子で渡す。
                 #
-                # **このプロンプトは抽出しかしない。** 説明文は次の段で書く。
+                # **base64 を渡してはいけない。バイナリを渡す。** `$content` は既に
+                # base64 文字列で、`format: byte` のフィールドへ直接入れると
+                # コネクタがもう一度 base64 する（二重符号化）。プロンプト側は1回しか
+                # 復号しないので `File is not a zip file` になる（2026-08-16 実測）。
                 "Extract_text": {
                     "type": "OpenApiConnection",
-                    "runAfter": {"Get_file_content": ["Succeeded"]},
+                    "runAfter": {"Fetch_content": ["Succeeded"]},
                     "inputs": {
                         "host": {
                             "apiId": _connector_id(DATAVERSE_CONNECTOR),
@@ -315,37 +371,18 @@ def build_clientdata(
                         },
                         "parameters": {
                             "recordId": ai_model_id,
-                            # **base64 を渡してはいけない。バイナリを渡す。**
-                            #
-                            # `$content` は既に base64 文字列。それをそのまま
-                            # `format: byte` のフィールドへ入れると、**コネクタが
-                            # もう一度 base64 する**（二重符号化）。プロンプト側は
-                            # 1回だけ復号するので、手元に残るのは base64 テキストで、
-                            # zip として開けず `File is not a zip file` になる。
-                            #
-                            # 実行履歴のログがそれを名指しした:
-                            #   source=input type=str size=147604 head=b'UEsD'
-                            #   （147604 は base64 の長さ。復号後は 110703 のはず）
-                            #
-                            # `base64ToBinary` で一度バイナリに戻し、符号化は
-                            # コネクタに1回だけやらせる。
                             f"item/requestv2/{PROMPT_INPUT_FILE}/base64Encoded": (
-                                "@base64ToBinary(outputs('Get_file_content')?['body']?['$content'])"
+                                f"@base64ToBinary({content_base64})"
                             ),
-                            f"item/requestv2/{PROMPT_INPUT_FILENAME}": (
-                                "@coalesce(outputs('Read_file_metadata')?['body/Name'],"
-                                " triggerBody()?['text_1'])"
-                            ),
+                            f"item/requestv2/{PROMPT_INPUT_FILENAME}": f"@{file_name}",
                         },
                         "authentication": "@parameters('$authentication')",
                     },
                 },
                 # 抽出したテキストを読んで**説明文を書く**段。
-                # ここを別プロンプトにしているのは、code interpreter の生成コードに
-                # 文章を書かせると Python の文字列処理に化けたため（2026-08-16 実測）。
-                # 抽出は決定的な処理なので一度固めれば動き続け、文章の質だけを
-                # 独立して扱える。**指示文はどちらも UI でしか書けない**
-                # （`find_text_prompt` の docstring に潰した経路を残してある）。
+                # 別プロンプトなのは、code interpreter の生成コードに文章を書かせると
+                # Python の文字列処理に化けるため（2026-08-16 実測）。抽出側は
+                # モデルを呼んでおらず、クレジットも 0。**文章を書けるのはこちらだけ。**
                 "Write_description": {
                     "type": "OpenApiConnection",
                     "runAfter": {"Extract_text": ["Succeeded"]},
@@ -357,14 +394,11 @@ def build_clientdata(
                         },
                         "parameters": {
                             "recordId": text_model_id,
-                            "item/requestv2/documentText": (
+                            f"item/requestv2/{TEXT_INPUT_DOCUMENT}": (
                                 "@coalesce(outputs('Extract_text')"
                                 "?['body/responsev2/predictionOutput/text'], '')"
                             ),
-                            "item/requestv2/fileName": (
-                                "@coalesce(outputs('Read_file_metadata')?['body/Name'],"
-                                " triggerBody()?['text_1'])"
-                            ),
+                            f"item/requestv2/{TEXT_INPUT_FILENAME}": f"@{file_name}",
                         },
                         "authentication": "@parameters('$authentication')",
                     },
@@ -375,99 +409,67 @@ def build_clientdata(
             "type": "Response",
             "kind": "PowerApp",
             # 失敗しても応答を返す。**失敗の仕方こそが知りたい情報**なので握り潰さない。
-            # 分岐が丸ごと飛ばされる（メタデータが失敗）ことも、分岐の中で失敗する
-            # （生成が転ぶ）こともあるので、Skipped と Failed の両方を受ける。
             "runAfter": {
                 "Describe_if_within_limit": ["Succeeded", "Failed", "TimedOut", "Skipped"]
             },
             "inputs": {
                 "statusCode": 200,
                 "body": {
-                    "status": "@{if(equals(outputs('Read_file_metadata')?['statusCode'], 200), 'succeeded', 'failed')}",
-                    "detail": "@{string(coalesce(outputs('Read_file_metadata')?['body'], ''))}",
+                    "status": f"@{{if({source_ok}, 'succeeded', 'failed')}}",
+                    # 診断用。パス形式ならメタデータ本体、共有リンクならファイル名。
+                    "detail": (
+                        "@{string(coalesce(outputs('Read_file_metadata')?['body'], "
+                        + share
+                        + "?['name'], ''))}"
+                    ),
                     # 呼び出した本人の UPN。**取れなかったときは空**にする。
-                    # 生のエラー本文をここへ落とすと、利用者のトーストに
-                    # JSON がそのまま出る（2026-08-16 に実機で確認した粗さ）。
-                    # 権限で弾かれた事実は status / detail が運ぶので、
-                    # ここは身元だけを持たせる。
+                    # 生のエラー本文をここへ落とすと利用者のトーストに JSON が出る。
                     "actingAs": "@{string(coalesce(outputs('Probe_identity')?['body']?['LoginName'], outputs('Probe_identity')?['body']?['Email'], ''))}",
-                    # 生成された説明文。**取れなかったときは空。**
-                    # 出力形式は text なので `predictionOutput/text` に入る
-                    # （`PredictionSchema` の output で確認。structuredOutput は無い）。
+                    # 出力形式は text なので `predictionOutput/text` に入る。
                     "description": (
                         "@{string(coalesce("
                         "outputs('Write_description')?['body/responsev2/predictionOutput/text'], ''))}"
                     ),
-                    # **なぜ説明が無いのか**を UI が言えるようにする。空文字だけ返すと、
-                    # 権限・サイズ・生成失敗が画面から区別できなくなる。
+                    # **なぜ説明が無いのか**を UI が言えるようにする。
                     #
-                    # **中身の取得失敗を `generation-failed` に混ぜない。**
-                    # メタデータと中身は別の操作なので、メタデータが通って中身が
-                    # 403 になることがある。そのとき Extract_text は飛ばされるので、
-                    # 順番を工夫しないと「生成に失敗」と読めてしまう。
-                    # ファイルは一度も読めていないのに、プロンプトを疑うことになる。
+                    # 判定順が意味を持つ。**共有リンクを最初に見る**のは、
+                    # 解決できなかった共有リンクが「ファイルが見つかりません」
+                    # （＝パスが違う）に化けると、利用者に URL の打ち直しをさせるから。
+                    # 原因が違う。
                     #
-                    # 判定順が意味を持つ: サイズ超過で分岐ごと飛んだときも
-                    # Get_file_content の出力は空なので、先に too-large を見る。
-                    #
-                    # **抽出の失敗と文章生成の失敗も混ぜない。** 別々のプロンプトなので、
-                    # 直す対象が違う。一緒くたにすると、毎回どちらを疑うかの判断から
-                    # やり直しになる（実際にそれで3往復した）。
+                    # 抽出の失敗と文章生成の失敗も分ける。別のプロンプトなので
+                    # 直す対象が違う（一緒くたにして実際に3往復した）。
                     "reason": (
-                        "@{if(not(equals(outputs('Read_file_metadata')?['statusCode'], 200)), 'unreadable',"
-                        f" if(greater(int(coalesce(outputs('Read_file_metadata')?['body/Size'], 0)), {MAX_FILE_BYTES}), 'too-large',"
-                        " if(not(equals(outputs('Get_file_content')?['statusCode'], 200)), 'content-unreadable',"
+                        f"@{{if(and({sharing_test},"
+                        " not(equals(outputs('Read_share')?['statusCode'], 200))),"
+                        " 'sharing-link-unresolved',"
+                        f" if(not({source_ok}), 'unreadable',"
+                        f" if(greater({file_size}, {MAX_FILE_BYTES}), 'too-large',"
+                        f" if(empty({content_base64}), 'content-unreadable',"
                         " if(or(empty(coalesce(outputs('Extract_text')?['body/responsev2/predictionOutput/text'], '')),"
                         f" equals(trim(coalesce(outputs('Extract_text')?['body/responsev2/predictionOutput/text'], '')), '{EXTRACT_FAILED_MARKER}')),"
                         " 'extract-failed',"
                         " if(empty(coalesce(outputs('Write_description')?['body/responsev2/predictionOutput/text'], '')),"
-                        " 'generation-failed', '')))))}"
+                        " 'generation-failed', ''))))))}"
                     ),
                 },
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "status": {
-                            "title": "status",
+                        name: {
+                            "title": name,
                             "type": "string",
                             "x-ms-content-hint": "TEXT",
                             "x-ms-dynamically-added": True,
-                        },
-                        "detail": {
-                            "title": "detail",
-                            "type": "string",
-                            "x-ms-content-hint": "TEXT",
-                            "x-ms-dynamically-added": True,
-                        },
-                        "actingAs": {
-                            "title": "actingAs",
-                            "type": "string",
-                            "x-ms-content-hint": "TEXT",
-                            "x-ms-dynamically-added": True,
-                        },
-                        "description": {
-                            "title": "description",
-                            "type": "string",
-                            "x-ms-content-hint": "TEXT",
-                            "x-ms-dynamically-added": True,
-                        },
-                        "reason": {
-                            "title": "reason",
-                            "type": "string",
-                            "x-ms-content-hint": "TEXT",
-                            "x-ms-dynamically-added": True,
-                        },
+                        }
+                        for name in ("status", "detail", "actingAs", "description", "reason")
                     },
                 },
             },
         },
     }
 
-    # **どのアクションも使わない接続参照は書かない。**
-    # 素の `shared_commondataserviceforapps` を入れていたが、AI Builder の
-    # アクションが名指しするのは `_1` の別名だけで、素の方は誰も使っていなかった。
-    # プラットフォームは保存時にそれを落とす。**こちらが書いたものと保存されたものが
-    # ずれる**ので、最初から書かない。
+
     connection_references = {
         # AI Builder のアクションが名指しする別名。
         DATAVERSE_CONNECTOR_AI: {
@@ -808,9 +810,22 @@ def verify_runtime_source(workflow_id: str) -> None:
             "新しいデザイナーも警告します）。"
         )
 
+    # **リンクの引き換えをしていないこと。**
+    # Graph の `shares` は `Prefer: redeemSharingLink` で恒久的なアクセス権を
+    # 与えられる。それを送ると「本人が既に読めるものだけ」という前提が崩れ、
+    # **URL を貼っただけで権限が付く**装置になる（第1段で塞いだ穴と同じ形）。
+    # 未受諾のリンクは解決に失敗してよい。**失敗が正しい挙動。**
+    if "redeem" in record["clientdata"].lower():
+        raise RuntimeError(
+            "clientdata に 'redeem' が含まれています。"
+            "共有リンクの引き換え（Prefer: redeemSharingLink）は行いません。"
+            "未受諾のリンクは解決に失敗するのが正しい挙動です。"
+        )
+
     print(f"  OK: {SHAREPOINT_CONNECTOR}.runtimeSource = invoker")
     for connector in sorted(expected - {SHAREPOINT_CONNECTOR}):
         print(f"  OK: {connector}.runtimeSource = embedded")
+    print("  OK: リンクの引き換え（redeem）は行っていない")
     for connector in sorted(expected):
         logical = refs[connector]["connection"]["connectionReferenceLogicalName"]
         print(f"  OK: {connector} は接続参照 {logical} で束ねている")

@@ -27,6 +27,7 @@ import {
   isApplicationReturnedForRevision,
   isIgnorableParticipantRevokeFailure,
   appendGeneratedDescription,
+  encodeSharingUrl,
   resolveDescribeOutcome,
   buildApplicationListRow,
   canManageApplicationResources,
@@ -957,14 +958,33 @@ describe("parseSharePointLink", () => {
     });
   });
 
-  it("共有リンクをパス形式と混同しない", () => {
+  it("共有リンクをパス形式と混同せず、サイトと元 URL を持たせる", () => {
     // ここを path として扱うと、トークンをパスとして読みに行き、
     // 権限エラーと区別できない失敗になる。**利用者が貼るのはほぼこの形。**
     expect(
       parseSharePointLink(
         "https://contoso-my.sharepoint.com/:p:/g/personal/admin_contoso_onmicrosoft_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR",
       ),
-    ).toEqual({ kind: "sharing-link" });
+    ).toEqual({
+      kind: "sharing-link",
+      siteUrl:
+        "https://contoso-my.sharepoint.com/personal/admin_contoso_onmicrosoft_com",
+      // **クエリまで含めて元のまま。** `?e=…` はトークンの一部で、削ると別のリンクになる。
+      sharingUrl:
+        "https://contoso-my.sharepoint.com/:p:/g/personal/admin_contoso_onmicrosoft_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR",
+    });
+  });
+
+  it("チームサイトの共有リンクからもサイトを取り出す", () => {
+    expect(
+      parseSharePointLink(
+        "https://contoso.sharepoint.com/:w:/s/Sales/EYt1234abcd?e=xyz",
+      ),
+    ).toEqual({
+      kind: "sharing-link",
+      siteUrl: "https://contoso.sharepoint.com/sites/Sales",
+      sharingUrl: "https://contoso.sharepoint.com/:w:/s/Sales/EYt1234abcd?e=xyz",
+    });
   });
 
   it("sourcedoc 形式のようなパスを持たない URL を弾く", () => {
@@ -1112,5 +1132,47 @@ describe("resolveDescribeOutcome", () => {
       kind: "append",
       description: ok.description,
     });
+  });
+});
+
+describe("encodeSharingUrl", () => {
+  // Learn の手順: base64 → 末尾の `=` を落とす → `/`→`_`、`+`→`-` → `u!` を前置。
+  const decode = (token: string) => {
+    const body = token.replace(/^u!/, "").replace(/_/g, "/").replace(/-/g, "+");
+    const padded = body + "=".repeat((4 - (body.length % 4)) % 4);
+    return new TextDecoder().decode(
+      Uint8Array.from(atob(padded), (c) => c.charCodeAt(0)),
+    );
+  };
+
+  it("元の URL に復元できる（往復する）", () => {
+    const url =
+      "https://contoso-my.sharepoint.com/:p:/g/personal/diegos_contoso_onmicrosoft_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR";
+    const token = encodeSharingUrl(url);
+    expect(token.startsWith("u!")).toBe(true);
+    expect(decode(token)).toBe(url);
+  });
+
+  it("base64url にする（`=` を残さず、`/` と `+` を使わない）", () => {
+    // ここを素の base64 のままにすると、URL の一部として渡したときに壊れる。
+    const token = encodeSharingUrl(
+      "https://contoso.sharepoint.com/:w:/s/Sales/E??>>??abc+/def?e=1",
+    );
+    expect(token).not.toMatch(/[=/+]/);
+  });
+
+  it("日本語を含む URL でも壊れない", () => {
+    // btoa は Latin-1 しか受けないので、UTF-8 のバイト列にしてから符号化している。
+    const url = "https://contoso.sharepoint.com/:p:/g/personal/u/共有資料?e=1";
+    expect(decode(encodeSharingUrl(url))).toBe(url);
+  });
+
+  it("Learn の例と同じ結果になる", () => {
+    // 記事に載っている C# の例と突き合わせる。**手順を自分で言い換えていないか**の確認。
+    const url =
+      "https://onedrive.live.com/redir?resid=1231244193912!12&authKey=1201919!12921!1";
+    expect(encodeSharingUrl(url)).toBe(
+      "u!aHR0cHM6Ly9vbmVkcml2ZS5saXZlLmNvbS9yZWRpcj9yZXNpZD0xMjMxMjQ0MTkzOTEyITEyJmF1dGhLZXk9MTIwMTkxOSExMjkyMSEx",
+    );
   });
 });

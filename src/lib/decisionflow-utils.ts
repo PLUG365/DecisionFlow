@@ -165,6 +165,13 @@ const DESCRIBE_FAILURE_MESSAGES: Record<string, string> = {
   "content-unreadable": "ファイルの中身を読み取れませんでした",
   "extract-failed": "資料からテキストを取り出せませんでした",
   "generation-failed": "説明を生成できませんでした",
+  // 共有リンクは**本人の資格で解決する**。本人がまだ開いていないリンクは
+  // 解決できず、それが正しい挙動（フローが権限を与える装置になってはいけない）。
+  // **「失敗」ではなく「まだ開けない」と伝える**のが肝で、そうしないと
+  // 次に触る人が「直すために引き換えを足す」方向へ動く。
+  "sharing-link-unresolved":
+    "この共有リンクをまだ開けません。一度ブラウザで開いてから試してください",
+  "sharing-link-unsupported": "この共有リンクにはまだ対応していません",
 };
 
 export type DescribeResult = {
@@ -752,12 +759,32 @@ export function isIgnorableParticipantRevokeFailure(
  */
 export type SharePointLink =
   | { kind: "path"; siteUrl: string; filePath: string }
-  | { kind: "sharing-link" }
+  | { kind: "sharing-link"; siteUrl: string; sharingUrl: string }
   | { kind: "unsupported" }
   | { kind: "not-sharepoint" };
 
 /** 共有リンクの種別プレフィックス（`:p:` = PowerPoint、`:w:` = Word など）。 */
 const SHARING_LINK_PREFIX = /^:[a-z]:$/;
+
+/**
+ * 共有 URL を Graph の `shares` が受け取る形（`u!…`）へ符号化する。
+ *
+ * 手順は Learn の [Accessing shared DriveItems] のとおり:
+ * base64 にして、末尾の `=` を落とし、`/` を `_`、`+` を `-` に置き換え、`u!` を前置。
+ *
+ * **元の URL をそのまま渡さない。** クエリ（`?e=…`）まで含めて1つのトークンなので、
+ * 削ったり正規化したりすると別のリンクになる。
+ *
+ * 日本語などの非 ASCII を含む URL でも壊れないよう、**UTF-8 のバイト列にしてから**
+ * base64 にする（`btoa` は Latin-1 しか受け付けない）。
+ */
+export function encodeSharingUrl(sharingUrl: string): string {
+  const utf8 = new TextEncoder().encode(sharingUrl);
+  let binary = "";
+  for (const byte of utf8) binary += String.fromCharCode(byte);
+  const base64 = btoa(binary);
+  return `u!${base64.replace(/=+$/, "").replace(/\//g, "_").replace(/\+/g, "-")}`;
+}
 
 export function parseSharePointLink(
   rawUrl: string | null | undefined,
@@ -782,7 +809,41 @@ export function parseSharePointLink(
     .map((segment) => decodeURIComponent(segment));
   if (segments.length === 0) return { kind: "unsupported" };
 
-  if (SHARING_LINK_PREFIX.test(segments[0])) return { kind: "sharing-link" };
+  if (SHARING_LINK_PREFIX.test(segments[0])) {
+    // **サイトを取り出すのは、コネクタが「どのサイトへ REST を投げるか」を
+    // 要求するから**（トークン自体はテナント内で解決される）。
+    //
+    // 2つ目のセグメントが範囲を表す記号で、**その後ろの読み方が記号ごとに違う**。
+    //
+    //   `/:p:/g/personal/<user>/<token>` … `g` の後ろは実パス（`personal/<user>`）
+    //   `/:w:/s/<siteName>/<token>`      … `s` の後ろは**サイト名だけ**（`sites/` は入らない）
+    //   `/:x:/t/<teamName>/<token>`      … `t` も同様
+    //
+    // `s` を `g` と同じ「実パス」と読むとサイトが取れない。**テストで捕まえた。**
+    const scope = (segments[1] ?? "").toLowerCase();
+    const rest = segments.slice(2);
+    let siteSegments: string[] = [];
+    if (scope === "g") {
+      siteSegments = ["personal", "sites", "teams"].includes(
+        (rest[0] ?? "").toLowerCase(),
+      )
+        ? rest.slice(0, 2)
+        : [];
+    } else if (scope === "s" && rest[0]) {
+      siteSegments = ["sites", rest[0]];
+    } else if (scope === "t" && rest[0]) {
+      siteSegments = ["teams", rest[0]];
+    }
+
+    return {
+      kind: "sharing-link",
+      // 記号が読めなければサイトを付けず、テナントのルートへ投げる。
+      // Diego がルートサイトに到達できることは第1段で実測済み。
+      siteUrl: [parsed.origin, ...siteSegments].join("/"),
+      // **クエリまで含めて元のまま渡す。** `?e=…` はトークンの一部。
+      sharingUrl: trimmed,
+    };
+  }
 
   // `_layouts/15/Doc.aspx?sourcedoc={GUID}` 形式もパスを持たない。
   if (segments.some((segment) => segment.toLowerCase() === "_layouts")) {

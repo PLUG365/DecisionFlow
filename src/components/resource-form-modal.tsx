@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCreateResource } from "@/hooks/use-decisionflow";
 import {
   appendGeneratedDescription,
+  encodeSharingUrl,
   parseSharePointLink,
   resolveDescribeOutcome,
   validateResourceInput,
@@ -68,12 +69,6 @@ export function ResourceFormModal({
       toast.error("SharePoint / OneDrive の URL を入れてください");
       return;
     }
-    if (link.kind === "sharing-link") {
-      toast.error(
-        "共有リンクはまだ読めません。ファイルを開いた状態のアドレスを貼ってください",
-      );
-      return;
-    }
     if (link.kind === "unsupported") {
       toast.error("この URL からはファイルを特定できませんでした");
       return;
@@ -81,9 +76,15 @@ export function ResourceFormModal({
 
     setIsDescribing(true);
     try {
+      // `text_1` は「ファイルの指し方」。パス形式ならパス、共有リンクなら
+      // Graph が受け取る `u!…` トークン。**フローの引数を増やしていない**ので、
+      // 生成物を作り直さずに済む。
       const result = await ApplicationResource_DescribeLinkService.Run({
         text: link.siteUrl,
-        text_1: link.filePath,
+        text_1:
+          link.kind === "sharing-link"
+            ? encodeSharingUrl(link.sharingUrl)
+            : link.filePath,
       });
       if (!result.success) {
         toast.error(getOperationErrorMessage(result.error, "読み取りに失敗しました"));
