@@ -922,12 +922,12 @@ describe("parseSharePointLink", () => {
   it("個人用 OneDrive のパス形式をサイトとパスに割る", () => {
     expect(
       parseSharePointLink(
-        "https://contoso-my.sharepoint.com/personal/admin_contoso_onmicrosoft_com/Documents/plan.pptx",
+        "https://contoso-my.sharepoint.com/personal/admin_contoso_com/Documents/plan.pptx",
       ),
     ).toEqual({
       kind: "path",
       siteUrl:
-        "https://contoso-my.sharepoint.com/personal/admin_contoso_onmicrosoft_com",
+        "https://contoso-my.sharepoint.com/personal/admin_contoso_com",
       filePath: "/Documents/plan.pptx",
     });
   });
@@ -937,12 +937,12 @@ describe("parseSharePointLink", () => {
     // 符号化されたまま SharePoint へ渡すと、二重符号化でファイルが見つからない。
     expect(
       parseSharePointLink(
-        "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com/Documents/%E3%83%AC%E3%83%9D%E3%83%BC%E3%83%88%E5%85%B1%E6%9C%89%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6_skill.pptx",
+        "https://contoso-my.sharepoint.com/personal/taro_contoso_com/Documents/%E3%83%AC%E3%83%9D%E3%83%BC%E3%83%88%E5%85%B1%E6%9C%89%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6_skill.pptx",
       ),
     ).toEqual({
       kind: "path",
       siteUrl:
-        "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com",
+        "https://contoso-my.sharepoint.com/personal/taro_contoso_com",
       filePath: "/Documents/レポート共有について_skill.pptx",
     });
   });
@@ -964,15 +964,15 @@ describe("parseSharePointLink", () => {
     // 権限エラーと区別できない失敗になる。**利用者が貼るのはほぼこの形。**
     expect(
       parseSharePointLink(
-        "https://contoso-my.sharepoint.com/:p:/g/personal/admin_contoso_onmicrosoft_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR",
+        "https://contoso-my.sharepoint.com/:p:/g/personal/admin_contoso_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR",
       ),
     ).toEqual({
       kind: "sharing-link",
       siteUrl:
-        "https://contoso-my.sharepoint.com/personal/admin_contoso_onmicrosoft_com",
+        "https://contoso-my.sharepoint.com/personal/admin_contoso_com",
       // **クエリまで含めて元のまま。** `?e=…` はトークンの一部で、削ると別のリンクになる。
       sharingUrl:
-        "https://contoso-my.sharepoint.com/:p:/g/personal/admin_contoso_onmicrosoft_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR",
+        "https://contoso-my.sharepoint.com/:p:/g/personal/admin_contoso_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR",
     });
   });
 
@@ -1060,7 +1060,7 @@ describe("appendGeneratedDescription", () => {
 
 describe("resolveDescribeOutcome", () => {
   const ok = {
-    actingAs: "i:0#.f|membership|diegos@contoso.onmicrosoft.com",
+    actingAs: "i:0#.f|membership|taro@contoso.com",
     description: "Power BI のレポート共有パターンをまとめた勉強会資料です。",
     reason: "",
   };
@@ -1148,7 +1148,7 @@ describe("encodeSharingUrl", () => {
 
   it("元の URL に復元できる（往復する）", () => {
     const url =
-      "https://contoso-my.sharepoint.com/:p:/g/personal/diegos_contoso_onmicrosoft_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR";
+      "https://contoso-my.sharepoint.com/:p:/g/personal/taro_contoso_com/IQCLYXUHAUcfTYaxzoGHQC0d?e=bibmNR";
     const token = encodeSharingUrl(url);
     expect(token.startsWith("u!")).toBe(true);
     expect(decode(token)).toBe(url);
@@ -1182,11 +1182,11 @@ describe("resolveDescribeRequest", () => {
   it("パス形式はサイトとパスに割って渡す", () => {
     expect(
       resolveDescribeRequest(
-        "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com/Documents/plan.pptx",
+        "https://contoso-my.sharepoint.com/personal/taro_contoso_com/Documents/plan.pptx",
       ),
     ).toEqual({
       kind: "run",
-      text: "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com",
+      text: "https://contoso-my.sharepoint.com/personal/taro_contoso_com",
       text_1: "/Documents/plan.pptx",
     });
   });
@@ -1195,12 +1195,12 @@ describe("resolveDescribeRequest", () => {
     // **ここを取り違えると、共有リンクにパスを送る。** 症状は
     // 「読み取れませんでした」だけで、権限エラーと見分けが付かない。
     const request = resolveDescribeRequest(
-      "https://contoso-my.sharepoint.com/:p:/g/personal/diegos_contoso_onmicrosoft_com/IQCabc?e=x",
+      "https://contoso-my.sharepoint.com/:p:/g/personal/taro_contoso_com/IQCabc?e=x",
     );
     expect(request.kind).toBe("run");
     if (request.kind !== "run") return;
     expect(request.text).toBe(
-      "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com",
+      "https://contoso-my.sharepoint.com/personal/taro_contoso_com",
     );
     expect(request.text_1.startsWith("u!")).toBe(true);
     expect(request.text_1).not.toContain("/");
