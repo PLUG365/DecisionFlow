@@ -559,42 +559,35 @@ def find_dataverse_connection_reference() -> str:
     return bound[0]["connectionreferencelogicalname"]
 
 
-def find_ai_prompt() -> str:
-    """`ResourceDescription` プロンプトの model id を名前で引く。**作らない。**
+def _prompt_setup_hint(
+    name: str, *, code_interpreter: bool, inputs: str, instructions: str
+) -> str:
+    """UI で何をすればよいかを、**貼れる形**で出す。
 
-    code interpreter 付きのプロンプトは `code`（生成された Python）と `signature`
-    （プラットフォーム発行の整合性トークン。geography / cluster / key version が
-    焼き込まれている）を持つ。**署名を手元で作れない**ので `AIModelPublish` では
-    再現できない。Learn が「You must use the UI to create code interpreter enabled
-    prompts」と書いているのは、この署名のことだと読める。
-
-    無ければ**黙って別のものを使わず落とす**。text 専用のプロンプトを掴んで
-    「動いているように見えて Office が読めない」が一番たちが悪い。
+    **指示文をこのスクリプトから書き込むことはできない。** ここでできるのは
+    「正本を持っておいて、必要なときに表示する」ことだけ。
     """
-    models = api_get(
-        f"msdyn_aimodels?$filter=msdyn_name eq '{_escape_odata_string(AI_PROMPT_NAME)}'"
-        "&$select=msdyn_aimodelid,statecode&$orderby=createdon desc&$top=1"
-    ).get("value", [])
-    if not models:
-        raise RuntimeError(
-            f"AI Builder プロンプト '{AI_PROMPT_NAME}' が見つかりません。\n"
-            "AI Hub の UI で作成してください（code interpreter を ON、"
-            "ドキュメント入力とテキスト入力を1つずつ、出力は Text）。\n"
-            "このスクリプトでは作れません（署名を発行できないため）。"
-        )
-    model = models[0]
-    if model.get("statecode") != 1:
-        raise RuntimeError(
-            f"'{AI_PROMPT_NAME}' が Active ではありません（statecode="
-            f"{model.get('statecode')}）。公開してから配備してください。"
-        )
-    return model["msdyn_aimodelid"]
+    return (
+        f"AI Hub の UI で用意してください（**指示文はスクリプトから書き込めません**）。\n"
+        f"  - 名前: {name}\n"
+        f"  - code interpreter: {'ON' if code_interpreter else 'OFF'}\n"
+        f"  - 入力: {inputs}\n"
+        "  - 出力: Text\n"
+        "  - 指示文は下記を貼る（`〔…〕` の位置に入力変数を差し込む）:\n\n"
+        + "\n".join("    " + line for line in instructions.splitlines())
+    )
 
 
-def find_text_prompt() -> str:
-    """`ResourceDescriptionText` を名前で引き、**使える形になっているかを検める。**
+def _require_prompt(
+    name: str,
+    *,
+    expected_inputs: set[str],
+    instructions: str,
+    code_interpreter: bool,
+    inputs_label: str,
+) -> str:
+    """プロンプトを名前で引き、**使える形になっているかを検める。作らない。**
 
-    当初はここで作る／更新するつもりだった。**この環境では両方できない。**
     潰した経路を残しておく（同じ道を二度探さないため）。
 
     | 試したこと | 結果 |
@@ -608,36 +601,39 @@ def find_text_prompt() -> str:
     UI で作ったときの空の指示文のまま**だった。ステータスコードを信じて
     「更新できた」と報告する寸前だった。中身を読み直して初めて分かった。
 
-    したがって**指示文は UI でしか書けない**。ここでできるのは検査だけ。
-    それでも検査には意味がある。**空のプロンプトのまま配線が通ってしまうと、
-    説明文が静かに空で返る**（`generation-failed` としか分からない）。
-    ここで落とせば、原因が名指しで出る。
+    **したがって作成も編集も UI でしかできない。ここでできるのは検査だけ。**
+    それでも検査には意味がある。**形が違っても配線は通ってしまい、実行時に
+    静かに失敗する**（説明が空で返り、画面には `extract-failed` としか出ない）。
+    ここで落とせば、原因が名指しで出て、貼るべき指示文もその場に出る。
     """
+    hint = _prompt_setup_hint(
+        name,
+        code_interpreter=code_interpreter,
+        inputs=inputs_label,
+        instructions=instructions,
+    )
+
     models = api_get(
-        f"msdyn_aimodels?$filter=msdyn_name eq '{_escape_odata_string(AI_TEXT_PROMPT_NAME)}'"
+        f"msdyn_aimodels?$filter=msdyn_name eq '{_escape_odata_string(name)}'"
         "&$select=msdyn_aimodelid,statecode,_msdyn_activerunconfigurationid_value"
         "&$orderby=createdon desc&$top=1"
     ).get("value", [])
-
     if not models:
-        raise RuntimeError(
-            f"AI Builder プロンプト '{AI_TEXT_PROMPT_NAME}' が見つかりません。\n"
-            f"{_text_prompt_setup_hint()}"
-        )
+        raise RuntimeError(f"AI Builder プロンプト '{name}' が見つかりません。\n{hint}")
 
     model = models[0]
     model_id = model["msdyn_aimodelid"]
     if model.get("statecode") != 1:
         raise RuntimeError(
-            f"'{AI_TEXT_PROMPT_NAME}' が Active ではありません"
-            f"（statecode={model.get('statecode')}）。AI Hub で保存し直してください。"
+            f"'{name}' が Active ではありません（statecode={model.get('statecode')}）。"
+            "AI Hub で保存し直してください。"
         )
 
     run_config_id = model.get("_msdyn_activerunconfigurationid_value")
     if not run_config_id:
         raise RuntimeError(
-            f"'{AI_TEXT_PROMPT_NAME}' に有効な run configuration がありません"
-            f"（model={model_id}）。作りかけで止まっている可能性があります。"
+            f"'{name}' に有効な run configuration がありません（model={model_id}）。"
+            "作りかけで止まっている可能性があります。"
         )
 
     raw = api_get(
@@ -646,16 +642,34 @@ def find_text_prompt() -> str:
     try:
         config = json.loads(raw or "{}")
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"'{AI_TEXT_PROMPT_NAME}' の設定を読めませんでした: {exc}"
-        ) from exc
+        raise RuntimeError(f"'{name}' の設定を読めませんでした: {exc}") from exc
 
-    inputs = {item.get("id") for item in config.get("definitions", {}).get("inputs", [])}
-    missing = {TEXT_INPUT_FILENAME, TEXT_INPUT_DOCUMENT} - inputs
+    actual_inputs = {
+        item.get("id") for item in config.get("definitions", {}).get("inputs", [])
+    }
+    missing = expected_inputs - actual_inputs
     if missing:
         raise RuntimeError(
-            f"'{AI_TEXT_PROMPT_NAME}' に入力 {sorted(missing)} がありません"
-            f"（実際: {sorted(inputs)}）。\n{_text_prompt_setup_hint()}"
+            f"'{name}' に入力 {sorted(missing)} がありません"
+            f"（実際: {sorted(actual_inputs)}）。\n{hint}"
+        )
+
+    # **code interpreter の入れ忘れは実行時まで見えない。**
+    # Office ファイルはこれが無いとドキュメント入力として扱われない。
+    # 保存された設定では `settings.runtime` が `codeinterpreter` になる（実測）。
+    runtime = (config.get("settings") or {}).get("runtime")
+    if code_interpreter and runtime != "codeinterpreter":
+        raise RuntimeError(
+            f"'{name}' で code interpreter が有効になっていません"
+            f"（settings.runtime = {runtime!r}）。\n"
+            "Office ファイルを読むには必須です（プロンプト設定の「…」→ 設定）。\n"
+            f"{hint}"
+        )
+    if not code_interpreter and runtime == "codeinterpreter":
+        raise RuntimeError(
+            f"'{name}' で code interpreter が有効になっています。**OFF にしてください。**\n"
+            "有効にすると生成コードの戻り値がそのまま出力になり、"
+            "**モデルが文章を書く段が消えます**（2026-08-16 実測）。"
         )
 
     # **指示文が空のまま配線しない。** 入力変数だけ並んでいて地の文が無い状態でも
@@ -667,23 +681,39 @@ def find_text_prompt() -> str:
     )
     if literal_length < 100:
         raise RuntimeError(
-            f"'{AI_TEXT_PROMPT_NAME}' の指示文が空か短すぎます"
-            f"（地の文 {literal_length} 文字）。\n{_text_prompt_setup_hint()}"
+            f"'{name}' の指示文が空か短すぎます（地の文 {literal_length} 文字）。\n{hint}"
         )
 
-    print(f"  指示文 OK（地の文 {literal_length} 文字 / 入力 {sorted(inputs)}）")
-    print(f"  modelType: {config.get('modelParameters', {}).get('modelType')}")
+    print(
+        f"  {name}: 指示文 OK（地の文 {literal_length} 文字 / 入力 {sorted(actual_inputs)}"
+        f" / runtime={runtime!r} / modelType="
+        f"{(config.get('modelParameters') or {}).get('modelType')}）"
+    )
     return model_id
 
 
-def _text_prompt_setup_hint() -> str:
-    return (
-        "AI Hub の UI で用意してください（**指示文はスクリプトから書き込めません**）。\n"
-        "  - code interpreter は OFF\n"
-        f"  - テキスト入力を2つ: `{TEXT_INPUT_FILENAME}` と `{TEXT_INPUT_DOCUMENT}`\n"
-        "  - 出力は Text\n"
-        "  - 指示文は下記を貼る:\n\n"
-        + "\n".join("    " + line for line in TEXT_PROMPT_INSTRUCTIONS.splitlines())
+def find_ai_prompt() -> str:
+    """抽出プロンプト。**code interpreter が要る**（Office をドキュメント入力にするため）。"""
+    return _require_prompt(
+        AI_PROMPT_NAME,
+        expected_inputs={PROMPT_INPUT_FILE, PROMPT_INPUT_FILENAME},
+        instructions=EXTRACT_PROMPT_INSTRUCTIONS,
+        code_interpreter=True,
+        inputs_label=(
+            f"`{PROMPT_INPUT_FILE}`（画像またはドキュメント） / "
+            f"`{PROMPT_INPUT_FILENAME}`（テキスト）"
+        ),
+    )
+
+
+def find_text_prompt() -> str:
+    """説明文プロンプト。**code interpreter は入れない**（入れるとモデルが黙る）。"""
+    return _require_prompt(
+        AI_TEXT_PROMPT_NAME,
+        expected_inputs={TEXT_INPUT_FILENAME, TEXT_INPUT_DOCUMENT},
+        instructions=TEXT_PROMPT_INSTRUCTIONS,
+        code_interpreter=False,
+        inputs_label=f"`{TEXT_INPUT_FILENAME}` / `{TEXT_INPUT_DOCUMENT}`（どちらもテキスト）",
     )
 
 
@@ -840,12 +870,11 @@ def main() -> None:
     dataverse_ref = find_dataverse_connection_reference()
     print(f"Dataverse connection reference: {dataverse_ref}")
 
+    # **プロンプト2本はどちらも UI で作る。** ここでは検査だけを行う
+    # （`_require_prompt` の docstring に、潰した書き込み経路を残してある）。
+    print("AI Builder プロンプト（UI 製・ここでは検査のみ）:")
     ai_model_id = find_ai_prompt()
-    print(f"AI Builder prompt (抽出・UI 製): {AI_PROMPT_NAME} ({ai_model_id})")
-
-    print(f"AI Builder prompt (説明文・UI 製): {AI_TEXT_PROMPT_NAME}")
     text_model_id = find_text_prompt()
-    print(f"  -> {text_model_id}")
 
     sharepoint_ref = find_sharepoint_connection_reference()
     print(f"SharePoint connection reference: {sharepoint_ref}")

@@ -167,15 +167,27 @@ py scripts/deploy_agent_message_flow.py
 | `ResourceDescription` | **ON** | `File`（画像またはドキュメント） / `FileName`（テキスト） | Text |
 | `ResourceDescriptionText` | **OFF** | `fileName` / `documentText`（どちらもテキスト） | Text |
 
-**指示文はスクリプトに正本があります。** ここへ写すと、次にプロンプトを直したとき
-片方だけ古くなります。次のコマンドが**貼るべき文面をそのまま出力**します。
+**指示文の貼り付けは手作業です。スクリプトからは書き込めません。**
+できるのは「正本を持っておいて、必要なときに表示する」ことだけです。
 
 ```powershell
 py scripts/deploy_resource_description_flow.py
 ```
 
-プロンプトが無い、入力名が違う、指示文が空、のいずれでも**その場で落ちて理由を表示**します。
-2本とも整ったら同じコマンドがフロー `ApplicationResource_DescribeLink` を配備します。
+このコマンドは**検査だけ**を行い、形が違えば**貼るべき文面をそのまま出力して落ちます。**
+出てきたものを AI Hub の指示欄へ貼り、`〔…〕` の位置に入力変数を差し込んでください。
+
+検査するのは次の5点です。**どれも実行時まで見えない**ので手前で止めます。
+
+| 見るもの | 通らないと何が起きるか |
+| --- | --- |
+| プロンプトが存在し Active か | フローが配備できない |
+| 入力名（大文字小文字まで） | 実行時に**空が渡る**。静かに失敗する |
+| code interpreter の ON / OFF | ON 忘れ → Office が読めない。OFF 忘れ → **モデルが文章を書かない** |
+| 指示文の地の文が 100 文字以上あるか | 意味を成さない出力が静かに返る |
+| （フロー側）接続参照・invoker・redeem 不在 | 資格の穴、または移送で壊れる |
+
+2本とも整ったら、同じコマンドがフロー `ApplicationResource_DescribeLink` を配備します。
 
 > **入力名は大文字小文字まで一致させてください。** `ResourceDescription` 側は
 > `File` / `FileName`（先頭が大文字）です。UI の既定名のままにすると自動採番の id に
