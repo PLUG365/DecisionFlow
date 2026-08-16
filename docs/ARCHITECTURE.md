@@ -2,11 +2,16 @@
 
 > **最終更新**: 2026-08-16
 >
-> **2026-08-16 に見直したのはデプロイに関わる範囲だけです。**
-> フロー一覧・AI Builder プロンプト一覧・全体図を、MinoDev2 の実環境
-> （`workflow` / `msdyn_aimodel` を直接照会）と突き合わせて直しました。
-> **データモデル、セキュリティロール、Copilot Studio のトピック設計、
-> 移送まわりの節は今回見ていません。** それらが実装と合っているかは未確認です。
+> **2026-08-16 に見直した範囲**: MinoDev2 の実環境（`workflow` / `msdyn_aimodel` を
+> 直接照会）と突き合わせて、フローと AI Builder プロンプトの一覧を実装に揃えました。
+> 対象は 1.1 / 1.2 / 3.2 / 4.1 / 4.2 / 4.6 / 5 / 6.3 / 7 / 8.6 / 8.7。
+>
+> **一度目の見直しで表と図だけ直して、同じ一覧を参照する他の節を6箇所取りこぼしました**
+> （必要な接続、ツール構成、シーケンス図、セキュリティ、移送表など）。
+> 一覧を足すときは、**その一覧を参照している節も一緒に探すこと。**
+>
+> **未確認のまま**: データモデル（2章）、UI 設計の 3.1 / 3.3〜3.5、
+> セキュリティロール定義（8.2）、Copilot Studio のトピック設計。
 
 ---
 
@@ -350,7 +355,8 @@ erDiagram
 ### 3.2 申請詳細画面の主要要素
 
 - **申請本文パネル**: タイトル、カテゴリ、希望期限、ステージ、判断者
-- **関連資料パネル**: 関連リンクの追加、表示、確認付き削除
+- **関連資料パネル**: 関連リンクの追加、表示、確認付き削除。追加モーダルの「説明を生成」で
+  URL 先の資料を読んで説明文を作り、**説明欄の末尾へ追記する**（上書きしない。`説明 *` は必須項目）
 - **AI 判断カード**: 判断タブ右側に申請概要、会話概要、推奨判断、コメント、リスク、類似案件、「AI判断更新」ボタンを表示
 - **スレッドビュー**: 時系列・ネスト返信、メンション補完（@user）
 - **メンション作成**: コメント投稿時に申請者・判断者・関係者から対象ユーザーを任意選択し、`ds_message` 作成後に `ds_mention` を作成する
@@ -496,6 +502,12 @@ Phase 2.5 実装前に、対象環境で以下の接続を Power Automate UI か
 - Microsoft Teams
 - Office 365 Outlook
 - AI Builder（`Application_GenerateAiDecision` 実装時）
+- SharePoint（`ApplicationResource_DescribeLink` 実装時）
+
+> **SharePoint 接続だけは意味が違う。** 他の接続は所有者の資格で動くが、
+> このフローは `runtimeSource: "invoker"` で**呼び出した本人の接続**を使う。
+> ここで作る接続は**設計時の束ね先**でしかなく、実行時は利用者ごとの接続に差し替わる。
+> つまり**利用者それぞれが自分の SharePoint 接続を持つ**ことになる（詳細は 8.7）。
 
 ---
 
@@ -585,6 +597,7 @@ code interpreter が要る。だが入れるとモデルが黙る。**この2つ
 - **ナレッジ**: Dataverse `ds_application` / `ds_message` / `ds_applicationresource` / `ds_decision` / `ds_decisionoption`
 - **判断確定ツール**: Generative Orchestration は維持し、判断確定カードの表示・submit 受信だけ専用 Adaptive Card Topic で扱う。Power Automate agent flow は `issue_decision_card` と `confirm_decision` を提供する。
 - **申請詳細リンクツール**: Power Automate agent flow `Get_ApplicationDetailUrl` を `Skills` トリガーで提供する。エージェントは申請を案内するときにこのツールを呼び出し、戻り値の `applicationUrl` をユーザーに提示する。ツールは `ds_DecisionFlowAppBaseUrl` を Dataverse の `environmentvariabledefinitions` / `environmentvariablevalues` から実行時解決し、`?deepLink=%2Fapplications%2F{applicationId}` を付加する。環境変数未設定時は空文字列を返し、エージェントは Code Apps の申請詳細画面で確認するよう案内する。Instructions に固定 URL は埋め込まない。
+- **会話投稿ツール**: Power Automate agent flow `post_application_message` を提供する。**実行者はエージェントの推論ではなく認証済みユーザー変数（`System.User.Id` / `System.User.PrincipalName`）から渡す。** 会話本文から組み立ててはならない。許可する操作の範囲は [AGENT_WRITE_BOUNDARY.md](AGENT_WRITE_BOUNDARY.md)
 - **カード責務**: Adaptive Card JSON は Copilot Studio 側に保持し、schema 1.5 と `Action.Submit` のみを使う。Power Automate はカード表示 JSON を所有しない。
 - **正本イベント**: Copilot Studio のカード処理は `ds_decision` を作成し、`ds_application` を直接更新しない。案件ステージ・通知は `Decision_OnCreated` に委譲する。
 - **通知連携**: `Application_OnSubmitted` / `Application_StalledReminder` の Outlook メールに、Teams エージェント会話へのディープリンクを追加可能。リンク設定はソリューション環境変数 `ds_DecisionFlowAppBaseUrl` / `ds_CopilotTeamsAppId` から実行時に読み取る。
@@ -602,6 +615,7 @@ sequenceDiagram
     participant DV as Dataverse
     participant Flow as Power Automate
     participant AI as AI Builder
+    participant SP as SharePoint
     participant CS as Copilot Studio
 
     申->>App: 申請作成
@@ -627,6 +641,17 @@ sequenceDiagram
     判->>App: AI判断更新
     App->>Flow: Application_GenerateAiDecision 実行
     Flow-->>App: 最新AI判断JSON
+
+    申->>App: 資料URLを貼り「説明を生成」
+    App->>Flow: ApplicationResource_DescribeLink 実行
+    Flow->>SP: 申請者本人の資格で読む（invoker）
+    SP-->>Flow: ファイルの中身
+    Flow->>AI: ResourceDescription で抽出
+    AI-->>Flow: 抽出テキスト
+    Flow->>AI: ResourceDescriptionText で説明文
+    AI-->>Flow: 説明文
+    Flow-->>App: 説明文
+    App->>App: 説明欄の末尾へ追記（上書きしない）
 
     判->>App: 判断確定
     App->>DV: ds_decision 作成
@@ -688,7 +713,43 @@ flowchart LR
 - 関係者追加時は `addParticipantWithMention` メソッドが System メッセージと Mention を作成し、追加対象者に通知する。Mention の `ownerid` は target ユーザーに設定され、本人が既読化できるようにしている
 - マスタ管理画面は全ユーザーに表示する。`ds_category` は `ds_Admin` / `ds_Decider` のみ追加・編集・削除でき、申請者はカテゴリ別レギュレーションを読取り専用で参照する。`ds_decisionoption` は固定システムマスタとして全ロール参照のみとし、追加・編集・削除しない
 
-### 8.6 別テナントへのソリューション移送
+### 8.6 SharePoint 上の資料は Dataverse のロールで守れない
+
+**`ds_*` ロールが効くのは Dataverse の中だけ。** 関連資料の実体は SharePoint / OneDrive にあり、
+そこは Dataverse の外にある。利用者が URL を貼って「説明を生成」を押す機能は、
+**作り方を間違えると「URL を貼るだけで、本来読めないファイルが読める」穴になる。**
+
+| | 許可する | 拒否し続ける |
+| --- | --- | --- |
+| 読める範囲 | **呼び出した本人が既に読めるファイルだけ** | 本人が読めないファイル（所有者の資格で読まない） |
+| 誰が使えるか | `ds_Applicant` / `ds_Admin`（`canManageApplicationResources`） | 判断者（そもそも `ds_description` を書けない） |
+| 書き込む先 | `ds_applicationresource.ds_description` のみ | 申請本文・判断・その他のテーブル |
+| 共有リンクの引き換え | **行わない** | `Prefer: redeemSharingLink` を送らない |
+
+#### 守る仕組み: SharePoint 接続だけ `invoker` にする
+
+フローの接続参照は**コネクタごとに資格を変えられる**。
+
+| コネクタ | `runtimeSource` | 誰の資格で動くか |
+| --- | --- | --- |
+| SharePoint | **`invoker`** | **呼び出した本人** |
+| Dataverse | `embedded` | 接続所有者（従来どおり） |
+
+1つでも SharePoint 側が `embedded` に落ちると、**呼び出しは成功したまま管理者の資格で読む**。
+画面上は何も異常が見えないので、`deploy_resource_description_flow.py` が配備のたびに
+**接続参照のキー集合・`runtimeSource`・束ね方・`redeem` の不在**を検査する。
+
+**ただし検査は「設定されていること」しか示さない。** 実行時に本人の資格で動く証明にはならないので、
+フローの応答に `actingAs`（`_api/web/currentUser` の戻り）を持たせ、**実機で本人の UPN が返ることを確認する**。
+
+#### 未受諾の共有リンクは解決に失敗してよい
+
+Graph の `shares` は `Prefer: redeemSharingLink` でリンクを引き換え、恒久的なアクセス権を与えられる。
+**送らない。** 送れば「貼っただけで権限が付く」装置になり、上の表の前提が崩れる。
+本人が未受諾のリンクが読めないのは**正しい挙動**で、直す対象ではない。
+UI は「失敗しました」ではなく「まだ開けません」と伝える。
+
+### 8.7 別テナントへのソリューション移送
 
 | 項目                              | ソリューション移送 | 備考                                             |
 | --------------------------------- | ------------------ | ------------------------------------------------ |
@@ -701,6 +762,8 @@ flowchart LR
 | Dataverse グループチーム          | ❌                 | M365 グループ Object ID がテナント固有           |
 | M365 グループ自体                 | ❌                 | Dataverse 管理外。Graph API or Teams で別途作成  |
 | Share API による行レベル付与      | ❌                 | データ層のため対象外                             |
+| **AI Builder プロンプト**         | 🔶 定義は運べるが**再作成が要る** | `ResourceDescription` は code interpreter 付きで、**プラットフォーム発行の署名**（geography / cluster が焼き込まれる）を持つ。移送先では **AI Hub の UI で作り直す**（`docs/DEPLOY_SETUP.md` 8-1） |
+| 利用者ごとの SharePoint 接続      | ❌                 | `invoker` で動くため、**利用者それぞれが自分の接続を作る**必要がある |
 
 **移送手順（推奨）**:
 
