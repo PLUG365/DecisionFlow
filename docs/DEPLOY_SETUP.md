@@ -187,26 +187,56 @@ node scripts/patch-pac-cli.cjs
 
 ### 9-3. Power Automate フローを追加する
 
-Code Apps から呼び出すフローを追加します。`npx power-apps add-flow` は PAC CLI をセッション親として必要とするため、ラッパースクリプトを使用します。
+Code Apps から呼び出すフローを追加します。**`add-data-source` ではなく `add-flow` を使います。**
+`add-flow` は OpenAPI 定義の取得・型付きサービスの生成・接続参照の登録までを一括で行います。
 
 - `py scripts/deploy_access_flows.py` 実行結果に出た `Participant_PreDelete_RevokeAccess` の `workflowid`
 - `py scripts/deploy_ai_decision.py` 実行結果に出た `Application_GenerateAiDecision` の `workflowid`
 
 ```powershell
-py scripts/run_power_apps_cli.py add-flow --flow-id {Participant_PreDelete_RevokeAccess の workflowid}
-py scripts/run_power_apps_cli.py add-flow --flow-id {Application_GenerateAiDecision の workflowid}
+npx power-apps add-flow --flow-id {Participant_PreDelete_RevokeAccess の workflowid} --non-interactive
+npx power-apps add-flow --flow-id {Application_GenerateAiDecision の workflowid} --non-interactive
 ```
 
-### 9-4. Code Apps から呼び出すフローの Run only users を設定する
+> **2026-08-16 訂正。** ここには「PAC CLI をセッション親として必要とするため
+> `py scripts/run_power_apps_cli.py` を使う」と書いてありましたが、**今は不要です。**
+> ラッパーは `auth_helper` のトークンを流し込む仕組みで、**別テナントを相手にすると
+> 無言でハングします**（MinoDev2 で踏みました）。CLI 自身のログイン
+> （`npx power-apps` の MSAL キャッシュ）が対象環境を向いていれば直接叩けます。
 
-Power Apps V2 トリガーのフローを Code Apps から実行するユーザーには、Power Automate の **Run only users** 権限が必要です。これは環境・テナント内のユーザー/グループに紐づく設定のため、このリポジトリを別環境で使う場合は利用者側で手動設定します。ソリューションインポート版でもデプロイ版でも必要です。
+**注意: `power.config.json` を手で編集しないこと。** 接続参照のキーは CLI が採番する
+不透明な GUID で、規則から導出できません。手書きしたキーがあると `add-flow` はそれを
+**温存する**ため、壊れた状態が残り続けます。作り直すときは `remove-flow` → `add-flow`。
 
-対象フロー:
+**注意: `delete-data-source` は巻き添えを出します。** `--api-id shared_logicflows` に対して
+実行すると、**無関係なフローの生成サービスまで消える**ことを確認しています。
+`src/generated` は git 管理外で復元が効かないため、フローを外すときは
+`remove-flow --flow-id ...` を使ってください。
 
-- `Participant_PreDelete_RevokeAccess`
-- `Application_GenerateAiDecision`
+### 9-4. Code Apps から呼び出すフローを実行できるようにする
 
-Power Automate の各フロー詳細画面で **Run only users** に DecisionFlow 利用者グループ、または Applicant/Decider を含むグループを追加してください。編集権限（Owner）は開発・運用担当者に限定します。
+**利用者に必要なのは Dataverse のセキュリティロールです。Power Automate の Run only users 共有ではありません。**
+
+Code Apps 公式ドキュメントの制約表が、利用者側の要件として挙げているのはこれだけです。
+
+> **Dataverse permissions required** — End users need sufficient Dataverse permissions to
+> invoke the flow. Assign the **App Opener** security role or an equivalent role.
+>
+> — [Add Power Automate flows to a code app](https://learn.microsoft.com/power-apps/developer/code-apps/how-to/add-flows)
+
+本リポジトリの `ds_Applicant` / `ds_Decider` / `ds_Admin` は App Opener 相当の権限を含むため、
+**9-2 でロールを割り当てていれば追加の設定は要りません。**
+
+> **2026-08-16 訂正。** ここには以前「Run only users 権限が必要」と書いてありましたが、
+> **出典の無い推測でした**（「インスタントフローの共有は run-only」という Power Automate 一般論を、
+> Code Apps 経由の呼び出しに当てはめてしまったもの）。上記の制約表は
+> 「Code App からフローを呼ぶときの制約」を列挙する場所そのもので、そこに run-only users はありません。
+> ミノの指摘で一次情報に当たり直しました。
+
+**別件として混同しないこと**: 「**実行専用ユーザーが接続を提供**」（エクスポート時の
+`runtimeSource: invoker`）は、ポータルでは run-only users のパネル内にありますが、
+**利用者の実行権限ではなくフロー側の接続属性**です。呼び出した本人の資格で
+外部サービスを読ませたいフローだけが使います（`docs/UX_ROADMAP.md` の G13）。
 
 ### 9-5. ビルドして push する
 
