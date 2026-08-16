@@ -10,9 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCreateResource } from "@/hooks/use-decisionflow";
 import {
   appendGeneratedDescription,
-  encodeSharingUrl,
-  parseSharePointLink,
   resolveDescribeOutcome,
+  resolveDescribeRequest,
   validateResourceInput,
 } from "@/lib/decisionflow-utils";
 import { getOperationErrorMessage } from "@/lib/operation-error";
@@ -64,27 +63,20 @@ export function ResourceFormModal({
    * 書き直しを強いることになる（`docs/UX_ROADMAP.md` の決定）。
    */
   const handleDescribe = async () => {
-    const link = parseSharePointLink(url);
-    if (link.kind === "not-sharepoint") {
-      toast.error("SharePoint / OneDrive の URL を入れてください");
-      return;
-    }
-    if (link.kind === "unsupported") {
-      toast.error("この URL からはファイルを特定できませんでした");
+    // **判断は全部純関数に置いている。** ここに残すのは
+    // 「呼ぶ」「トーストを出す」「状態を更新する」だけにして、
+    // 分岐がテストの外に出ないようにする。
+    const request = resolveDescribeRequest(url);
+    if (request.kind === "error") {
+      toast.error(request.message);
       return;
     }
 
     setIsDescribing(true);
     try {
-      // `text_1` は「ファイルの指し方」。パス形式ならパス、共有リンクなら
-      // Graph が受け取る `u!…` トークン。**フローの引数を増やしていない**ので、
-      // 生成物を作り直さずに済む。
       const result = await ApplicationResource_DescribeLinkService.Run({
-        text: link.siteUrl,
-        text_1:
-          link.kind === "sharing-link"
-            ? encodeSharingUrl(link.sharingUrl)
-            : link.filePath,
+        text: request.text,
+        text_1: request.text_1,
       });
       if (!result.success) {
         toast.error(getOperationErrorMessage(result.error, "読み取りに失敗しました"));

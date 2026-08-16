@@ -29,6 +29,7 @@ import {
   appendGeneratedDescription,
   encodeSharingUrl,
   resolveDescribeOutcome,
+  resolveDescribeRequest,
   buildApplicationListRow,
   canManageApplicationResources,
   filterApplicationsByScope,
@@ -1174,5 +1175,55 @@ describe("encodeSharingUrl", () => {
     expect(encodeSharingUrl(url)).toBe(
       "u!aHR0cHM6Ly9vbmVkcml2ZS5saXZlLmNvbS9yZWRpcj9yZXNpZD0xMjMxMjQ0MTkzOTEyITEyJmF1dGhLZXk9MTIwMTkxOSExMjkyMSEx",
     );
+  });
+});
+
+describe("resolveDescribeRequest", () => {
+  it("パス形式はサイトとパスに割って渡す", () => {
+    expect(
+      resolveDescribeRequest(
+        "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com/Documents/plan.pptx",
+      ),
+    ).toEqual({
+      kind: "run",
+      text: "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com",
+      text_1: "/Documents/plan.pptx",
+    });
+  });
+
+  it("共有リンクは u! トークンにして渡す（パスを渡さない）", () => {
+    // **ここを取り違えると、共有リンクにパスを送る。** 症状は
+    // 「読み取れませんでした」だけで、権限エラーと見分けが付かない。
+    const request = resolveDescribeRequest(
+      "https://contoso-my.sharepoint.com/:p:/g/personal/diegos_contoso_onmicrosoft_com/IQCabc?e=x",
+    );
+    expect(request.kind).toBe("run");
+    if (request.kind !== "run") return;
+    expect(request.text).toBe(
+      "https://contoso-my.sharepoint.com/personal/diegos_contoso_onmicrosoft_com",
+    );
+    expect(request.text_1.startsWith("u!")).toBe(true);
+    expect(request.text_1).not.toContain("/");
+  });
+
+  it("SharePoint 以外は呼ばずに断る", () => {
+    for (const url of ["https://example.com/a.docx", "not a url", "", null]) {
+      expect(resolveDescribeRequest(url)).toEqual({
+        kind: "error",
+        message: "SharePoint / OneDrive の URL を入れてください",
+      });
+    }
+  });
+
+  it("ファイルを特定できない URL は呼ばずに断る", () => {
+    // 呼んでも必ず失敗するので、往復させずにその場で伝える。
+    expect(
+      resolveDescribeRequest(
+        "https://contoso.sharepoint.com/sites/S/_layouts/15/Doc.aspx?sourcedoc=%7BGUID%7D",
+      ),
+    ).toEqual({
+      kind: "error",
+      message: "この URL からはファイルを特定できませんでした",
+    });
   });
 });

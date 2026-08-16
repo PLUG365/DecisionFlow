@@ -174,6 +174,50 @@ const DESCRIBE_FAILURE_MESSAGES: Record<string, string> = {
   "sharing-link-unsupported": "この共有リンクにはまだ対応していません",
 };
 
+export type DescribeRequest =
+  | { kind: "error"; message: string }
+  | { kind: "run"; text: string; text_1: string };
+
+/**
+ * 貼られた URL を、説明生成フローへ渡す引数に翻訳する。
+ *
+ * **`text_1` は「ファイルの指し方」**で、入口によって中身が変わる。
+ *
+ * | 種別 | `text_1` |
+ * | --- | --- |
+ * | パス形式 | サイト内のパス |
+ * | 共有リンク | `u!…`（base64url 符号化した共有 URL） |
+ *
+ * **ここを取り違えると、共有リンクにパスを、パス形式にトークンを送る。**
+ * 症状は「読み取れませんでした」だけで、権限・パス誤り・解決失敗と見分けが付かない。
+ * 純粋な判断なので、画面に置かず関数にして測る。
+ */
+export function resolveDescribeRequest(
+  rawUrl: string | null | undefined,
+): DescribeRequest {
+  const link = parseSharePointLink(rawUrl);
+  if (link.kind === "not-sharepoint") {
+    return {
+      kind: "error",
+      message: "SharePoint / OneDrive の URL を入れてください",
+    };
+  }
+  if (link.kind === "unsupported") {
+    return {
+      kind: "error",
+      message: "この URL からはファイルを特定できませんでした",
+    };
+  }
+  return {
+    kind: "run",
+    text: link.siteUrl,
+    text_1:
+      link.kind === "sharing-link"
+        ? encodeSharingUrl(link.sharingUrl)
+        : link.filePath,
+  };
+}
+
 export type DescribeResult = {
   actingAs?: string | null;
   description?: string | null;
