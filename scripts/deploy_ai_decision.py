@@ -4,8 +4,6 @@ import json
 import os
 import re
 import sys
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -15,7 +13,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from auth_helper import DATAVERSE_URL, api_delete, api_get, api_patch, api_post, flow_api_call, get_session, get_token  # noqa: E402
+from auth_helper import DATAVERSE_URL, api_get, flow_api_call, get_session, get_token  # noqa: E402
 
 load_dotenv()
 
@@ -27,40 +25,6 @@ DATAVERSE_CONNECTOR = "shared_commondataserviceforapps"
 DATAVERSE_CONNECTOR_AI = "shared_commondataserviceforapps_1"
 AI_PROMPT_NAME = "DecisionRecommendation"
 AI_FLOW_NAME = "Application_GenerateAiDecision"
-GPT_PROMPT_TEMPLATE_ID = "edfdb190-3791-45d8-9a6c-8f90a37c278a"
-
-PROMPT_SEGMENTS = [
-    {
-        "type": "literal",
-        "text": """
-あなたは企業内の意思決定支援アシスタントです。以下の情報を読み、判断者が最終判断を行うための推奨案を作成してください。
-
-制約:
-- 判断選択肢は、入力された判断選択肢の名称から最も近いものを1つ選ぶ。
-- 申請概要は3〜5文で、判断者が論点を素早く把握できる粒度にする。
-- 会話概要は会話履歴がある場合だけ論点、追加確認、合意事項を要約する。会話履歴がない場合は「提出時点では会話履歴はありません。」と返す。
-- 類似案件が少ない、または確度が低い場合はその旨を similarCases または risks に明記する。
-- 過去の判断理由（ds_rationale）は要約・敷衍・言い換えをせず、原文のまま引用する。
-- 過去の判断理由が空、または判断根拠として不十分な場合は「理由の記録なし」と明記する。申請本文から推測した理由を書いてはならない。
-- カテゴリ別レギュレーションが入力されている場合は、充足状況、懸念、追加確認事項を comment または risks に含める。
-- カテゴリ別レギュレーションが未設定の場合は、その旨を comment または risks に明記し、通常のAI判断を継続する。
-- 出力は指定 JSON スキーマに厳密に従う。
-
-申請情報:
-""".strip(),
-    },
-    {"type": "inputVariable", "id": "application"},
-    {"type": "literal", "text": "\n\n関連資料:\n"},
-    {"type": "inputVariable", "id": "resources"},
-    {"type": "literal", "text": "\n\n会話履歴:\n"},
-    {"type": "inputVariable", "id": "conversation"},
-    {"type": "literal", "text": "\n\n過去類似案件:\n"},
-    {"type": "inputVariable", "id": "similarCases"},
-    {"type": "literal", "text": "\n\n判断選択肢:\n"},
-    {"type": "inputVariable", "id": "decisionOptions"},
-    {"type": "literal", "text": "\n\nカテゴリ別レギュレーション:\n"},
-    {"type": "inputVariable", "id": "categoryRegulation"},
-]
 
 AI_INPUT_DEFINITIONS = [
     {"id": "application", "text": "application", "type": "text", "quickTestValue": "タイトル: 顧客案件: 見積条件の例外承認\n本文: 重要顧客向けの提案で通常条件から外れる支払条件を提示したい。"},
@@ -70,6 +34,33 @@ AI_INPUT_DEFINITIONS = [
     {"id": "decisionOptions", "text": "decisionOptions", "type": "text", "quickTestValue": "承認\n却下\n差し戻し"},
     {"id": "categoryRegulation", "text": "categoryRegulation", "type": "text", "quickTestValue": "例外条件は収益影響、顧客影響、回収条件を確認する。"},
 ]
+
+PROMPT_INSTRUCTIONS_PATH = ROOT / "docs" / "ai-builder-prompts" / "DecisionRecommendation.instructions.txt"
+
+
+def _load_prompt_segments() -> list[dict]:
+    """UI に貼る指示文の正本（`docs/ai-builder-prompts/DecisionRecommendation.instructions.txt`）を
+    `PROMPT_SEGMENTS` の形（literal / inputVariable の並び）に組み立て直す。
+
+    正本を1箇所（ファイル）にするための変換。`〔id を挿入〕` の位置で
+    `inputVariable` に分割し、それ以外は `literal` として扱う。
+    """
+    text = PROMPT_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
+    input_ids = [d["id"] for d in AI_INPUT_DEFINITIONS]
+    pattern = "|".join(re.escape(f"〔{i} を挿入〕") for i in input_ids)
+    segments: list[dict] = []
+    for part in re.split(f"({pattern})", text):
+        matched_id = next(
+            (i for i in input_ids if part == f"〔{i} を挿入〕"), None
+        )
+        if matched_id is not None:
+            segments.append({"type": "inputVariable", "id": matched_id})
+        elif part:
+            segments.append({"type": "literal", "text": part})
+    return segments
+
+
+PROMPT_SEGMENTS = _load_prompt_segments()
 
 AI_OUTPUT_DEFINITION = {
     "formats": ["json"],
@@ -126,39 +117,25 @@ CUSTOM_CONFIG = {
 }
 
 
-def delete_ai_prompt_model(model_id: str) -> None:
-    try:
-        api_patch(
-            f"msdyn_aimodels({model_id})",
-            {"msdyn_name": AI_PROMPT_NAME, "statecode": 0, "statuscode": 0},
-        )
-    except Exception as exc:
-        print(f"  Warning: AI Builder model の Draft 戻しをスキップしました: {exc}")
+def _decision_recommendation_setup_hint() -> str:
+    """UI で何をすればよいかを、貼れる形で出す。**正本は `docs/ai-builder-prompts/
+    DecisionRecommendation.instructions.txt`。**
 
-    configs = api_get(
-        f"msdyn_aiconfigurations?$filter=_msdyn_aimodelid_value eq '{model_id}'"
-        "&$select=msdyn_aiconfigurationid&$orderby=createdon desc"
+    `deploy_resource_description_flow.py` の `_prompt_setup_hint` と同じ考え方。
+    指示文はスクリプトから書き込めないので、ここでできるのは
+    「正本を持っておいて、必要なときに表示する」ことだけ。
+    """
+    instructions = PROMPT_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
+    inputs = "、".join(f"`{d['id']}`" for d in AI_INPUT_DEFINITIONS)
+    return (
+        f"AI Hub の UI で用意してください（**指示文はスクリプトから書き込めません**）。\n"
+        f"  - 名前: {AI_PROMPT_NAME}\n"
+        f"  - code interpreter: OFF\n"
+        f"  - 入力: {inputs}（すべてテキスト）\n"
+        "  - 出力: JSON（スキーマは scripts/deploy_ai_decision.py の AI_OUTPUT_DEFINITION）\n"
+        "  - 指示文は下記を貼る（`〔…〕` の位置に入力変数を差し込む）:\n\n"
+        + "\n".join("    " + line for line in instructions.splitlines())
     )
-    for config in configs.get("value", []):
-        config_id = config["msdyn_aiconfigurationid"]
-        try:
-            api_delete(f"msdyn_aiconfigurations({config_id})")
-            print(f"  Deleted AI Builder config: {config_id}")
-        except Exception as exc:
-            print(f"  Warning: AI Builder config 削除をスキップしました ({config_id}): {exc}")
-
-    try:
-        api_delete(f"msdyn_aimodels({model_id})")
-        print(f"  Deleted AI Builder model: {model_id}")
-    except Exception as exc:
-        archive_name = f"{AI_PROMPT_NAME}_Archived_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-        try:
-            session = get_session()
-            response = session.patch(f"{API}/msdyn_aimodels({model_id})", json={"msdyn_name": archive_name})
-            response.raise_for_status()
-            print(f"  Archived AI Builder model: {archive_name}")
-        except Exception as rename_exc:
-            raise RuntimeError(f"既存 AI Builder model の退避に失敗しました: {exc}; rename: {rename_exc}") from rename_exc
 
 
 def _connector_id(connector: str = DATAVERSE_CONNECTOR) -> str:
@@ -363,47 +340,65 @@ def ensure_connection_reference(connection_name: str) -> str:
 
 
 def deploy_ai_prompt() -> str:
-    existing = api_get(f"msdyn_aimodels?$filter=msdyn_name eq '{AI_PROMPT_NAME}'&$select=msdyn_aimodelid,_msdyn_activerunconfigurationid_value").get("value", [])
-    custom_config_str = json.dumps(CUSTOM_CONFIG, ensure_ascii=False)
-    if existing and existing[0].get("_msdyn_activerunconfigurationid_value"):
-        model_id = existing[0]["msdyn_aimodelid"]
-        run_config_id = existing[0].get("_msdyn_activerunconfigurationid_value")
-        if run_config_id:
-            current_config = api_get(
-                f"msdyn_aiconfigurations({run_config_id})?$select=msdyn_customconfiguration"
-            ).get("msdyn_customconfiguration")
-            try:
-                if json.loads(current_config or "{}") == CUSTOM_CONFIG:
-                    return model_id
-            except json.JSONDecodeError:
-                pass
-            session = get_session()
-            patch_response = session.patch(
-                f"{API}/msdyn_aiconfigurations({run_config_id})",
-                json={"msdyn_customconfiguration": custom_config_str},
-            )
-            if not patch_response.ok:
-                print(
-                    "  Warning: 既存 AI Builder run configuration の直接更新に失敗しました "
-                    f"({patch_response.status_code})"
-                )
-                delete_ai_prompt_model(model_id)
-            else:
-                return model_id
-        else:
-            delete_ai_prompt_model(model_id)
-    model_id = api_post("msdyn_aimodels", {"msdyn_name": AI_PROMPT_NAME, "msdyn_TemplateId@odata.bind": f"/msdyn_aitemplates({GPT_PROMPT_TEMPLATE_ID})", "msdyn_sharewithorganizationoncreate": False}, solution=SOLUTION_NAME)
-    now_str = datetime.now(timezone.utc).strftime("%m/%d/%Y %I:%M:%S %p")
-    training_id = api_post("msdyn_aiconfigurations", {"msdyn_AIModelId@odata.bind": f"/msdyn_aimodels({model_id})", "msdyn_type": 190690000, "msdyn_name": f"{model_id}_Training_{now_str}"}, solution=SOLUTION_NAME)
-    token = get_token()
-    headers = {"Authorization": f"Bearer {token}", "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json", "Content-Type": "application/json; charset=utf-8"}
-    requests.post(f"{DATAVERSE_URL}/api/data/v9.2/AIModelPublish", headers=headers, json={"TemplateId": GPT_PROMPT_TEMPLATE_ID, "ModelId": model_id, "RunConfigurationId": training_id, "ModelName": AI_PROMPT_NAME, "CustomConfiguration": custom_config_str, "RunConfiguration": custom_config_str}).raise_for_status()
-    time.sleep(2)
-    configs = api_get(f"msdyn_aiconfigurations?$filter=_msdyn_aimodelid_value eq '{model_id}' and msdyn_type eq 190690000 and statecode eq 2&$select=msdyn_aiconfigurationid&$top=1&$orderby=createdon desc")
-    published_training_id = configs.get("value", [{}])[0].get("msdyn_aiconfigurationid", training_id)
-    run_id = api_post("msdyn_aiconfigurations", {"msdyn_AIModelId@odata.bind": f"/msdyn_aimodels({model_id})", "msdyn_type": 190690001, "msdyn_name": f"{model_id}_Run_{now_str}", "msdyn_customconfiguration": custom_config_str, "msdyn_TrainedModelAIConfigurationPareId@odata.bind": f"/msdyn_aiconfigurations({published_training_id})"}, solution=SOLUTION_NAME)
-    requests.post(f"{DATAVERSE_URL}/api/data/v9.2/msdyn_aiconfigurations({run_id})/Microsoft.Dynamics.CRM.PublishAIConfiguration", headers=headers, json={"version": "1.0"}).raise_for_status()
-    return model_id or ""
+    """既存の `DecisionRecommendation` を検査し、使える形になっていれば返す。**作らない。**
+
+    `deploy_resource_description_flow.py` の `_require_prompt` と同じ立て付け。
+    以前はここで「新規作成」（model 作成 → training を `AIModelPublish` → run config を
+    `PublishAIConfiguration`）と「直接 PATCH での更新」の両方を試みていたが、
+    **どちらもこの環境の権限では通らないことを実測で確認した**（2026-08-20〜21）。
+
+    - 新規作成: 使い捨て名で同じ手順を流すと、training の `AIModelPublish` は 200 で
+      通るが、最後の run 側 `PublishAIConfiguration` で
+      `400 Missing privilege definition: prvWritemsdyn_AIModel`。エラー後も
+      model/run config ともに Draft のままで活性化されていない
+      （HTTP ステータスだけで判断せず、レコードの実状態を読んで確定した）。
+      本番の `DecisionRecommendation` をリネームで一時退避して同じ経路を踏ませても
+      同様に失敗し、リネームを戻して復元したことも確認済み。
+    - 直接 PATCH: `msdyn_aiconfigurations(id)` へ `msdyn_customconfiguration` を
+      PATCH すると `400 Unexpected parameter(s) msdyn_customconfiguration`
+      （本番の run config へ**自分自身の現在値**を書き戻すテストで確認。内容は
+      変化していないので実害なし）。
+
+    `DecisionRecommendation` が動いているのは元々 UI で作られたためと考えられる。
+    したがって、ここでできるのは**検査だけ**。存在しない・壊れている・設定が違う
+    場合は、直そうとせずエラーで止める（削除して作り直す経路は動いていたものまで
+    失うため、既に廃止済み）。
+    """
+    existing = api_get(
+        f"msdyn_aimodels?$filter=msdyn_name eq '{AI_PROMPT_NAME}'"
+        "&$select=msdyn_aimodelid,_msdyn_activerunconfigurationid_value"
+    ).get("value", [])
+
+    if not existing:
+        raise RuntimeError(
+            f"AI Builder プロンプト '{AI_PROMPT_NAME}' が見つかりません。\n"
+            f"{_decision_recommendation_setup_hint()}"
+        )
+
+    model_id = existing[0]["msdyn_aimodelid"]
+    run_config_id = existing[0].get("_msdyn_activerunconfigurationid_value")
+    if not run_config_id:
+        raise RuntimeError(
+            f"'{AI_PROMPT_NAME}' に有効な run configuration がありません（model={model_id}）。"
+            "作りかけで止まっている可能性があります。AI Hub で保存し直してください。\n"
+            f"{_decision_recommendation_setup_hint()}"
+        )
+
+    current_config = api_get(
+        f"msdyn_aiconfigurations({run_config_id})?$select=msdyn_customconfiguration"
+    ).get("msdyn_customconfiguration")
+    try:
+        matches = json.loads(current_config or "{}") == CUSTOM_CONFIG
+    except json.JSONDecodeError:
+        matches = False
+    if not matches:
+        raise RuntimeError(
+            f"'{AI_PROMPT_NAME}' の設定がリポジトリの CUSTOM_CONFIG と一致しません。\n"
+            "この環境の権限では API 経由の更新ができないため、AI Hub の UI で"
+            "直接直してください。\n"
+            f"{_decision_recommendation_setup_hint()}"
+        )
+    return model_id
 
 
 def find_existing_flow(flow_name: str) -> dict | None:

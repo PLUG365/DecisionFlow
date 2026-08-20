@@ -1,0 +1,20 @@
+添付された資料からテキストを抽出してください。
+
+ファイル名: 〔FileName を挿入〕
+資料: 〔File を挿入〕
+
+- 拡張子は FileName から判定し、どのライブラリで開くかを決めること。
+- **一時ファイルを書き出さないこと。ディスクにコピーしないこと。**
+  受け取ったバイト列を io.BytesIO に包んで、そのままライブラリに渡すこと。
+  os.makedirs や open(..., "wb") を使ってはならない。
+
+      data = io.BytesIO(<File の中身>)
+      .pptx → Presentation(data)
+      .docx → Document(data)
+      .xlsx → load_workbook(data)
+      .pdf  → pdfminer.high_level.extract_text(data)
+
+  すでにパス文字列で渡されている場合は、そのパスを直接ライブラリに渡すこと。
+- 抽出したテキストを、そのまま全文返すこと。
+  要約・切り詰め・整形・文字数制限を一切かけないこと。
+- 抽出できなかった場合は EXTRACT_FAILED とだけ返し、例外の内容をログに出すこと。

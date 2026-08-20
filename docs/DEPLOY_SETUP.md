@@ -117,15 +117,70 @@ py scripts/setup_security_roles.py
 
 この手動設定を行わないと、判断者向けの閲覧・判断導線が期待通りに動作しません。
 
-## 8. Power Automate 接続を確認してフローをデプロイする
+## 8. AI Builder プロンプトを作り、Power Automate フローをデプロイする
 
-通知フローとアクセス制御フローは、対象環境に接続が存在することを前提に動きます。事前に Power Automate UI で少なくとも以下の接続を作成してください。
+### 8-1. AI Builder プロンプトを3本 UI で作り、ソリューションへ登録する
+
+DecisionFlow は3本の AI Builder プロンプトを使います。**3本とも API 経由の新規作成・更新は
+できません。先に AI Hub の UI で作成してください。**
+（この環境の権限で API 作成を試した検証記録は [docs/DEPLOY_SETUP_VERIFICATION.md](DEPLOY_SETUP_VERIFICATION.md#step-8-1-ai-builder-プロンプトは-api-経由で新規作成更新できない2026-08-2021)）
+
+[make.powerapps.com](https://make.powerapps.com) → **AI hub** → **プロンプト** → 独自のプロンプトを作成。
+
+| プロンプト名 | code interpreter | 入力 | 出力 |
+| --- | --- | --- | --- |
+| `ResourceDescription` | **ON** | `File`（画像またはドキュメント） / `FileName`（テキスト） | Text |
+| `ResourceDescriptionText` | **OFF** | `fileName` / `documentText`（どちらもテキスト） | Text |
+| `DecisionRecommendation` | **OFF** | `application` / `resources` / `conversation` / `similarCases` / `decisionOptions` / `categoryRegulation`（すべてテキスト） | JSON |
+
+**指示文の貼り付けは手作業です。スクリプトからは書き込めません。** 正本は
+`docs/ai-builder-prompts/` にファイルとして置いてあるので、先に開いて中身を確認・コピーできます。
+`〔…〕` の位置に入力変数を差し込んでください。
+
+- [`ResourceDescription.instructions.txt`](ai-builder-prompts/ResourceDescription.instructions.txt)（`ResourceDescription` 用）
+- [`ResourceDescriptionText.instructions.txt`](ai-builder-prompts/ResourceDescriptionText.instructions.txt)（`ResourceDescriptionText` 用）
+- [`DecisionRecommendation.instructions.txt`](ai-builder-prompts/DecisionRecommendation.instructions.txt)（`DecisionRecommendation` 用。出力の JSON スキーマは `scripts/deploy_ai_decision.py` の `AI_OUTPUT_DEFINITION`）
+
+> **入力名は大文字小文字まで一致させてください。** `ResourceDescription` 側は
+> `File` / `FileName`（先頭が大文字）です。UI の既定名のままにすると自動採番の id に
+> 縛られ、フローが空を渡します。**実行時に静かに失敗する**ので、後続の検査で落とします。
+
+> **Test は押さなくてかまいません。** 未保存プロンプトの Test が
+> `Missing privilege definition: prvWritemsdyn_AIModel` で失敗することがありますが、
+> **保存は通り、フローからの実行にも影響しません。**
+
+3本とも UI で保存できたら、ソリューションへ登録します。
+
+```powershell
+py scripts/register_ai_prompts.py
+```
+
+このスクリプトは `deploy_resource_description_flow.py` / `deploy_ai_decision.py` の検査関数を
+そのまま呼びます。存在・Active 状態だけでなく、**入力名・code interpreter の ON/OFF・
+指示文の長さ（G13の2本）や設定内容の一致（`DecisionRecommendation`）まで**その場で検査します。
+1本でも検査に落ちれば、貼るべき指示文つきのエラーをまとめて出して止まります（他の2本が
+通っていれば、その2本は検査・ソリューション登録まで済ませたうえで報告します）。通った分だけ
+`AddSolutionComponent` でソリューション `SOLUTION_NAME`（既定 `DecisionSupport`）のコンポーネント
+に追加します。**追加は冪等**なので、複数回実行しても壊れません。`setup_dataverse.py` は
+新しい環境を作るたびにソリューションを作り直すため、この登録は一度きりの作業ではなく
+**環境を作るたびに繰り返し必要**です（検証記録は
+[docs/DEPLOY_SETUP_VERIFICATION.md](DEPLOY_SETUP_VERIFICATION.md#step-8-1-register_ai_promptspy-の検証2026-08-2021minodev2)）。
+
+### 8-2. Power Automate 接続を確認してフローをデプロイする
+
+通知フローとアクセス制御フローは、対象環境に接続が存在することを前提に動きます。事前に Power Automate UI（または `npx power-apps create-connection`）で少なくとも以下の接続を作成してください。**サインインが要るため、この4つだけは自動化できません。**
 
 - Microsoft Dataverse
 - Office 365 Outlook
 - Microsoft Teams
+- SharePoint（`ApplicationResource_DescribeLink` が使用）
 
-その後、以下の順でデプロイします。
+> **SharePoint を忘れずに。** `deploy_resource_description_flow.py` は接続参照を自動で
+> 束ねますが、**生の SharePoint 接続自体は人が事前に作る必要があります**（サインインが要る
+> ため）。無いまま進めた場合に何が起きるかは
+> [docs/DEPLOY_SETUP_VERIFICATION.md](DEPLOY_SETUP_VERIFICATION.md#step-8-2-sharepoint-接続参照の循環依存2026-08-21)。
+
+以下の順でデプロイします。
 
 ```powershell
 py scripts/deploy_access_flows.py
@@ -133,11 +188,12 @@ py scripts/deploy_notification_flows.py
 py scripts/deploy_ai_decision.py
 py scripts/deploy_delegation_flow.py --activate
 py scripts/deploy_agent_message_flow.py
+py scripts/deploy_resource_description_flow.py
 ```
 
-**`deploy_resource_description_flow.py` はここでは実行しません。** 先に AI Builder の
-プロンプトを2本作る必要があります（次の 8-1）。手順を飛ばすと
-`AI Builder プロンプト 'ResourceDescription' が見つかりません` で落ちます。
+`deploy_ai_decision.py` / `deploy_resource_description_flow.py` は、フローの `clientdata` に
+埋め込む AI Builder プロンプトの model_id を取得するために 8-1 と同じ検査を内部でもう一度
+行います。8-1 を飛ばした場合や、8-1 の後でプロンプトを壊した場合はここで止まります。
 
 この順序で問題ありません。ソリューション `DecisionSupport` は [scripts/setup_dataverse.py](../scripts/setup_dataverse.py) が作成するため、Power Automate のデプロイは Code Apps より先に実行できます。
 
@@ -152,49 +208,6 @@ py scripts/deploy_agent_message_flow.py
 - `deploy_delegation_flow.py` は担当変更要求フロー `Application_DelegationRequest_OnCreated` を作成します。**`--activate` を付けないと下書きのまま残ります**
 - `deploy_agent_message_flow.py` は Copilot Studio エージェントが会話へ投稿する
   `post_application_message` を作成します。境界は [docs/AGENT_WRITE_BOUNDARY.md](AGENT_WRITE_BOUNDARY.md)
-
-### 8-1. 関連資料の説明生成に使う AI Builder プロンプトを作る（G13）
-
-**この2本は UI でしか作れません。** `code interpreter` を有効にしたプロンプトは
-プラットフォームが発行する署名（`signature`）を持ち、`AIModelPublish` で再現できないためです
-（潰した経路は `scripts/deploy_resource_description_flow.py` の `_require_prompt` の docstring に残してあります）。
-
-[make.powerapps.com](https://make.powerapps.com) → **AI hub** → **プロンプト** → 独自のプロンプトを作成。
-
-| プロンプト名 | code interpreter | 入力 | 出力 |
-| --- | --- | --- | --- |
-| `ResourceDescription` | **ON** | `File`（画像またはドキュメント） / `FileName`（テキスト） | Text |
-| `ResourceDescriptionText` | **OFF** | `fileName` / `documentText`（どちらもテキスト） | Text |
-
-**指示文の貼り付けは手作業です。スクリプトからは書き込めません。**
-できるのは「正本を持っておいて、必要なときに表示する」ことだけです。
-
-```powershell
-py scripts/deploy_resource_description_flow.py
-```
-
-このコマンドは**検査だけ**を行い、形が違えば**貼るべき文面をそのまま出力して落ちます。**
-出てきたものを AI Hub の指示欄へ貼り、`〔…〕` の位置に入力変数を差し込んでください。
-
-検査するのは次の5点です。**どれも実行時まで見えない**ので手前で止めます。
-
-| 見るもの | 通らないと何が起きるか |
-| --- | --- |
-| プロンプトが存在し Active か | フローが配備できない |
-| 入力名（大文字小文字まで） | 実行時に**空が渡る**。静かに失敗する |
-| code interpreter の ON / OFF | ON 忘れ → Office が読めない。OFF 忘れ → **モデルが文章を書かない** |
-| 指示文の地の文が 100 文字以上あるか | 意味を成さない出力が静かに返る |
-| （フロー側）接続参照・invoker・redeem 不在 | 資格の穴、または移送で壊れる |
-
-2本とも整ったら、同じコマンドがフロー `ApplicationResource_DescribeLink` を配備します。
-
-> **入力名は大文字小文字まで一致させてください。** `ResourceDescription` 側は
-> `File` / `FileName`（先頭が大文字）です。UI の既定名のままにすると自動採番の id に
-> 縛られ、フローが空を渡します。**実行時に静かに失敗する**ので、検査で落としています。
-
-> **Test は押さなくてかまいません。** 未保存プロンプトの Test が
-> `Missing privilege definition: prvWritemsdyn_AIModel` で失敗することがありますが、
-> **保存は通り、フローからの実行にも影響しません。**
 
 ## 9. Code Apps を対象環境へ初回デプロイする
 
@@ -251,9 +264,11 @@ npx power-apps add-flow --flow-id {Application_GenerateAiDecision の workflowid
 npx power-apps add-flow --flow-id {ApplicationResource_DescribeLink の workflowid} --non-interactive
 ```
 
-> **`ApplicationResource_DescribeLink` は SharePoint 接続を使います。** 対象環境に
-> SharePoint 接続が無ければ先に作ってください（`npx power-apps create-connection
-> --api-id shared_sharepointonline` はブラウザでのサインインが開きます）。
+> **`ApplicationResource_DescribeLink` は SharePoint 接続を使います。** 8-2 の前提で
+> 作成済みのはずです（未作成ならここで `npx power-apps create-connection
+> --api-id shared_sharepointonline` を実行してください。ブラウザでのサインインが開きます）。
+> Dataverse 側の接続参照は `deploy_resource_description_flow.py` が自動で束ねているので、
+> ここで意識するのは生の接続だけです。
 > **この接続は設計時の束ね先で、実行時は利用者ごとの接続が使われます**（次の 9-4 の注記）。
 
 > **`npx power-apps` を直接使ってください。** `scripts/run_power_apps_cli.py`
@@ -345,13 +360,21 @@ Copilot Studio は bot 作成だけ UI 操作が必須です。次の順で行�
 
 1. Copilot Studio UI でソリューション `DecisionSupport` に `DecisionFlow Assistant` を手動作成する
 2. エージェント URL から `botId` を取得し、`.env` の `BOT_ID` に設定する
-3. エージェント定義（Instructions、推奨プロンプト、トピック、アクション、チャネル、AI設定）を YAML から反映する
+3. **新環境の bot へエージェント定義を反映する。このリポジトリの `copilot/DecisionFlowAssistant/`
+   を新環境へ `push` する定型手順はまだありません。** `.mcs/conn.json`（git 管理外）が
+   開発時に使っていた既存 bot を指したままで、新環境向けに配布されていないためです。
+   `pac copilot clone` で新 bot 向けの紐付けを作ってから `push` する迂回策は機能しない
+   ことを実機検証済みです（[docs/DEPLOY_SETUP_VERIFICATION.md](DEPLOY_SETUP_VERIFICATION.md#step-10-copilot-studio-の-push-は新環境の-bot-に向かない2026-08-20)）。
+   **現時点で確実に動くのは、下の「エージェント定義の正本」の内容を見ながら Copilot Studio の
+   UI で手動構築することです。**
+
+4. （すでに `.mcs/` が正しく紐付いているプロジェクトを更新する場合のみ）YAML の変更を反映する
 
 ```powershell
 pac copilot push --project-dir copilot/DecisionFlowAssistant
 ```
 
-4. アイコンと Teams マニフェストの説明文を反映する（YAML が持たない部分）
+5. アイコンと Teams マニフェストの説明文を反映する（YAML が持たない部分）
 
 ```powershell
 py scripts/deploy_copilot_agent.py

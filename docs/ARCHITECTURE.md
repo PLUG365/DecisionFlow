@@ -773,7 +773,7 @@ UI は「失敗しました」ではなく「まだ開けません」と伝え�
 | Dataverse グループチーム          | ❌                 | M365 グループ Object ID がテナント固有           |
 | M365 グループ自体                 | ❌                 | Dataverse 管理外。Graph API or Teams で別途作成  |
 | Share API による行レベル付与      | ❌                 | データ層のため対象外                             |
-| **AI Builder プロンプト**         | 🔶 定義は運べるが**再作成が要る** | `ResourceDescription` は code interpreter 付きで、**プラットフォーム発行の署名**（geography / cluster が焼き込まれる）を持つ。移送先では **AI Hub の UI で作り直す**（`docs/DEPLOY_SETUP.md` 8-1） |
+| **AI Builder プロンプト**         | ✅ 実測では再作成不要 | `ResourceDescription`（code interpreter 付き）はプラットフォーム発行の署名（geography / cluster が焼き込まれる）を持つため理論上は移送先での再作成が必要とされていたが、2026-08-20 に MinoDev2（作成元）→ MinoDev（別テナント）へ管理対象ソリューションでエクスポート・インポートし、**プロンプトを作り直さずに** 資料の説明生成（G13）が動作することを実機確認した。プロンプト作成自体は引き続き UI 限定（`docs/DEPLOY_SETUP.md` 8-1）。別 geography／別クラスタへの移送では未検証 |
 | 利用者ごとの SharePoint 接続      | ❌                 | `invoker` で動くため、**利用者それぞれが自分の接続を作る**必要がある |
 
 **移送手順（推奨）**:

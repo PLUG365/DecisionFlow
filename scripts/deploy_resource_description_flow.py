@@ -52,7 +52,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 from dotenv import load_dotenv
@@ -60,11 +62,12 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from auth_helper import DATAVERSE_URL, api_get, get_session  # noqa: E402
+from auth_helper import DATAVERSE_URL, api_get, flow_api_call, get_session, get_token  # noqa: E402
 
 load_dotenv()
 
 API = f"{DATAVERSE_URL}/api/data/v9.2"
+POWERAPPS_API = "https://api.powerapps.com"
 SOLUTION_NAME = os.environ.get("SOLUTION_NAME", "DecisionSupport")
 PREFIX = os.environ.get("PUBLISHER_PREFIX", "ds")
 
@@ -79,36 +82,27 @@ FLOW_DESCRIPTION = (
     "読んで説明文を作る。SharePoint 接続は invoker（実行専用ユーザー提供）。"
 )
 
+PROMPT_INSTRUCTIONS_DIR = ROOT / "docs" / "ai-builder-prompts"
+
+
+def _load_instructions(filename: str) -> str:
+    """UI に貼る指示文を読む。**正本は `docs/ai-builder-prompts/` の該当ファイル。**
+
+    以前はこの文字列を Python の定数として埋め込んでいたが、それだと中身を見るのに
+    スクリプトを実行して失敗させるしかなかった（`_prompt_setup_hint` が出力するまで
+    見えない）。正本をリポジトリのファイルに出しておけば、`docs/DEPLOY_SETUP.md` から
+    直接リンクでき、セットアップを始める前に読んで貼れる。
+    """
+    return (PROMPT_INSTRUCTIONS_DIR / filename).read_text(encoding="utf-8").strip()
+
+
 AI_PROMPT_NAME = "ResourceDescription"
 
-# 抽出プロンプトの指示文（UI に貼る正典の写し。スクリプトからは書き込めない）。
-#
 # **一時ファイルを書かせないことが肝。** 生成コードが
 # `C:\app\outputs\outputs_{RequestId}\{FileName}` へコピーしてから開く形になり、
 # 書いたはずの場所に無い（`Package not found`）という失敗をした。
 # 直叩きでは `RequestId` が空で偶然通っていたので、実機まで見えなかった。
-EXTRACT_PROMPT_INSTRUCTIONS = """
-添付された資料からテキストを抽出してください。
-
-ファイル名: 〔FileName を挿入〕
-資料: 〔File を挿入〕
-
-- 拡張子は FileName から判定し、どのライブラリで開くかを決めること。
-- **一時ファイルを書き出さないこと。ディスクにコピーしないこと。**
-  受け取ったバイト列を io.BytesIO に包んで、そのままライブラリに渡すこと。
-  os.makedirs や open(..., "wb") を使ってはならない。
-
-      data = io.BytesIO(<File の中身>)
-      .pptx → Presentation(data)
-      .docx → Document(data)
-      .xlsx → load_workbook(data)
-      .pdf  → pdfminer.high_level.extract_text(data)
-
-  すでにパス文字列で渡されている場合は、そのパスを直接ライブラリに渡すこと。
-- 抽出したテキストを、そのまま全文返すこと。
-  要約・切り詰め・整形・文字数制限を一切かけないこと。
-- 抽出できなかった場合は EXTRACT_FAILED とだけ返し、例外の内容をログに出すこと。
-""".strip()
+EXTRACT_PROMPT_INSTRUCTIONS = _load_instructions("ResourceDescription.instructions.txt")
 
 # **プロンプトを2つに割っている。**
 #
@@ -133,29 +127,11 @@ EXTRACT_FAILED_MARKER = "EXTRACT_FAILED"
 TEXT_INPUT_FILENAME = "fileName"
 TEXT_INPUT_DOCUMENT = "documentText"
 
-# UI に貼る指示文。**スクリプトから書き込めないので、ここは「正典の写し」**。
-# 検査に失敗したときにそのまま出力して、貼り直せるようにする。
-#
 # `〔…〕` の位置に入力変数を差し込む。手順の列ではなく**依頼**として書くこと。
 # 手順の列として書いたら、抽出側では生成器がそれを Python として実装した。
-TEXT_PROMPT_INSTRUCTIONS = """
-あなたは企業内の意思決定を支援するアシスタントです。
-申請に添付された資料から抜き出したテキストを読み、判断者がその資料の位置づけを
-素早く掴めるように、日本語で簡潔な説明文を書いてください。
-
-ファイル名: 〔fileName を挿入〕
-
-資料から抜き出したテキスト:
-〔documentText を挿入〕
-
-制約:
-- 2〜4文。見出しや箇条書きは使わず、地の文で書く。
-- 「何の資料か」「何が書かれているか」「判断者が見るべき点」をこの順で含める。
-- テキストに書かれていないことを補わない。推測した内容を断定で書いてはならない。
-- 「この資料は」のような定型の書き出しを付けず、本文から始める。
-- テキストが空、EXTRACT_FAILED、または内容として意味をなさない場合は
-  「この資料の内容を読み取れませんでした。」とだけ返す。
-""".strip()
+TEXT_PROMPT_INSTRUCTIONS = _load_instructions(
+    "ResourceDescriptionText.instructions.txt"
+)
 
 
 # AI Builder のドキュメント入力の上限。これを超えるとプロンプト側で失敗するので、
@@ -527,31 +503,189 @@ def find_existing_flow(flow_name: str) -> dict | None:
     return existing[0] if existing else None
 
 
-def find_sharepoint_connection_reference() -> str:
-    """SharePoint の接続参照の論理名を引く。
+def _connref_logical_name(connector: str) -> str:
+    return f"{PREFIX}_{connector}"
+
+
+def _read_environment_id() -> str:
+    config_path = ROOT / "power.config.json"
+    if config_path.exists():
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        env_id = data.get("environmentId")
+        if env_id:
+            return env_id
+    envs = flow_api_call("GET", "/providers/Microsoft.ProcessSimple/environments")
+    for env in envs.get("value", []):
+        linked = env.get("properties", {}).get("linkedEnvironmentMetadata", {})
+        if (linked.get("instanceUrl") or "").rstrip("/").lower() == DATAVERSE_URL.lower():
+            return env["name"]
+    raise RuntimeError("環境 ID を解決できませんでした。power.config.json または DATAVERSE_URL を確認してください。")
+
+
+def _powerapps_get(url: str) -> dict:
+    token = get_token(scope="https://service.powerapps.com/.default")
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    last_error = ""
+    for attempt in range(3):
+        response = requests.get(url, headers=headers, timeout=120)
+        if response.ok:
+            return response.json()
+        last_error = response.text[:500]
+        if response.status_code in {429, 500, 502, 503, 504}:
+            wait = 15 * (attempt + 1)
+            print(f"  接続検索が一時失敗しました。{wait} 秒後に再試行します ({attempt + 1}/3)")
+            time.sleep(wait)
+            continue
+        break
+    raise RuntimeError(f"PowerApps API の接続検索に失敗しました: {last_error}")
+
+
+def _status_is_connected(connection: dict) -> bool:
+    statuses = connection.get("properties", {}).get("statuses", [])
+    return any(status.get("status", "").lower() == "connected" for status in statuses)
+
+
+def _connection_connector_name(connection: dict) -> str:
+    return (connection.get("properties", {}).get("apiId") or "").rstrip("/").split("/")[-1]
+
+
+def _connection_auth_score(connection: dict) -> tuple[int, int, str]:
+    values = connection.get("properties", {}).get("connectionParametersSet", {}).get("values", {})
+    has_oauth_grant = "token:grantType" in values
+    return (
+        1 if _status_is_connected(connection) else 0,
+        1 if has_oauth_grant else 0,
+        connection.get("properties", {}).get("createdTime") or "",
+    )
+
+
+def find_sharepoint_connections(environment_id: str) -> list[str]:
+    """生の SharePoint 接続（人が Power Automate UI でサインイン済みのもの）を探す。
+
+    **接続そのものはここでは作らない。** OAuth サインインが要るので、
+    自動化できるのは「見つけて接続参照に束ねる」ところまで
+    （`deploy_notification_flows.py` の `find_connections` と同じ形）。
+    """
+    forced = os.environ.get("SHAREPOINT_CONN", "").strip()
+    if forced:
+        return [forced]
+
+    encoded_env = quote(environment_id, safe="")
+    urls = [
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/scopes/admin/environments/{encoded_env}/connections"
+        "?api-version=2016-11-01",
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/scopes/admin/environments/{encoded_env}/apis/{SHAREPOINT_CONNECTOR}/connections"
+        "?api-version=2016-11-01",
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/apis/{SHAREPOINT_CONNECTOR}/connections"
+        f"?$filter=environment eq '{environment_id}'&api-version=2016-11-01",
+        f"{POWERAPPS_API}/providers/Microsoft.PowerApps/environments/{encoded_env}/apis/{SHAREPOINT_CONNECTOR}/connections"
+        "?api-version=2016-11-01",
+    ]
+    candidates: list[dict] = []
+    for url in urls:
+        try:
+            candidates.extend(
+                candidate
+                for candidate in _powerapps_get(url).get("value", [])
+                if _connection_connector_name(candidate) == SHAREPOINT_CONNECTOR
+            )
+        except RuntimeError as exc:
+            print(f"  {SHAREPOINT_CONNECTOR}: 接続検索エンドポイントをスキップ: {exc}")
+    connected = [candidate for candidate in candidates if _status_is_connected(candidate)]
+    ordered = sorted(connected or candidates, key=_connection_auth_score, reverse=True)
+    names = [candidate.get("name") or candidate.get("properties", {}).get("connectionName") for candidate in ordered]
+    names = [name for name in names if name]
+    if not names:
+        raise RuntimeError(
+            f"{SHAREPOINT_CONNECTOR} 接続が見つかりません。Power Automate の接続ページで"
+            "SharePoint への接続を作成してください（サインインが要るため自動化できません）。"
+        )
+    return list(dict.fromkeys(names))
+
+
+def ensure_sharepoint_connection_reference(connection_name: str) -> str:
+    """SharePoint の接続参照を、既存の生の接続から自動作成／更新する。
 
     **生の接続 ID を焼き込まない。** 新しいデザイナーが
     「Uses a connection instead of a connection reference」と警告するのはここで、
     移送（別環境へのインポート）でも生の ID は解決できずに壊れる。
 
+    以前はここが「見つけるだけ、無ければ `add-flow` で作るか手で作成してください」
+    という読み取り専用の関数だった。しかし `add-flow` はこのフローの `workflowid`
+    を要求するため、**フロー自体を初めて作るときは循環していた**
+    （2026-08-21 に発覚）。`deploy_access_flows.py` / `deploy_notification_flows.py` /
+    `deploy_ai_decision.py` は同じ状況を `ensure_connection_reference` で
+    自己解決しており、SharePoint だけこれが無いのは一貫性の欠如だった。
+
     **接続参照にしても invoker は維持できるはず**（Learn は「invoker 接続は
     エクスポートすると RuntimeSource が invoker」と書いており、
     エクスポート＝接続参照の世界）。ただし**そこは実行して確かめる**。
     `runtimeSource` の文字列が invoker でも、実行時に本人の資格で動く証明にはならない
-    （登録の確認と実行の確認は別物）。応答の `actingAs` で見る。
+    （登録の確認と実行の確認は別物）。応答の `actingAs` で見る（`verify_runtime_source`）。
+
+    **固定の論理名で新規作成する前に、コネクタに紐づく既存の束ね済み参照を探す。**
+    `add-flow` や過去の手動作成が既に接続参照を残している環境（この論理名と一致しない
+    可能性がある）で、無条件に新規作成すると重複が残る（2026-08-21、MinoDev2 で実際に
+    重複を作ってしまい、後始末した）。
     """
-    refs = api_get(
-        "connectionreferences?$filter=connectorid eq "
-        f"'{_connector_id(SHAREPOINT_CONNECTOR)}'"
-        "&$select=connectionreferencelogicalname,connectionid&$top=5"
+    connector_id = _connector_id(SHAREPOINT_CONNECTOR)
+    bound = [
+        ref
+        for ref in api_get(
+            f"connectionreferences?$filter=connectorid eq '{connector_id}'"
+            "&$select=connectionreferenceid,connectionreferencelogicalname,connectionid,connectorid"
+            "&$orderby=createdon asc&$top=5"
+        ).get("value", [])
+        if ref.get("connectionid")
+    ]
+    session = get_session()
+    session.headers["MSCRM.SolutionUniqueName"] = SOLUTION_NAME
+    if bound:
+        ref = bound[0]
+        logical_name = ref["connectionreferencelogicalname"]
+        if ref.get("connectionid") != connection_name:
+            response = session.patch(
+                f"{API}/connectionreferences({ref['connectionreferenceid']})",
+                json={"connectionid": connection_name},
+            )
+            response.raise_for_status()
+            print(f"  接続参照を更新しました: {logical_name}")
+        else:
+            print(f"  接続参照は既存です: {logical_name}")
+        return logical_name
+
+    logical_name = _connref_logical_name(SHAREPOINT_CONNECTOR)
+    escaped = _escape_odata_string(logical_name)
+    existing = api_get(
+        "connectionreferences?"
+        f"$filter=connectionreferencelogicalname eq '{escaped}'"
+        "&$select=connectionreferenceid,connectionreferencelogicalname,connectionid,connectorid"
     ).get("value", [])
-    bound = [ref for ref in refs if ref.get("connectionid")]
-    if not bound:
-        raise RuntimeError(
-            "SharePoint の接続参照が見つかりません。"
-            "`npx power-apps add-flow` で作られるか、手で作成してください。"
-        )
-    return bound[0]["connectionreferencelogicalname"]
+    if existing:
+        ref = existing[0]
+        patch_body = {}
+        if ref.get("connectionid") != connection_name:
+            patch_body["connectionid"] = connection_name
+        if ref.get("connectorid") != connector_id:
+            patch_body["connectorid"] = connector_id
+        if patch_body:
+            response = session.patch(f"{API}/connectionreferences({ref['connectionreferenceid']})", json=patch_body)
+            response.raise_for_status()
+            print(f"  接続参照を更新しました: {logical_name}")
+        else:
+            print(f"  接続参照は既存です: {logical_name}")
+        return logical_name
+    body = {
+        "connectionreferencelogicalname": logical_name,
+        "connectionreferencedisplayname": "DecisionFlow SharePoint connection",
+        "connectorid": connector_id,
+        "connectionid": connection_name,
+    }
+    response = session.post(f"{API}/connectionreferences", json=body)
+    if not response.ok:
+        raise RuntimeError(f"SharePoint の接続参照の作成に失敗しました ({response.status_code})。\n{response.text[:800]}")
+    print(f"  接続参照を作成しました: {logical_name}")
+    return logical_name
 
 
 def find_dataverse_connection_reference() -> str:
@@ -609,12 +743,22 @@ def _require_prompt(
     | `statecode` を直接 PATCH して公開済みに見せる | ❌ `Unexpected parameter(s) statecode, statuscode` |
     | `msdyn_customconfiguration` を直接 PATCH | ❌ `Unexpected parameter(s) msdyn_customconfiguration` |
     | 既存モデルへ `AIModelPublish` | ⚠ **200 が返るのに反映されない** |
+    | `deploy_ai_decision.py` と同じ手順（model 作成 → training を `AIModelPublish` →
+      run config を `msdyn_aiconfigurations(id)/PublishAIConfiguration`）を **code
+      interpreter OFF のプロンプトで**フルに再現（2026-08-20、使い捨て名で実測） |
+      ⚠ **training の `AIModelPublish` は 200 で通った**が、最後の run 側
+      `PublishAIConfiguration` で同じ `Missing privilege definition:
+      prvWritemsdyn_AIModel`。`deploy_ai_decision.py` のこの経路は
+      `DecisionRecommendation` が既に存在し設定が一致する限り早期リターン
+      （367〜377行目）に隠れて**実際には一度も通っていない可能性が高い**。
+      code interpreter の有無に関わらず、新規作成は塞がっている。
 
-    最後のものが一番たちが悪い。**成功したように見えて、保存されているのは
+    最後から2番目のものが一番たちが悪い。**成功したように見えて、保存されているのは
     UI で作ったときの空の指示文のまま**だった。ステータスコードを信じて
     「更新できた」と報告する寸前だった。中身を読み直して初めて分かった。
 
-    **したがって作成も編集も UI でしかできない。ここでできるのは検査だけ。**
+    **したがって作成も編集も UI でしかできない（code interpreter の有無を問わない）。
+    ここでできるのは検査だけ。**
     それでも検査には意味がある。**形が違っても配線は通ってしまい、実行時に
     静かに失敗する**（説明が空で返り、画面には `extract-failed` としか出ない）。
     ここで落とせば、原因が名指しで出て、貼るべき指示文もその場に出る。
@@ -889,7 +1033,9 @@ def main() -> None:
     ai_model_id = find_ai_prompt()
     text_model_id = find_text_prompt()
 
-    sharepoint_ref = find_sharepoint_connection_reference()
+    environment_id = _read_environment_id()
+    sharepoint_connections = find_sharepoint_connections(environment_id)
+    sharepoint_ref = ensure_sharepoint_connection_reference(sharepoint_connections[0])
     print(f"SharePoint connection reference: {sharepoint_ref}")
 
     clientdata = build_clientdata(
