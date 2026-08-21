@@ -25,9 +25,10 @@ DecisionFlow は、申請者が判断者へ意思決定を依頼し、会話・�
 
 コンセプトと主要機能を3分で紹介する動画です。
 
-<video src="https://github.com/PLUG365/DecisionFlow/raw/main/docs/media/decisionflow-intro.mp4" controls width="720"></video>
+[▶ decisionflow-intro.mp4 を再生する](https://github.com/PLUG365/DecisionFlow/raw/main/docs/media/decisionflow-intro.mp4)
 
 ナレーション音声: VOICEVOX:ずんだもん
+
 
 ## 謝辞
 
