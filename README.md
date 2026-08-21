@@ -21,6 +21,12 @@ DecisionFlow は、申請者が判断者へ意思決定を依頼し、会話・�
 | AI エージェント | Copilot Studio `DecisionFlow Assistant`（生成オーケストレーション）                                                                                                               |
 | デプロイ自動化  | Python スクリプト群（`scripts/`）、PAC CLI、Power Apps Code Apps SDK                                                                                                              |
 
+## 紹介動画
+
+コンセプトと主要機能を3分で紹介する動画です（[docs/media/decisionflow-intro.mp4](docs/media/decisionflow-intro.mp4)）。
+
+ナレーション音声: VOICEVOX:ずんだもん
+
 ## 謝辞
 
 本プロジェクトは [geekfujiwara](https://github.com/geekfujiwara) 氏の成果物を土台に構築しています。
