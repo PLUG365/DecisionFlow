@@ -10,6 +10,7 @@
 - Node.js 20 系以上
 - Python 3.11 系以上
 - PAC CLI
+- このリポジトリは public なので、clone 後に `git config --local user.email` を GitHub noreply にする。確認は `python scripts/check_commit_emails.py`
 - 対象環境の Power Apps / Power Automate / Copilot Studio にアクセスできるアカウント
 - README に記載の前提を満たす Power Platform 環境
 - Copilot Studio を使う場合は、対象環境でエージェント作成権限があること

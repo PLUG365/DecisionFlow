@@ -36,3 +36,17 @@ Copilot Studio の認証済みユーザー変数からのみ渡す（会話本�
 - 既存の DecisionFlow フローと Python デプロイスクリプトは採用・運用の正本として扱う。AI の
   生成結果で既存フローを直接削除・置換・公開せず、採用する試作はレビュー済みの再現可能な
   ソース変更へ昇格させる。
+
+## コミット作者メール
+
+このリポジトリは public である。コミットの作者・コミッターメールに個人用アドレス
+（Gmail / iCloud / Yahoo など）を使わない。このクローンでは `user.email` を
+GitHub noreply（`<id>+<user>@users.noreply.github.com`）にする。
+
+```powershell
+git config --local user.email "<id>+<user>@users.noreply.github.com"
+python scripts/check_commit_emails.py
+```
+
+履歴のメール検査は追跡ファイルの Secrets 検査とは別である。GitHub プロフィールで
+メールを非公開にしても、コミットに書いたメールは公開される。
